@@ -24,8 +24,11 @@ struct MemorySidebar: View {
             }
         }
         .onChange(of: model.isExpanded) { if !model.isExpanded { scopesHaveFocus = false } }
+        .onChange(of: model.nativeImport.snapshot?.status) {
+            if model.nativeImport.snapshot?.status == "imported" { model.refresh() }
+        }
         .sheet(isPresented: $showsNativeMemory) {
-            NativeMemoryImportSheet(model: model.nativeImport, folder: folder)
+            NativeMemoryImportSheet(model: model.nativeImport, folder: folder).appZoom()
         }
 
     }

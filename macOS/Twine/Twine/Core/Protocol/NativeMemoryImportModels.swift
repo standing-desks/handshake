@@ -3,6 +3,7 @@ import Foundation
 nonisolated enum NativeMemoryImportAction: String, Encodable, Sendable {
     case status
     case importMemories = "import"
+    case removeImported
 }
 
 nonisolated struct NativeMemoryImportRequest: Encodable, Sendable {

@@ -35,6 +35,7 @@ pub struct NativeImportRequest {
 pub enum NativeImportAction {
     Status,
     Import,
+    RemoveImported,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -82,7 +83,10 @@ pub fn execute(request: &NativeImportRequest) -> Result<NativeImportSnapshot, Na
         ..MemoryRequest::default()
     });
     let mut snapshot = snapshot(&folder, &locations)?;
-    if !supported_source(&locations, &mut snapshot) || snapshot.source_count == 0 {
+    if !supported_source(&locations, &mut snapshot)
+        || (snapshot.source_count == 0
+            && !imported_scope_matches(&snapshot.codex_path, &snapshot.folder)?)
+    {
         return Ok(snapshot);
     }
     let shell = std::env::var_os("SHELL").map_or_else(|| PathBuf::from("/bin/zsh"), PathBuf::from);
@@ -193,29 +197,7 @@ fn execute_located(
         .get("config")
         .filter(|value| value.is_object())
         .ok_or(NativeImportError::InvalidResponse)?;
-    if config
-        .pointer("/memories/version")
-        .and_then(Value::as_str)
-        .unwrap_or("v1")
-        != "v1"
-    {
-        snapshot.message = "Codex is using memories v2, but its Claude importer writes v1. Native import is unavailable for this configuration.".into();
-        return Ok(snapshot);
-    }
-    if config
-        .pointer("/features/memories")
-        .and_then(Value::as_bool)
-        != Some(true)
-        || config
-            .pointer("/features/external_agent_memory_import")
-            .and_then(Value::as_bool)
-            != Some(true)
-        || config
-            .pointer("/memories/use_memories")
-            .and_then(Value::as_bool)
-            == Some(false)
-    {
-        snapshot.message = "Codex native memories or its experimental native importer are disabled for this folder. Enable native memories and use a Codex version supporting external_agent_memory_import.".into();
+    if !supported_codex(config, &mut snapshot) {
         return Ok(snapshot);
     }
     let detection = client.request(
@@ -227,8 +209,7 @@ fn execute_located(
         .get("items")
         .and_then(Value::as_array)
         .ok_or(NativeImportError::InvalidResponse)?;
-    if !source_scope_matches(&snapshot.claude_path, &snapshot.folder)? {
-        snapshot.message = "The native Claude session metadata does not establish this exact folder. Import is unavailable to prevent sharing another folder's memory.".into();
+    if !refresh_scope(&mut snapshot)? {
         return Ok(snapshot);
     }
     let selected = items.iter().find(|item| {
@@ -239,9 +220,11 @@ fn execute_located(
                 .is_some_and(|keys| keys.iter().any(|value| value.as_str() == Some(&key)))
     });
     let Some(selected) = selected else {
-        if imported_scope_matches(&snapshot.codex_path, &snapshot.folder)? {
+        if snapshot.source_count == 0 {
+            snapshot.message = "Claude has no memory files here, but Codex still has imported copies and did not offer native cleanup. Refresh native status or inspect Codex's import history.".into();
+        } else if imported_scope_matches(&snapshot.codex_path, &snapshot.folder)? {
             snapshot.status = "current".into();
-            snapshot.message = "Codex reports no pending native memory import for this folder. Consolidation and model recall have not been verified.".into();
+            snapshot.message = "Imported files are up to date. Codex may still be consolidating them or waiting for account capacity. Start a fresh conversation after consolidation finishes.".into();
         } else {
             snapshot.message = "Codex could not identify this native Claude memory project. Open a normal Claude session in this exact folder so the importer can verify its scope.".into();
         }
@@ -249,8 +232,22 @@ fn execute_located(
     };
     snapshot.can_import = true;
     snapshot.status = "ready".into();
-    snapshot.message = "Claude's native memories can be imported into Codex's native memory system. Codex consolidates imported memories in the background.".into();
+    snapshot.message = if snapshot.source_count == 0 {
+        "Claude has no memory files here. Codex can remove this folder's imported copies through its native importer; consolidated memory updates afterward."
+    } else {
+        "Import this folder's Claude memories into Codex. Codex consolidates them during conversations when account capacity allows."
+    }.into();
     if action == NativeImportAction::Status {
+        return Ok(snapshot);
+    }
+    if !refresh_scope(&mut snapshot)? {
+        return Ok(snapshot);
+    }
+    if (action == NativeImportAction::RemoveImported) != (snapshot.source_count == 0) {
+        snapshot.status = "unavailable".into();
+        snapshot.can_import = false;
+        snapshot.message =
+            "Claude memories changed. Refresh before importing or removing copies.".into();
         return Ok(snapshot);
     }
     // Build a memory-only item from detected metadata. Never forward other migration kinds.
@@ -272,6 +269,52 @@ fn execute_located(
     snapshot.can_import = false;
     let completed = client.import_completion(&id);
     finish_import(snapshot, &key, completed)
+}
+
+fn supported_codex(config: &Value, snapshot: &mut NativeImportSnapshot) -> bool {
+    if config
+        .pointer("/memories/version")
+        .and_then(Value::as_str)
+        .unwrap_or("v1")
+        != "v1"
+    {
+        snapshot.message = "Codex is using memories v2, but its Claude importer writes v1. Native import is unavailable for this configuration.".into();
+        return false;
+    }
+    if config
+        .pointer("/features/memories")
+        .and_then(Value::as_bool)
+        != Some(true)
+        || config
+            .pointer("/features/external_agent_memory_import")
+            .and_then(Value::as_bool)
+            != Some(true)
+        || config
+            .pointer("/memories/use_memories")
+            .and_then(Value::as_bool)
+            == Some(false)
+    {
+        snapshot.message = "Codex native memories or its experimental native importer are disabled for this folder. Enable native memories and use a Codex version supporting external_agent_memory_import.".into();
+        return false;
+    }
+    true
+}
+
+fn refresh_scope(snapshot: &mut NativeImportSnapshot) -> io::Result<bool> {
+    let before = markdown_count(&snapshot.claude_path)?;
+    let matches = if before == 0 {
+        imported_scope_matches(&snapshot.codex_path, &snapshot.folder)?
+    } else {
+        source_scope_matches(&snapshot.claude_path, &snapshot.folder)?
+    };
+    snapshot.source_count = markdown_count(&snapshot.claude_path)?;
+    if (before == 0) != (snapshot.source_count == 0) || !matches {
+        snapshot.can_import = false;
+        snapshot.status = "unavailable".into();
+        snapshot.message = "Native memory changed or its metadata does not establish this exact folder. Refresh before importing or removing copies.".into();
+        return Ok(false);
+    }
+    Ok(true)
 }
 
 fn finish_import(
@@ -301,7 +344,18 @@ fn finish_import(
         });
         if success {
             snapshot.status = "imported".into();
-            snapshot.message = "Codex completed the native memory import. Native consolidation is pending; a normal Codex session runs that background process. This does not yet prove recall.".into();
+            snapshot.message = if snapshot.source_count == 0 {
+                "Codex removed this folder's imported memory copies. Native consolidation is pending and may wait for account capacity; older information can remain until it finishes."
+            } else {
+                "Imported into Codex. Native consolidation is pending. It runs during Codex conversations and may pause when account capacity is low. After it finishes, start a fresh conversation."
+            }.into();
+            if snapshot.source_count == 0
+                && !fs::symlink_metadata(&snapshot.codex_path)
+                    .is_err_and(|error| error.kind() == io::ErrorKind::NotFound)
+            {
+                snapshot.status = "unconfirmed".into();
+                snapshot.message = "Codex completed a native operation, but removal of the imported copies was not verified. Claude memories may have changed; refresh native status before retrying.".into();
+            }
         } else {
             snapshot.status = "unconfirmed".into();
             snapshot.message = "Codex did not confirm successful import of this folder. Inspect its native import history before retrying.".into();
@@ -556,10 +610,13 @@ mod tests {
             let responses = json!({
                 "version": version, "key": key, "detected": detected, "completed": completed,
                 "requests": requests,
+                "memory": project.join("memory"),
+                "destination": locations.codex.join("memories/extensions/external_agent_import/resources").join(&key),
             });
             let program = directory.path().join("codex");
             fs::write(&program, format!(r"#!/usr/bin/python3
-import json, sys
+import json, sys, shutil
+from pathlib import Path
 assert sys.argv[1:] == ['--enable', 'external_agent_memory_import', 'app-server']
 settings = json.loads({settings})
 def send(value):
@@ -580,6 +637,8 @@ for line in sys.stdin:
             result['items'].append({{'itemType': 'MEMORY', 'description': 'Native memory', 'cwd': None, 'details': {{'memory': ['another-project', settings['key']]}}}})
     elif method == 'externalAgentConfig/import':
         if settings['completed']:
+            if not any(Path(settings['memory']).rglob('*.md')):
+                shutil.rmtree(settings['destination'], ignore_errors=True)
             send({{'method': 'externalAgentConfig/import/completed', 'params': {{'importId': 'fixture-import', 'itemTypeResults': [{{'itemType': 'MEMORY', 'successes': [{{'source': settings['key']}}], 'failures': []}}]}}}})
         send({{'id': request['id'], 'result': {{'importId': 'fixture-import'}}}})
         if not settings['completed']:
@@ -747,6 +806,123 @@ for line in sys.stdin:
             fixture.run(NativeImportAction::Status).status,
             "unavailable"
         );
+        assert!(
+            fixture
+                .commands()
+                .iter()
+                .all(|command| command["method"] != "externalAgentConfig/import")
+        );
+    }
+
+    #[test]
+    fn deleted_source_project_can_use_verified_native_cleanup() {
+        let fixture = Fixture::new("v1", true, true);
+        let source = snapshot(&fixture.folder, &fixture.locations).unwrap();
+        fs::create_dir_all(&source.codex_path).unwrap();
+        fs::write(
+            source.codex_path.join("scope.json"),
+            json!({"cwd": fixture.folder}).to_string(),
+        )
+        .unwrap();
+        fs::remove_dir_all(source.claude_path.parent().unwrap()).unwrap();
+        let ready = fixture.run(NativeImportAction::Status);
+        assert_eq!(ready.source_count, 0);
+        assert_eq!(ready.status, "ready");
+        assert!(ready.can_import);
+        assert!(
+            ready
+                .message
+                .contains("remove this folder's imported copies")
+        );
+        let imported = fixture.run(NativeImportAction::RemoveImported);
+        assert_eq!(imported.status, "imported");
+        assert!(
+            imported
+                .message
+                .contains("removed this folder's imported memory copies")
+        );
+        assert!(imported.message.contains("consolidation is pending"));
+        // The fake native server performs cleanup, and the adapter verifies its result.
+        assert!(!source.codex_path.exists());
+    }
+
+    #[test]
+    fn native_cleanup_requires_matching_scope_and_detected_project() {
+        for (detected, matching_scope) in [(true, false), (false, true)] {
+            let fixture = Fixture::new("v1", detected, true);
+            let source = snapshot(&fixture.folder, &fixture.locations).unwrap();
+            fs::create_dir_all(&source.codex_path).unwrap();
+            let cwd = if matching_scope {
+                &fixture.folder
+            } else {
+                fixture.directory.path()
+            };
+            fs::write(
+                source.codex_path.join("scope.json"),
+                json!({"cwd": cwd}).to_string(),
+            )
+            .unwrap();
+            fs::remove_dir_all(source.claude_path.parent().unwrap()).unwrap();
+            let result = fixture.run(NativeImportAction::RemoveImported);
+            assert_eq!(result.status, "unavailable");
+            assert!(!result.can_import);
+            assert!(
+                fixture
+                    .commands()
+                    .iter()
+                    .all(|command| command["method"] != "externalAgentConfig/import")
+            );
+            if matching_scope {
+                assert!(result.message.contains("still has imported copies"));
+            }
+        }
+    }
+
+    #[test]
+    fn explicit_cleanup_does_not_import_repopulated_source() {
+        let fixture = Fixture::new("v1", true, true);
+        let result = fixture.run(NativeImportAction::RemoveImported);
+        assert_eq!(result.status, "unavailable");
+        assert!(!result.can_import);
+        assert!(result.message.contains("Claude memories changed"));
+        assert!(
+            fixture
+                .commands()
+                .iter()
+                .all(|command| command["method"] != "externalAgentConfig/import")
+        );
+    }
+
+    #[test]
+    fn foreign_source_created_during_detection_never_imports() {
+        let fixture = Fixture::new("v1", true, true);
+        let source = snapshot(&fixture.folder, &fixture.locations).unwrap();
+        fs::create_dir_all(&source.codex_path).unwrap();
+        fs::write(
+            source.codex_path.join("scope.json"),
+            json!({"cwd": fixture.folder}).to_string(),
+        )
+        .unwrap();
+        fs::remove_dir_all(source.claude_path.parent().unwrap()).unwrap();
+        let memory = serde_json::to_string(&source.claude_path).unwrap();
+        let session =
+            serde_json::to_string(&json!({"cwd": fixture.directory.path()}).to_string()).unwrap();
+        let injection = format!(
+            "    elif method == 'externalAgentConfig/detect':\n        memory = Path({memory})\n        memory.mkdir(parents=True, exist_ok=True)\n        (memory / 'new.md').write_text('New fixture memory')\n        (memory.parent / 'session.jsonl').write_text({session})"
+        );
+        let program = fs::read_to_string(&fixture.located.program).unwrap();
+        fs::write(
+            &fixture.located.program,
+            program.replace(
+                "    elif method == 'externalAgentConfig/detect':",
+                &injection,
+            ),
+        )
+        .unwrap();
+        let result = fixture.run(NativeImportAction::RemoveImported);
+        assert_eq!(result.source_count, 1);
+        assert_eq!(result.status, "unavailable");
+        assert!(!result.can_import);
         assert!(
             fixture
                 .commands()

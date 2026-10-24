@@ -11,15 +11,19 @@ part of this implementation.
 
 ## Try the playground
 
-Use `~/workspaces/cross-agent-memory-playground` in the development build. Its
-`Open in Twine.command` launcher restores the dedicated playground app state.
-The rebuilt native playground window is already open with the Native Memory
-interface. Its dedicated state is `~/workspaces/.twine-native-memory-playground-state`,
-which has no `shared-memory` directory. The launcher now reopens that state.
+Use **Twine Native Memory**, the signed trial app already open with
+`~/workspaces/cross-agent-memory-playground`. The playground's
+`Open in Twine.command` launcher opens or reuses this distinct app without
+creating a duplicate instance. Its bundle identifier is
+`com.twineproject.Twine.native-memory-trial`; the older development app is separate.
+Dedicated state is `~/workspaces/.twine-native-memory-playground-state`, which has
+no `shared-memory` directory. See the
+[installation and launch receipt](../../out/validation/native-memory-ux/native-trial-install.json).
 
-1. Click the branching-arrow beside **Memories** to open **Native Memory**.
-2. Check the Claude and Codex native paths and source-file count.
-3. Click **Import Claude Memories**. This is an explicit call to Codex’s own
+1. Click **Import** beside **Memories** to open **Import Memories**.
+2. Check the source-file count. Expand **Memory locations** only if you want to
+   inspect the native paths.
+3. Click **Import to Codex**. This is an explicit call to Codex’s own
    importer, restricted to this folder’s memory item.
 4. Inspect the result. A request accepted by Codex is distinct from confirmed
    import completion; native consolidation and recall are later steps.
@@ -111,20 +115,26 @@ No process is started merely to fabricate a memory conversation.
   item for this playground. The compiled bridge returned `ready`,
   `canImport=true`, and 1,019 native files. Saved settings were unchanged; no
   import was executed.
-- Codex native import remains pending the user’s action. Native Codex consolidation
-  and recall have not been verified. The full 20-question native suite is unscored.
-- `make fmt` and full `make check` passed: 577 Rust tests (45 bridge + 532 core;
-  11 existing ignores), plus 372 Swift tests across 483 executions.
-- The debug build and code-signature verification passed. Both Rust and Swift
-  reviews cleared. Logs: [full check](../../out/validation/native-memory/check.log)
-  and [debug build](../../out/validation/native-memory/build.log).
-- The native playground was registered and opened using fresh app state with no
-  shared-memory directory. See the [folder receipt](../../../../cross-agent-memory-playground/native-folder-receipt.json).
-
-Native importer tests exercise memory-only selection, folder scope, read-only
-status, completion matching and unavailable native configuration. No live native
-import-button click test or completed Codex import is claimed; actual import and
-native Codex recall remain separate pending steps.
+- [Latest live Claude recall](../../out/validation/native-memory-ux/claude-live-recall-report.json):
+  an ordinary three-part question passed through eight native reads in 19.169 s,
+  with no writes or permission denials. The full 20-question suite is unscored.
+- [Actual native UX and end-to-end report](native-memory-ux-report.html):
+  native importer regression passed through the real C ABI and installed Codex,
+  including bytes, updates, deletions, explicit cleanup and stale-action guards.
+- A two-file isolated Codex fixture completed native consolidation and fresh-session
+  recall. The full 1,019-file corpus imported exactly and retrieved facts from
+  native imported resources; its consolidation was deferred by Codex's quota guard.
+- The real user's Codex playground import remains pending. The isolated tests do
+  not establish completed import or consolidated startup recall in that store.
+- Full checks passed: 581 Rust tests (45 bridge + 536 core; 11 existing ignores),
+  plus 375 Swift tests across 486 executions, with no Swift runtime warnings.
+  All five native UI scenarios passed in one clean run with zero runtime warnings. The final debug build and strict code-signature verification passed; the distinct Twine Native Memory app is installed and open. See the
+  [check log](../../out/validation/native-memory-ux/final-check.log) and
+  [Swift result](../../out/validation/native-memory-ux/final-unit-summary.json),
+  [UI result](../../out/validation/native-memory-ux/final-ui-summary.json), and
+  [debug build](../../out/validation/native-memory-ux/final-build.log).
+- The live native playground uses dedicated app state without a shared-memory
+  directory. See the [folder receipt](../../../../cross-agent-memory-playground/native-folder-receipt.json).
 
 ## Historical evidence and limits
 
@@ -136,10 +146,24 @@ The old publication report and catalog-based model tests do not establish native
 loading or recall. Do not rerun the retired loader to validate this architecture.
 
 A native import is a snapshot. Later source edits need another native import;
-there is no automatic Codex-to-Claude reverse path. Removal from one native store
-does not erase earlier imported copies or already-loaded conversations. Each
+there is no automatic Codex-to-Claude reverse path. After source deletion, another native import removes corresponding imported
+copies; when all source notes are gone, use **Remove imported memories**. Already
+consolidated or loaded context can retain older content. Each
 harness owns its memory lifecycle and context-loading behavior.
 
 The trial adds no fixed note-count or topic-size quota. Native harness limits and
 protocol transport bounds still apply. Memory content remains local until its
 owning harness reads and sends it to the selected model provider.
+
+### Native consolidation can be deferred
+
+The latest isolated Codex test imported all 1,019 files exactly and retrieved
+facts from native imported resources through ordinary prompting. Codex deferred
+consolidation because remaining account quota was below its native 25% threshold;
+no generated memory registry or summary appeared. The earlier two-file fixture
+did complete native consolidation and fresh-session recall.
+
+Twine reports import completion separately from consolidation and recall. It
+cannot show detailed native consolidation progress or guarantee immediate
+readiness. The real user Codex store is still pending import. See the
+[actual UX and end-to-end report](native-memory-ux-report.html).
