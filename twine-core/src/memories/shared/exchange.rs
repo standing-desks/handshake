@@ -6,8 +6,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use rustix::fs::{AtFlags, Dir, Mode, OFlags, mkdirat, open, openat, renameat, unlinkat};
 
-use super::{NOTE_COUNT, NOTE_LIMIT};
-
 pub(super) struct Exchange {
     directory: File,
     pub inbox: File,
@@ -57,7 +55,7 @@ fn child_directory(parent: &File, name: &str) -> io::Result<File> {
 
 pub(super) fn names(directory: &File) -> io::Result<Vec<String>> {
     let mut names = Vec::new();
-    for entry in Dir::read_from(directory)?.take(NOTE_COUNT * 2 + 3) {
+    for entry in Dir::read_from(directory)? {
         let entry = entry?;
         let name = entry
             .file_name()
@@ -72,7 +70,7 @@ pub(super) fn names(directory: &File) -> io::Result<Vec<String>> {
 }
 
 pub(super) fn read_note(inbox: &File, name: &str) -> io::Result<String> {
-    let file = File::from(openat(
+    let mut file = File::from(openat(
         inbox,
         name,
         OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW | OFlags::NONBLOCK,
@@ -82,7 +80,7 @@ pub(super) fn read_note(inbox: &File, name: &str) -> io::Result<String> {
         return Err(io::ErrorKind::Unsupported.into());
     }
     let mut text = String::new();
-    file.take(NOTE_LIMIT as u64 + 1).read_to_string(&mut text)?;
+    file.read_to_string(&mut text)?;
     Ok(text)
 }
 

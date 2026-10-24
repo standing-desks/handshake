@@ -43,14 +43,15 @@ are not eligible. This is a one-time snapshot, not native-store synchronization.
 
 The folder's presentation requests a background core refresh every five seconds,
 even with the sidebar hidden. A new supported harness launch also refreshes the
-library. The core accepts new bounded UTF-8 `.md` inbox files only when the local
+library. The core accepts new UTF-8 `.md` inbox files only when the local
 folder policy is enabled. Agents are told to stage a temporary file and rename it
 after writing, and to create new files rather than edit accepted ones.
 
 SQLite stores accepted content, source labels, hashes, policy, held/withdrawn
 status and exact-content suppression. A generated catalog points to immutable
 content snapshots. The catalog and records are rebuildable views of committed
-state. Native launch options preserve the user's existing Codex instructions and
+state. Refresh responses contain note metadata; the app fetches a selected body
+on demand and can filter titles and sources. Native launch options preserve the user's existing Codex instructions and
 append shared-memory discovery beside workflow role instructions.
 
 Changes to an accepted inbox filename are held; they do not silently replace the
@@ -91,7 +92,11 @@ This is an application policy, not a security sandbox between hostile agents.
 
 ## Current limits
 
-- Up to 128 retained notes, including held and withdrawn history, and 16 KiB per note.
+- The original 128-note and 16 KiB inbox-note ceilings have been removed. The complete
+  inbox is scanned, including entries beyond the former scan cutoff. Storage and
+  refresh work still grow with the library; this is not a claim of infinite capacity.
+- Generic IPC request limits and the existing native source reader's bounds still
+  apply to manual Add/import operations. File-based inbox intake has no fixed shared-note quota.
 - A file-based catalog and exact content snapshots; no semantic retrieval service.
 - No automatic semantic consolidation, contradiction resolution, transcript capture,
   AMIS exchange/export, or claim of AMIS publisher conformance.
@@ -106,6 +111,20 @@ These constraints keep the first trial focused on the shared-library and bounded
 discovery path from the MemCurrent-informed proposal. AMIS revision/derivation
 interchange and reviewed model consolidation remain separate follow-up work.
 
+## How sharing works today
+
+Both harnesses read one Twine-managed library: Markdown inbox contributions become
+accepted SQLite records, then the core publishes a catalog and exact Markdown
+snapshots. Harness launch instructions grant access and point to that catalog.
+Agents search or inspect its metadata and read the relevant full files. Startup
+instructions do not contain the entire library or a fixed eight-topic preview.
+
+This route does not normalize to AMIS or convert back into native memory stores.
+A selected native import is a one-time text snapshot. A future AMIS canonical
+record layer could preserve portable identities, revisions, lineage and scope
+while using this same read path. Native adapters would be optional and would
+need to describe any semantic loss; copying every native store is not required.
+
 ## Validation
 
 Use `make fmt` and `make check` from the repository root. Shared-memory coverage
@@ -115,15 +134,21 @@ projection failure recovery, descriptor-relative path access, and both harness
 instruction mappings. These checks do not independently demonstrate model recall.
 
 Current local results (24 October 2026): `make fmt` and `make check` passed.
-Rust: 45 bridge tests and 518 core tests passed; 11 existing core tests ignored.
-Swift: 366 tests passed (477 executions including parameterized cases).
-The shared-memory Swift test calls the real Rust bridge. Both required code
-reviewers reported no remaining material findings.
+Rust: 45 bridge tests and 523 core tests passed; 11 existing core tests ignored.
+Swift: 368 tests passed (479 executions including parameterized cases).
+The focused native UI smoke test and debug app build passed. Both required
+reviewers found no remaining blocking issues. Logs and the current UI screenshot
+are in `out/validation/cross-agent-memory-scale/`.
 
-The final `make check-app`, focused UI test
-`make ui-test PREBUILT=1 ONLY=testSharedMemoryPolicyAddAndWithdraw`, and
-`make debug PREBUILT=1` passed. The app signature verified and the launcher opened
-the expected development executable. Local logs and the UI screenshot are retained
-in `out/validation/cross-agent-memory/`. The interactive
-[HTML trial guide](cross-agent-memory-trial.html) includes the native screenshot
-and links to the research report.
+The live playground preserves its original four notes and admits 996 additions:
+1,000 shared memories, with all new records verified byte-for-byte and a largest
+record of 256 KiB. Local subprocess/core/JSON measurements were 7.78 s for initial
+admission/publication, 89.1 ms median over three steady refreshes, and 19.5 ms to
+read the largest note. These timings exclude Swift rendering and model inference.
+No live model recall score is claimed. The playground includes 20 recall prompts
+and an operator answer key outside the project and exchange directories.
+
+Schema v2 migrates existing notes and suppression unchanged and persists the last
+publication result. Detail reads use a deferred database transaction and do not
+scan the inbox or republish records. They still examine stored bodies to derive
+metadata titles; refresh work still grows with the library.

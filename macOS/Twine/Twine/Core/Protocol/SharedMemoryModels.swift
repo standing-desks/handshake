@@ -27,15 +27,21 @@ nonisolated struct SharedMemorySnapshot: Decodable, Sendable {
     let catalogPath: String
     let notes: [SharedMemoryNote]
     let diagnostics: [String]
+    let detail: SharedMemoryDetail?
 }
 
 nonisolated struct SharedMemoryNote: Decodable, Sendable, Identifiable {
     let id: String
     let title: String
-    let text: String
     let source: String
     let digest: String
     let status: String
+}
+
+nonisolated struct SharedMemoryDetail: Decodable, Sendable {
+    let id: String
+    let digest: String
+    let text: String
 }
 
 nonisolated struct SharedMemoryResponse: Decodable, Sendable {

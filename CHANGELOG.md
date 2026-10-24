@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Memories, add or import a durable note, inspect its source, and withdraw it from future delivery.
   New agents receive the shared catalog; changed inbox notes are held for review.
 
+### Changed
+
+- Remove the shared-memory prototype's 128-note and 16 KiB note ceilings. Scan the complete inbox,
+  search memory titles and sources in the app, and load selected note bodies on demand.
+
 ## [0.3.3] - 2026-10-17
 
 ### Added

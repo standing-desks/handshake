@@ -27,6 +27,10 @@ extension TwineUITests {
         share.click()
         let withdraw = app.buttons["Withdraw from shared memory"]
         XCTAssertTrue(withdraw.waitForExistence(timeout: 10))
+        let content = app.staticTexts["sharedMemoryContent"]
+        XCTAssertTrue(content.waitForExistence(timeout: 10))
+        let displayed = content.value as? String ?? content.label
+        XCTAssertTrue(displayed.contains("Run the cedar checklist."), content.debugDescription)
         attachScreenshot(of: app, named: "Shared memory accepted note")
         withdraw.click()
         XCTAssertTrue(app.staticTexts["Withdrawn"].waitForExistence(timeout: 10))

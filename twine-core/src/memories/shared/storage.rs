@@ -7,7 +7,7 @@ use std::time::Duration;
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 use super::{
-    NOTE_COUNT, NOTE_LIMIT, SharedMemoryError, SharedNote, SharedOperation, SharedSnapshot, digest,
+    SharedMemoryError, SharedNote, SharedNoteDetail, SharedOperation, SharedSnapshot, digest,
 };
 
 fn directory(path: &Path) -> Result<(), SharedMemoryError> {
@@ -43,7 +43,7 @@ fn connect(root: &Path) -> Result<Connection, SharedMemoryError> {
     if !file.metadata()?.is_file() {
         return Err(std::io::Error::other("Invalid shared memory ledger.").into());
     }
-    let connection = Connection::open_with_flags(
+    let mut connection = Connection::open_with_flags(
         &path,
         rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE
             | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX
@@ -51,17 +51,33 @@ fn connect(root: &Path) -> Result<Connection, SharedMemoryError> {
     )?;
     connection.busy_timeout(Duration::from_secs(3))?;
     let version: u32 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
-    if version == 0 {
-        connection.execute_batch("BEGIN IMMEDIATE;
-            CREATE TABLE IF NOT EXISTS policy (id INTEGER PRIMARY KEY CHECK(id=1), enabled INTEGER NOT NULL);
-            INSERT OR IGNORE INTO policy VALUES (1, 0);
+    if version == 2 {
+        return Ok(connection);
+    }
+    if version > 2 {
+        return Err(std::io::Error::other("Unsupported shared memory database version.").into());
+    }
+    let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    // Recheck under the write lock: another process may have finished the migration.
+    let version: u32 = tx.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    match version {
+        0 => tx.execute_batch(
+            "CREATE TABLE IF NOT EXISTS policy (id INTEGER PRIMARY KEY CHECK(id=1),
+                enabled INTEGER NOT NULL, delivery_ready INTEGER NOT NULL DEFAULT 0);
+            INSERT OR IGNORE INTO policy (id,enabled) VALUES (1, 0);
             CREATE TABLE IF NOT EXISTS notes (id TEXT PRIMARY KEY, digest TEXT NOT NULL, body TEXT NOT NULL,
                 source TEXT NOT NULL, status TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS suppressed (digest TEXT PRIMARY KEY);
-            PRAGMA user_version=1; COMMIT;")?;
-    } else if version != 1 {
-        return Err(std::io::Error::other("Unsupported shared memory database version.").into());
+            PRAGMA user_version=2;",
+        )?,
+        1 => tx.execute_batch(
+            "ALTER TABLE policy ADD COLUMN delivery_ready INTEGER NOT NULL DEFAULT 0;
+            PRAGMA user_version=2;",
+        )?,
+        2 => {}
+        _ => return Err(std::io::Error::other("Unsupported shared memory database version.").into()),
     }
+    tx.commit()?;
     Ok(connection)
 }
 
@@ -71,6 +87,9 @@ pub(super) fn execute(
     action: &SharedOperation,
 ) -> Result<SharedSnapshot, SharedMemoryError> {
     let mut connection = connect(root)?;
+    if let SharedOperation::Read { id } = action {
+        return read_snapshot(&mut connection, root, folder, id);
+    }
     let exchange = root.join("exchange");
     let inbox = exchange.join("inbox");
     let access = super::exchange::Exchange::open(root);
@@ -103,7 +122,9 @@ pub(super) fn execute(
                 [&hash],
             )?;
         }
-        SharedOperation::Refresh | SharedOperation::SetEnabled { .. } => {}
+        SharedOperation::Refresh
+        | SharedOperation::SetEnabled { .. }
+        | SharedOperation::Read { .. } => {}
     }
     let mut diagnostics = Vec::new();
     // Unrelated intake failures cannot undo an explicit policy or withdrawal decision.
@@ -113,6 +134,8 @@ pub(super) fn execute(
     {
         scan(&tx, &access.inbox, &mut diagnostics)?;
     }
+    // A crash after committing changed state must not leave a successful delivery flag.
+    tx.execute("UPDATE policy SET delivery_ready=0 WHERE id=1", [])?;
     tx.commit()?;
     let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
     let enabled: bool = tx.query_row("SELECT enabled FROM policy WHERE id=1", [], |row| {
@@ -123,7 +146,7 @@ pub(super) fn execute(
     // the next refresh recreates the catalog and removes any unreferenced projection files.
     let delivery_ready = match access
         .map_err(SharedMemoryError::from)
-        .and_then(|access| publish(&access, &notes, enabled))
+        .and_then(|access| publish(&tx, &access, &notes, enabled))
     {
         Ok(()) => true,
         Err(error) => {
@@ -133,6 +156,10 @@ pub(super) fn execute(
             false
         }
     };
+    tx.execute(
+        "UPDATE policy SET delivery_ready=?1 WHERE id=1",
+        [delivery_ready],
+    )?;
     tx.commit()?;
     Ok(SharedSnapshot {
         enabled,
@@ -141,7 +168,41 @@ pub(super) fn execute(
         inbox,
         catalog_path: exchange.join("catalog.md"),
         notes,
+        detail: None,
         diagnostics,
+    })
+}
+
+fn read_snapshot(
+    connection: &mut Connection,
+    root: &Path,
+    folder: &Path,
+    id: &str,
+) -> Result<SharedSnapshot, SharedMemoryError> {
+    let tx = connection.transaction()?;
+    let (enabled, delivery_ready): (bool, bool) = tx.query_row(
+        "SELECT enabled,delivery_ready FROM policy WHERE id=1",
+        [],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    let notes = list(&tx)?;
+    let detail = Some(read_detail(&tx, id)?);
+    tx.commit()?;
+    let exchange = root.join("exchange");
+    Ok(SharedSnapshot {
+        enabled,
+        // This is the last committed publication result. Refresh checks and repairs the view.
+        delivery_ready,
+        folder: folder.into(),
+        inbox: exchange.join("inbox"),
+        catalog_path: exchange.join("catalog.md"),
+        notes,
+        detail,
+        diagnostics: if delivery_ready {
+            Vec::new()
+        } else {
+            vec!["The shared view needs a refresh before delivery.".into()]
+        },
     })
 }
 
@@ -156,10 +217,6 @@ fn add(
     }
     validate(text)?;
     let hash = digest(text.as_bytes());
-    let count: u32 = tx.query_row("SELECT count(*) FROM notes", [], |row| row.get(0))?;
-    if count as usize >= NOTE_COUNT {
-        return Err(SharedMemoryError::Limit);
-    }
     if tx.query_row(
         "SELECT EXISTS(SELECT 1 FROM suppressed WHERE digest=?1)",
         [&hash],
@@ -181,12 +238,11 @@ fn add(
 
 fn validate(text: &str) -> Result<(), SharedMemoryError> {
     if text.trim().is_empty()
-        || text.len() > NOTE_LIMIT
         || text
             .chars()
             .any(|c| c.is_control() && !matches!(c, '\n' | '\r' | '\t'))
     {
-        return Err(SharedMemoryError::Limit);
+        return Err(SharedMemoryError::InvalidText);
     }
     Ok(())
 }
@@ -197,10 +253,7 @@ fn scan(
     diagnostics: &mut Vec<String>,
 ) -> Result<(), SharedMemoryError> {
     let paths = super::exchange::names(inbox)?;
-    if paths.len() > NOTE_COUNT {
-        diagnostics.push("Inbox scan limit reached; remove unused temporary files.".into());
-    }
-    for name in paths.into_iter().take(NOTE_COUNT) {
+    for name in paths {
         if !Path::new(&name)
             .extension()
             .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
@@ -219,9 +272,7 @@ fn scan(
                 "UPDATE notes SET status='held' WHERE id=?1 AND status='shared'",
                 [&id],
             )?;
-            diagnostics.push(format!(
-                "Skipped unreadable, unsafe or oversized note: {name}"
-            ));
+            diagnostics.push(format!("Skipped unreadable or invalid note: {name}"));
             continue;
         };
         let hash = digest(text.as_bytes());
@@ -245,11 +296,6 @@ fn scan(
             diagnostics.push(format!("Suppressed withdrawn content in {name}"));
             continue;
         }
-        let count: u32 = tx.query_row("SELECT count(*) FROM notes", [], |r| r.get(0))?;
-        if count as usize >= NOTE_COUNT {
-            diagnostics.push("Library limit reached; new notes were not accepted.".into());
-            break;
-        }
         tx.execute(
             "INSERT INTO notes VALUES (?1,?2,?3,?4,'shared')",
             params![id, hash, text, name],
@@ -260,10 +306,16 @@ fn scan(
 
 fn list(tx: &Transaction<'_>) -> Result<Vec<SharedNote>, SharedMemoryError> {
     let mut statement =
-        tx.prepare("SELECT id,digest,body,source,status FROM notes ORDER BY rowid DESC LIMIT 128")?;
+        tx.prepare("SELECT id,digest,body,source,status FROM notes ORDER BY rowid DESC")?;
     let notes = statement
         .query_map([], |r| {
-            let text: String = r.get(2)?;
+            let text = r.get_ref(2)?.as_str().map_err(|error| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    2,
+                    rusqlite::types::Type::Text,
+                    Box::new(error),
+                )
+            })?;
             let title = text
                 .lines()
                 .find(|line| !line.trim().is_empty())
@@ -277,7 +329,6 @@ fn list(tx: &Transaction<'_>) -> Result<Vec<SharedNote>, SharedMemoryError> {
                 id: r.get(0)?,
                 digest: r.get(1)?,
                 title,
-                text,
                 source: r.get(3)?,
                 status: r.get(4)?,
             })
@@ -286,7 +337,24 @@ fn list(tx: &Transaction<'_>) -> Result<Vec<SharedNote>, SharedMemoryError> {
     Ok(notes)
 }
 
+fn read_detail(tx: &Transaction<'_>, id: &str) -> Result<SharedNoteDetail, SharedMemoryError> {
+    tx.query_row(
+        "SELECT id,digest,body FROM notes WHERE id=?1",
+        [id],
+        |row| {
+            Ok(SharedNoteDetail {
+                id: row.get(0)?,
+                digest: row.get(1)?,
+                text: row.get(2)?,
+            })
+        },
+    )
+    .optional()?
+    .ok_or(SharedMemoryError::Missing)
+}
+
 fn publish(
+    tx: &Transaction<'_>,
     exchange: &super::exchange::Exchange,
     notes: &[SharedNote],
     enabled: bool,
@@ -301,7 +369,8 @@ fn publish(
         for note in notes.iter().filter(|n| n.status == "shared") {
             let name = format!("{}-{}.md", note.id, &note.digest[..16]);
             expected.insert(name.clone());
-            exchange.write_record(&name, note.text.as_bytes())?;
+            let detail = read_detail(tx, &note.id)?;
+            exchange.write_record(&name, detail.text.as_bytes())?;
             let _ = writeln!(
                 catalog,
                 "- {} | records/{name} | sha256:{}",
@@ -322,6 +391,313 @@ fn publish(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn legacy_ledgers_migrate_without_changing_notes_or_policy() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("library");
+        fs::create_dir(&root).unwrap();
+        let connection = Connection::open(root.join("ledger.sqlite3")).unwrap();
+        connection.execute_batch(
+            "CREATE TABLE policy (id INTEGER PRIMARY KEY CHECK(id=1), enabled INTEGER NOT NULL);
+            INSERT INTO policy VALUES (1,1);
+            CREATE TABLE notes (id TEXT PRIMARY KEY, digest TEXT NOT NULL, body TEXT NOT NULL,
+                source TEXT NOT NULL, status TEXT NOT NULL);
+            CREATE TABLE suppressed (digest TEXT PRIMARY KEY);
+            PRAGMA user_version=1;",
+        ).unwrap();
+        for (id, body, status) in [
+            ("legacy-active", "# Legacy active\nOriginal text", "shared"),
+            (
+                "legacy-withdrawn",
+                "# Legacy withdrawn\nRetain history",
+                "withdrawn",
+            ),
+        ] {
+            connection
+                .execute(
+                    "INSERT INTO notes VALUES (?1,?2,?3,'Legacy source',?4)",
+                    params![id, digest(body.as_bytes()), body, status],
+                )
+                .unwrap();
+        }
+        let withdrawn_hash = digest(b"# Legacy withdrawn\nRetain history");
+        connection
+            .execute("INSERT INTO suppressed VALUES (?1)", [&withdrawn_hash])
+            .unwrap();
+        drop(connection);
+        let state = execute(
+            &root,
+            temp.path(),
+            &SharedOperation::Read {
+                id: "legacy-active".into(),
+            },
+        )
+        .unwrap();
+        assert!(state.enabled);
+        assert!(!state.delivery_ready);
+        assert_eq!(state.notes.len(), 2);
+        assert_eq!(state.detail.unwrap().text, "# Legacy active\nOriginal text");
+        assert_eq!(
+            state
+                .notes
+                .iter()
+                .find(|note| note.id == "legacy-withdrawn")
+                .unwrap()
+                .status,
+            "withdrawn"
+        );
+        assert!(!root.join("exchange").exists());
+        let connection = connect(&root).unwrap();
+        assert_eq!(
+            connection
+                .pragma_query_value(None, "user_version", |row| row.get::<_, u32>(0))
+                .unwrap(),
+            2
+        );
+        assert_eq!(
+            connection
+                .query_row("SELECT digest FROM suppressed", [], |row| row
+                    .get::<_, String>(0))
+                .unwrap(),
+            withdrawn_hash
+        );
+        let state = execute(&root, temp.path(), &SharedOperation::Refresh).unwrap();
+        assert!(state.delivery_ready);
+        let catalog = fs::read_to_string(state.catalog_path).unwrap();
+        assert!(catalog.contains("Legacy active"));
+        assert!(!catalog.contains("Legacy withdrawn"));
+    }
+
+    #[test]
+    fn detail_reads_leave_exchange_untouched_and_report_last_publication() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("library");
+        execute(
+            &root,
+            temp.path(),
+            &SharedOperation::SetEnabled { enabled: true },
+        )
+        .unwrap();
+        let state = execute(
+            &root,
+            temp.path(),
+            &SharedOperation::Add {
+                text: "# Procedure\nOriginal body".into(),
+            },
+        )
+        .unwrap();
+        let id = state.notes[0].id.clone();
+        fs::remove_dir_all(root.join("exchange")).unwrap();
+        let state = execute(
+            &root,
+            temp.path(),
+            &SharedOperation::Read { id: id.clone() },
+        )
+        .unwrap();
+        assert!(state.delivery_ready);
+        assert_eq!(state.detail.unwrap().text, "# Procedure\nOriginal body");
+        assert!(!root.join("exchange").exists());
+        let state = execute(&root, temp.path(), &SharedOperation::Refresh).unwrap();
+        assert!(state.delivery_ready);
+        assert!(
+            fs::read_to_string(&state.catalog_path)
+                .unwrap()
+                .contains("Procedure")
+        );
+        fs::remove_file(&state.catalog_path).unwrap();
+        fs::create_dir(&state.catalog_path).unwrap();
+        let state = execute(&root, temp.path(), &SharedOperation::Refresh).unwrap();
+        assert!(!state.delivery_ready);
+        let state = execute(&root, temp.path(), &SharedOperation::Read { id }).unwrap();
+        assert!(!state.delivery_ready);
+        assert_eq!(state.detail.unwrap().text, "# Procedure\nOriginal body");
+        assert!(state.catalog_path.is_dir());
+        fs::remove_dir(&state.catalog_path).unwrap();
+        assert!(
+            execute(&root, temp.path(), &SharedOperation::Refresh)
+                .unwrap()
+                .delivery_ready
+        );
+    }
+
+    #[test]
+    fn large_libraries_keep_metadata_small_and_scan_every_source() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("library");
+        let state = execute(
+            &root,
+            temp.path(),
+            &SharedOperation::SetEnabled { enabled: true },
+        )
+        .unwrap();
+        // Temporary files must not consume the scan budget or starve later memories.
+        for index in 0..300 {
+            fs::write(state.inbox.join(format!("000-{index:04}.tmp")), "staged").unwrap();
+        }
+        let large_body = format!(
+            "# Large procedure\n{}",
+            "Preserve the café qualifier.\n".repeat(8192)
+        );
+        for index in 0..300 {
+            let text = if index == 299 {
+                large_body.clone()
+            } else {
+                format!("# Procedure {index}\nRun check {index}.")
+            };
+            fs::write(state.inbox.join(format!("memory-{index:04}.md")), text).unwrap();
+        }
+        let state = execute(&root, temp.path(), &SharedOperation::Refresh).unwrap();
+        assert_eq!(state.notes.len(), 300);
+        assert!(state.delivery_ready);
+        assert_eq!(state.diagnostics, Vec::<String>::new());
+        assert!(state.detail.is_none());
+        let wire = serde_json::to_value(&state).unwrap();
+        assert!(wire["detail"].is_null());
+        assert!(
+            wire["notes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|note| note.get("text").is_none())
+        );
+        let note = state
+            .notes
+            .iter()
+            .find(|note| note.source == "memory-0299.md")
+            .unwrap();
+        let id = note.id.clone();
+        let read = execute(
+            &root,
+            temp.path(),
+            &SharedOperation::Read { id: id.clone() },
+        )
+        .unwrap()
+        .detail
+        .unwrap();
+        assert_eq!(read.id, id);
+        assert_eq!(read.digest, digest(large_body.as_bytes()));
+        assert_eq!(read.text, large_body);
+        let state = execute(
+            &root,
+            temp.path(),
+            &SharedOperation::Add {
+                text: format!("# Manual large memory\n{large_body}"),
+            },
+        )
+        .unwrap();
+        assert_eq!(state.notes.len(), 301);
+        assert!(state.detail.is_none());
+        fs::write(
+            state.inbox.join("000-new.md"),
+            "# Newly arrived\nKeep this too.",
+        )
+        .unwrap();
+        fs::write(state.inbox.join("memory-0299.md"), "# Conflicting edit").unwrap();
+        let state = execute(&root, temp.path(), &SharedOperation::Refresh).unwrap();
+        assert_eq!(state.notes.len(), 302);
+        assert_eq!(state.diagnostics, Vec::<String>::new());
+        assert_eq!(
+            state
+                .notes
+                .iter()
+                .find(|note| note.id == id)
+                .unwrap()
+                .status,
+            "held"
+        );
+        assert!(
+            !fs::read_to_string(&state.catalog_path)
+                .unwrap()
+                .contains(&id)
+        );
+    }
+
+    #[test]
+    fn reading_history_fetches_the_selected_body_even_after_withdrawal() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("library");
+        let state = execute(
+            &root,
+            temp.path(),
+            &SharedOperation::SetEnabled { enabled: true },
+        )
+        .unwrap();
+        let large_body = "# Accepted procedure\nRemember the accepted version.";
+        let path = state.inbox.join("procedure.md");
+        fs::write(&path, large_body).unwrap();
+        let state = execute(&root, temp.path(), &SharedOperation::Refresh).unwrap();
+        let id = state.notes[0].id.clone();
+        fs::write(&path, "An unaccepted edit").unwrap();
+        let state = execute(&root, temp.path(), &SharedOperation::Refresh).unwrap();
+        assert_eq!(state.notes[0].status, "held");
+        assert_eq!(
+            execute(
+                &root,
+                temp.path(),
+                &SharedOperation::Read { id: id.clone() }
+            )
+            .unwrap()
+            .detail
+            .unwrap()
+            .text,
+            large_body
+        );
+        execute(
+            &root,
+            temp.path(),
+            &SharedOperation::Withdraw { id: id.clone() },
+        )
+        .unwrap();
+        execute(
+            &root,
+            temp.path(),
+            &SharedOperation::SetEnabled { enabled: false },
+        )
+        .unwrap();
+        let state = execute(
+            &root,
+            temp.path(),
+            &SharedOperation::Read { id: id.clone() },
+        )
+        .unwrap();
+        assert!(!state.enabled);
+        assert_eq!(
+            state
+                .notes
+                .iter()
+                .find(|note| note.id == id)
+                .unwrap()
+                .status,
+            "withdrawn"
+        );
+        assert_eq!(state.detail.unwrap().text, large_body);
+        assert_eq!(
+            fs::read_dir(root.join("exchange/records")).unwrap().count(),
+            0
+        );
+        assert!(matches!(
+            execute(
+                &root,
+                temp.path(),
+                &SharedOperation::Read {
+                    id: "missing".into()
+                }
+            ),
+            Err(SharedMemoryError::Missing)
+        ));
+    }
+
+    #[test]
+    fn removing_capacity_limits_keeps_text_validation() {
+        for invalid in ["", " \t\n", "contains\0nul", "unsupported\u{b}control"] {
+            assert!(matches!(
+                validate(invalid),
+                Err(SharedMemoryError::InvalidText)
+            ));
+        }
+        assert!(validate(&"Unicode café\n\tqualified\r\n".repeat(4096)).is_ok());
+    }
 
     #[test]
     fn withdrawal_does_not_admit_unrelated_pending_notes() {
@@ -540,8 +916,19 @@ mod tests {
             action: SharedOperation::SetEnabled { enabled: true },
         })
         .unwrap();
+        super::super::execute(&super::super::SharedRequest {
+            data_directory: data.clone(),
+            folder: folder.clone(),
+            action: SharedOperation::Add {
+                text: "# Preview sentinel\nDo not inject this content at launch.".into(),
+            },
+        })
+        .unwrap();
         let (instructions, _) = super::super::context(&data, &folder).unwrap().unwrap();
         assert!(instructions.contains("Before each task"));
+        assert!(instructions.contains("inspect or search the current catalog"));
+        assert!(!instructions.contains("Preview sentinel"));
+        assert!(!instructions.contains("Do not inject this content at launch"));
         assert!(super::super::context(&data, temp.path()).unwrap().is_none());
     }
 }

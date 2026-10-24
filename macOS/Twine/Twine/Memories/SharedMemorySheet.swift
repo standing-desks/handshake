@@ -39,6 +39,9 @@ struct SharedMemorySheet: View {
             footer
         }
         .padding(24).frame(width: 780, height: 700)
+        .task(id: model.selectedID) {
+            await model.loadSelected(client: client, folder: folder)
+        }
     }
 
     private var policy: some View {
@@ -61,17 +64,23 @@ struct SharedMemorySheet: View {
     }
 
     private var noteList: some View {
-        List(selection: $model.selectedID) {
-            ForEach(model.snapshot?.notes ?? []) { note in
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(note.title).lineLimit(2)
-                    Text(note.status.capitalized).font(.caption).foregroundStyle(.secondary)
-                }.tag(note.id)
-            }
-        }.overlay {
-            if model.snapshot?.notes.isEmpty ?? true {
-                ContentUnavailableView(
-                    "No shared memories", systemImage: "brain", description: Text("Add a note below."))
+        VStack(spacing: 8) {
+            TextField("Find memories", text: $model.query)
+                .textFieldStyle(.roundedBorder).accessibilityIdentifier("findSharedMemory")
+            List(selection: $model.selectedID) {
+                ForEach(model.filteredNotes) { note in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(note.title).lineLimit(2)
+                        Text(note.status.capitalized).font(.caption).foregroundStyle(.secondary)
+                    }.tag(note.id)
+                }
+            }.overlay {
+                if model.filteredNotes.isEmpty {
+                    ContentUnavailableView(
+                        model.query.isEmpty ? "No shared memories" : "No matching memories",
+                        systemImage: "brain",
+                        description: Text(model.query.isEmpty ? "Add a note below." : "Try another title or source."))
+                }
             }
         }
     }
@@ -81,7 +90,19 @@ struct SharedMemorySheet: View {
             VStack(alignment: .leading, spacing: 12) {
                 if let note = model.selected {
                     Text(note.title).font(.headline)
-                    Text(note.text).font(.body).textSelection(.enabled)
+                    if let text = model.selectedText {
+                        Text(text).font(.body).textSelection(.enabled)
+                            .accessibilityIdentifier("sharedMemoryContent")
+                    } else if model.isLoadingSelected {
+                        ProgressView("Loading memory…")
+                    } else {
+                        if let error = model.selectedDetailError {
+                            Text(error).font(.caption).foregroundStyle(.red)
+                        }
+                        Button("Retry loading memory") {
+                            Task { await model.loadSelected(client: client, folder: folder) }
+                        }.disabled(model.isWorking)
+                    }
                     Divider()
                     Text("Source: \(note.source)").font(.caption).foregroundStyle(.secondary)
                     Text("SHA-256: \(note.digest)").font(.caption2.monospaced()).textSelection(.enabled)
@@ -109,7 +130,7 @@ struct SharedMemorySheet: View {
             TextEditor(text: $model.draft).font(.body).frame(height: 78)
                 .border(.quaternary).accessibilityIdentifier("sharedMemoryDraft")
             HStack {
-                Text("Up to 16 KiB per note. No secrets or personal/global memory.")
+                Text("Share folder-specific knowledge. Keep secrets and personal memory out.")
                     .font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 Button("Share note") { perform(.init(operation: "add", text: model.draft)) }

@@ -6,6 +6,18 @@ actor DeferredMemoryTransport {
     private var catalogs: [CheckedContinuation<CoreMemoryCatalog, any Error>] = []
     private var saveResult: FileSaveResult?
     private var reads: [CheckedContinuation<CoreMemoryRead, any Error>] = []
+    private var sharedResult: SharedMemorySnapshot?
+    private var failsSharedRead = false
+
+    func setSharedResult(_ result: SharedMemorySnapshot, failRead: Bool) {
+        sharedResult = result
+        failsSharedRead = failRead
+    }
+    func sharedMemory(folder: String, action: SharedMemoryAction) throws -> SharedMemorySnapshot {
+        if action.operation == "read", failsSharedRead { throw CoreFailure.failed("Detail read unavailable.") }
+        guard let sharedResult else { throw CoreFailure.unexpectedCommandResult }
+        return sharedResult
+    }
 
     func memoryCatalog(_ request: CoreMemoryRequest) async throws -> CoreMemoryCatalog {
         try await withCheckedThrowingContinuation { catalogs.append($0) }
