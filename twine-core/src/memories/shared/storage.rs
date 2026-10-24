@@ -925,10 +925,21 @@ mod tests {
         })
         .unwrap();
         let (instructions, _) = super::super::context(&data, &folder).unwrap().unwrap();
-        assert!(instructions.contains("Before each task"));
-        assert!(instructions.contains("inspect or search the current catalog"));
+        assert!(
+            instructions.contains("automatically before answering or acting on each project task")
+        );
+        assert!(instructions.contains("questions that do not mention memory"));
+        assert!(instructions.contains("First read the policy"));
+        assert!(instructions.contains("Recheck the current catalog on subsequent tasks"));
         assert!(!instructions.contains("Preview sentinel"));
         assert!(!instructions.contains("Do not inject this content at launch"));
         assert!(super::super::context(&data, temp.path()).unwrap().is_none());
+        super::super::execute(&super::super::SharedRequest {
+            data_directory: data.clone(),
+            folder: folder.clone(),
+            action: SharedOperation::SetEnabled { enabled: false },
+        })
+        .unwrap();
+        assert!(super::super::context(&data, &folder).unwrap().is_none());
     }
 }
