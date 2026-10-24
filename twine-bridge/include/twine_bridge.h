@@ -47,6 +47,8 @@ TwineStatus twine_config_file(TwineBuffer *out_file);
 // No client is needed. Input/ownership rules match send_command and twine_buffer_release.
 TwineStatus twine_memory_catalog(const uint8_t *bytes, size_t length, TwineBuffer *out_catalog);
 TwineStatus twine_memory_read(const uint8_t *bytes, size_t length, TwineBuffer *out_source);
+/** Folder-bound shared memory operations; same bounded input/owned output contract. */
+TwineStatus twine_shared_memory(const uint8_t *bytes, size_t length, TwineBuffer *out_result);
 // Explicit Markdown save: {source: <memory request>, text, expectedVersion, overwrite}.
 // Returns saved/conflict/failed JSON. Input bound and pointer rules match save_file;
 // no client is needed, and output ownership follows twine_buffer_release.

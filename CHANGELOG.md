@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Try folder-scoped shared memory between Codex and Claude Code. Enable automatic sharing from
+  Memories, add or import a durable note, inspect its source, and withdraw it from future delivery.
+  New agents receive the shared catalog; changed inbox notes are held for review.
+
 ## [0.3.3] - 2026-10-17
 
 ### Added

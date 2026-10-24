@@ -6,6 +6,7 @@ mod ffi;
 mod logging;
 mod memories;
 mod protocol;
+mod shared_memory;
 #[cfg(test)]
 mod test_support;
 

@@ -28,6 +28,7 @@ mod resume_agents;
 mod run_inputs;
 mod runs;
 mod sessions;
+mod shared_memory;
 mod terminals;
 mod traces;
 mod windows;
@@ -232,6 +233,7 @@ struct Inner {
 }
 
 pub struct Application {
+    shared_memory_directory: Option<PathBuf>,
     window_storage: Option<windows::WindowStorageLease>,
     /// Window runtimes share their recorder; only its final owner shuts it down.
     shared_recording: bool,
@@ -277,7 +279,9 @@ impl Application {
             &data_directory.join("transcripts"),
         )?);
         let store = Store::open(&data_directory.join(DATABASE_FILE_NAME))?;
-        Self::with_store(store, config, DEFAULT_EVENT_CAPACITY, transcripts)
+        let mut application = Self::with_store(store, config, DEFAULT_EVENT_CAPACITY, transcripts)?;
+        application.shared_memory_directory = Some(data_directory.to_owned());
+        Ok(application)
     }
 
     /// Creates the application with an in-memory database, default configuration, and an
@@ -333,6 +337,7 @@ impl Application {
             terminals
         };
         let application = Self {
+            shared_memory_directory: None,
             window_storage: None,
             shared_recording,
             files: crate::files::FileWatcher::new()?,

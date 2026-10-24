@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct MemorySidebar: View {
+    private var shared: SharedMemoryModel { model.shared }
+    @State private var showsSharedMemory = false
     @Bindable var model: MemoryModel
     let folder: String
     let contentHeight: CGFloat
@@ -9,7 +11,10 @@ struct MemorySidebar: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            MemoryHeader(model: model)
+            MemoryHeader(
+                model: model,
+                sharedCount: shared.snapshot?.enabled == true ? shared.sharedCount : nil,
+                openSharedMemory: { showsSharedMemory = true })
             SectionViewport(isExpanded: model.isExpanded, height: contentHeight) {
                 VStack(spacing: 0) {
                     scopeTabs
@@ -21,6 +26,10 @@ struct MemorySidebar: View {
             }
         }
         .onChange(of: model.isExpanded) { if !model.isExpanded { scopesHaveFocus = false } }
+        .sheet(isPresented: $showsSharedMemory) {
+            SharedMemorySheet(model: shared, folder: folder, source: model.selected)
+        }
+
     }
 
     private var scopeTabs: some View {

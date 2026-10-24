@@ -3,6 +3,7 @@ import Observation
 
 @Observable
 final class MemoryModel {
+    let shared = SharedMemoryModel()
     @ObservationIgnored private var catalogRequest = UUID()
     @ObservationIgnored private let examplesRoot: String
     @ObservationIgnored private let preferences: MemoryPreferences

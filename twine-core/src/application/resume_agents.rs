@@ -132,6 +132,17 @@ impl Application {
         let reserved = self.terminals.reserve_terminal()?;
         let (mut arguments, hooks) =
             self.harness_arguments(harness, reserved, LaunchOptions::default(), "");
+        if let Err(error) = self.append_agent_instructions(
+            harness,
+            "",
+            &mut arguments,
+            hooks.as_ref(),
+            &located,
+            folder,
+        ) {
+            let _ = self.terminals.cancel_reserved_terminal(reserved);
+            return Err(crate::StoreError::TracePayload(error).into());
+        }
         arguments.extend(resume_args);
         let mut inner = self.lock_inner()?;
         let id = self.terminals.start_program(

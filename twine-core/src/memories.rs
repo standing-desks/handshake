@@ -4,6 +4,7 @@ mod database;
 mod discovery;
 mod editing;
 mod locations;
+pub mod shared;
 
 pub use editing::save;
 

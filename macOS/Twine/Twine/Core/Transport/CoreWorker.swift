@@ -22,6 +22,11 @@ actor CoreWorker: CoreTransport {
         }
     }
 
+    func sharedMemory(folder: String, action: SharedMemoryAction) async throws -> SharedMemorySnapshot {
+        try await memoryWorker.sharedMemory(
+            SharedMemoryRequest(dataDirectory: dataDirectory.path, folder: folder, action: action))
+    }
+
     func close() {
         guard let client else { return }
         _ = twine_client_destroy(client)

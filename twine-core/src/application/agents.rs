@@ -137,7 +137,21 @@ impl Application {
             Ok(id) => id,
             Err(error) => return Ok(rejection("agentStartFailed", &error)),
         };
-        let (arguments, hooks) = self.harness_arguments(harness, reserved, options, prompt);
+        let (mut arguments, hooks) = self.harness_arguments(harness, reserved, options, "");
+        if let Err(error) = self.append_agent_instructions(
+            harness,
+            "",
+            &mut arguments,
+            hooks.as_ref(),
+            &located,
+            &folder,
+        ) {
+            let _ = self.terminals.cancel_reserved_terminal(reserved);
+            return Ok(rejection("sharedMemoryUnavailable", &error));
+        }
+        if !prompt.is_empty() {
+            arguments.extend(definition.arguments(prompt));
+        }
         let mut inner = self.lock_inner()?;
         // Start the agent at the size its draft terminal has now, as the view has already fitted it.
         let placeholder_size = inner

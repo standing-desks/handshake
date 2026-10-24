@@ -542,7 +542,7 @@ impl Application {
                             .remove(&AgentId(agent.agent_id));
                         inbox.command()
                     };
-                    if let Err(error) = crate::harness::instructions::append(
+                    if let Err(error) = self.append_agent_instructions(
                         agent.harness,
                         &run.instructions(agent.agent_id, &command),
                         &mut arguments,
