@@ -138,7 +138,7 @@ impl Application {
             Err(error) => return Ok(rejection("agentStartFailed", &error)),
         };
         let (mut arguments, hooks) = self.harness_arguments(harness, reserved, options, "");
-        if let Err(error) = self.append_agent_instructions(
+        if let Err(error) = Self::append_agent_instructions(
             harness,
             "",
             &mut arguments,

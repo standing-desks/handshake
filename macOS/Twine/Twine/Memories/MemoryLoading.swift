@@ -9,13 +9,6 @@ struct MemoryLoading: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .task(id: folder) {
-                while !Task.isCancelled {
-                    await model.shared.perform(
-                        .init(operation: "refresh"), client: client, folder: folder, background: true)
-                    do { try await Task.sleep(for: .seconds(5)) } catch { return }
-                }
-            }
             .task(id: CatalogKey(folder: folder, refresh: model.refreshID, active: model.isExpanded)) {
                 guard model.isExpanded else { return }
                 await model.load(client: client, folder: folder)

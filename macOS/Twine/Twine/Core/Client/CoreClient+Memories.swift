@@ -1,6 +1,10 @@
 import Foundation
 
 extension CoreClient {
+    func nativeMemoryImport(_ request: NativeMemoryImportRequest) async throws -> NativeMemoryImportSnapshot {
+        try await transport.nativeMemoryImport(request)
+    }
+
     func sharedMemory(folder: String, action: SharedMemoryAction) async throws -> SharedMemorySnapshot {
         try await transport.sharedMemory(folder: folder, action: action)
     }

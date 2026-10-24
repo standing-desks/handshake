@@ -49,6 +49,9 @@ TwineStatus twine_memory_catalog(const uint8_t *bytes, size_t length, TwineBuffe
 TwineStatus twine_memory_read(const uint8_t *bytes, size_t length, TwineBuffer *out_source);
 /** Folder-bound shared memory operations; same bounded input/owned output contract. */
 TwineStatus twine_shared_memory(const uint8_t *bytes, size_t length, TwineBuffer *out_result);
+// Native harness memory import: {folder, action:"status"|"import"} -> {snapshot,error}.
+// Status never imports. Only the explicit import action invokes Codex's native importer.
+TwineStatus twine_native_memory_import(const uint8_t *bytes, size_t length, TwineBuffer *out_result);
 // Explicit Markdown save: {source: <memory request>, text, expectedVersion, overwrite}.
 // Returns saved/conflict/failed JSON. Input bound and pointer rules match save_file;
 // no client is needed, and output ownership follows twine_buffer_release.

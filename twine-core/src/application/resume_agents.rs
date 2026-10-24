@@ -132,7 +132,7 @@ impl Application {
         let reserved = self.terminals.reserve_terminal()?;
         let (mut arguments, hooks) =
             self.harness_arguments(harness, reserved, LaunchOptions::default(), "");
-        if let Err(error) = self.append_agent_instructions(
+        if let Err(error) = Self::append_agent_instructions(
             harness,
             "",
             &mut arguments,

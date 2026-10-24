@@ -5,6 +5,7 @@ mod error;
 mod ffi;
 mod logging;
 mod memories;
+mod native_memory;
 mod protocol;
 mod shared_memory;
 #[cfg(test)]

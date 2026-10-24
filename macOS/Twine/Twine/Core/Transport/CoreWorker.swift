@@ -3,6 +3,8 @@ import TwineCore
 
 actor CoreWorker: CoreTransport {
     let memoryWorker = MemoryWorker()
+    /// Native imports can wait on Codex; keep browsing and editing memory on its own worker.
+    private let nativeImportWorker = MemoryWorker()
     /// The directory where the core keeps its database.
     private let dataDirectory: URL
     private let windowMode: Bool
@@ -20,6 +22,10 @@ actor CoreWorker: CoreTransport {
         if let client {
             _ = twine_client_destroy(client)
         }
+    }
+
+    func nativeMemoryImport(_ request: NativeMemoryImportRequest) async throws -> NativeMemoryImportSnapshot {
+        try await nativeImportWorker.nativeMemoryImport(request)
     }
 
     func sharedMemory(folder: String, action: SharedMemoryAction) async throws -> SharedMemorySnapshot {

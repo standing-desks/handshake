@@ -901,45 +901,4 @@ mod tests {
             0
         );
     }
-
-    #[test]
-    fn context_is_folder_bound_and_does_not_create_disabled_stores() {
-        let temp = tempfile::tempdir().unwrap();
-        let data = temp.path().join("data");
-        let folder = temp.path().join("folder");
-        fs::create_dir(&folder).unwrap();
-        assert!(super::super::context(&data, &folder).unwrap().is_none());
-        assert!(!data.exists());
-        super::super::execute(&super::super::SharedRequest {
-            data_directory: data.clone(),
-            folder: folder.clone(),
-            action: SharedOperation::SetEnabled { enabled: true },
-        })
-        .unwrap();
-        super::super::execute(&super::super::SharedRequest {
-            data_directory: data.clone(),
-            folder: folder.clone(),
-            action: SharedOperation::Add {
-                text: "# Preview sentinel\nDo not inject this content at launch.".into(),
-            },
-        })
-        .unwrap();
-        let (instructions, _) = super::super::context(&data, &folder).unwrap().unwrap();
-        assert!(
-            instructions.contains("automatically before answering or acting on each project task")
-        );
-        assert!(instructions.contains("questions that do not mention memory"));
-        assert!(instructions.contains("First read the policy"));
-        assert!(instructions.contains("Recheck the current catalog on subsequent tasks"));
-        assert!(!instructions.contains("Preview sentinel"));
-        assert!(!instructions.contains("Do not inject this content at launch"));
-        assert!(super::super::context(&data, temp.path()).unwrap().is_none());
-        super::super::execute(&super::super::SharedRequest {
-            data_directory: data.clone(),
-            folder: folder.clone(),
-            action: SharedOperation::SetEnabled { enabled: false },
-        })
-        .unwrap();
-        assert!(super::super::context(&data, &folder).unwrap().is_none());
-    }
 }

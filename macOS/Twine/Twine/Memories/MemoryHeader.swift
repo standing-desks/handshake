@@ -3,8 +3,7 @@ import SwiftUI
 struct MemoryHeader: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Bindable var model: MemoryModel
-    var sharedCount: Int?
-    var openSharedMemory: (() -> Void)?
+    var openNativeMemory: (() -> Void)?
 
     var body: some View {
         HStack {
@@ -23,16 +22,15 @@ struct MemoryHeader: View {
             }.buttonStyle(.plain).accessibilityIdentifier("memoryEntry-outline")
                 .accessibilityValue(model.isExpanded ? "Expanded" : "Collapsed")
                 .help(model.isExpanded ? "Collapse Memories" : "Open Memories")
-            if let openSharedMemory {
-                Button(action: openSharedMemory) {
-                    Image(systemName: "arrow.triangle.branch")
+            if let openNativeMemory {
+                Button(action: openNativeMemory) {
+                    Image(systemName: "arrow.down.doc")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(sharedCount == nil ? Color.secondary : Color.accentColor)
                         .frame(width: 26, height: 26).contentShape(.rect)
                 }
-                .buttonStyle(.plain).accessibilityIdentifier("openSharedMemory")
-                .accessibilityLabel("Shared memory")
-                .help(sharedCount.map { "Shared memory: \($0) notes" } ?? "Set up shared memory")
+                .buttonStyle(.plain).accessibilityIdentifier("openNativeMemory")
+                .accessibilityLabel("Native memory import")
+                .help("Import Claude memories into Codex")
             }
             if model.isExpanded {
                 Button(action: model.refresh) {

@@ -1,154 +1,145 @@
-# Cross-agent memory trial
+# Native cross-agent memory trial
 
-This branch adds a usable, experimental shared library for Codex and Claude Code.
-It builds on Twine v0.3.3 (`efb0daf`) and uses the existing native launch-instruction
-channels. It does not modify either harness's personal memory store or repository
-instruction files.
+This branch imports this folder’s Claude Code memories into Codex’s native memory
+system. Memory bodies live in native harness directories. Twine has no active
+shared catalog, shared inbox or external memory-body database, and it injects no
+shared-memory retrieval instructions at agent launch.
 
-## Try it
+The implemented direction is **Claude Code → Codex native import**. This is not a
+continuous bidirectional synchronizer. AMIS serialization and conformance are not
+part of this implementation.
 
-After the first build, double-click `Open Cross-Agent Memory.command` in this
-checkout. The launcher uses a separate preferences suite and opens a new instance.
+## Try the playground
 
-Build and open the development app from this checkout:
+Use `~/workspaces/cross-agent-memory-playground` in the development build. Its
+`Open in Twine.command` launcher restores the dedicated playground app state.
+The rebuilt native playground window is already open with the Native Memory
+interface. Its dedicated state is `~/workspaces/.twine-native-memory-playground-state`,
+which has no `shared-memory` directory. The launcher now reopens that state.
+
+1. Click the branching-arrow beside **Memories** to open **Native Memory**.
+2. Check the Claude and Codex native paths and source-file count.
+3. Click **Import Claude Memories**. This is an explicit call to Codex’s own
+   importer, restricted to this folder’s memory item.
+4. Inspect the result. A request accepted by Codex is distinct from confirmed
+   import completion; native consolidation and recall are later steps.
+5. Run a normal Codex session so its background memory consolidation can proceed.
+   Test an ordinary question in a fresh session afterward.
+
+CLI fallback for the installed Codex 0.164 build:
 
 ```sh
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer make debug
-./"Open Cross-Agent Memory.command"
+cd /Users/megatron/workspaces/cross-agent-memory-playground
+codex --enable external_agent_memory_import
 ```
 
-1. Open the folder you want the two harnesses to work in.
-2. Click the branching-arrow button beside **Memories** in the sidebar.
-3. Enable **Automatically share memories in this folder**.
-4. Add a harmless test note, for example: `# Trial convention` followed by
-   `The example release checklist is called the cedar checklist.`
-5. Start a new Codex agent in that folder. Ask it to find the shared release
-   checklist convention and cite the note it read.
-6. Ask Codex to retain another harmless folder-specific procedure in the shared
-   inbox. Inspect the note in Shared Memory after the next refresh.
-7. Start Claude Code in the same folder and ask about that procedure. Inspect
-   its actual tool reads and answer; receiving a catalog does not prove recall.
+In that idle local session, type `/import`, choose Claude Code, and select only
+this project’s memories. Leave configuration,
+instructions, skills, plugins, other projects and chat sessions unselected.
+See [OpenAI’s import guide](https://learn.chatgpt.com/docs/import).
 
-Reverse the harness order to test the other direction. New agents get the
-discovery instructions and access to the same folder-specific exchange directory.
-Existing agents need a fresh launch after enabling the feature; later notes can
-be read by already-configured agents when they re-read the catalog.
+## Native storage
 
-To seed from existing memory, select a folder-owned Codex/Claude durable memory
-in Memories, open Shared Memory, and choose **Import selected memory snapshot**.
-Instructions, transcripts, global memories and unbound configured Claude stores
-are not eligible. This is a one-time snapshot, not native-store synchronization.
-
-## What runs automatically
-
-The folder's presentation requests a background core refresh every five seconds,
-even with the sidebar hidden. A new supported harness launch also refreshes the
-library. The core accepts new UTF-8 `.md` inbox files only when the local
-folder policy is enabled. Agents are told to stage a temporary file and rename it
-after writing, and to create new files rather than edit accepted ones.
-
-SQLite stores accepted content, source labels, hashes, policy, held/withdrawn
-status and exact-content suppression. A generated catalog points to immutable
-content snapshots. The catalog and records are rebuildable views of committed
-state. Refresh responses contain note metadata; the app fetches a selected body
-on demand and can filter titles and sources. Native launch options preserve the user's existing Codex instructions and
-append shared-memory discovery beside workflow role instructions.
-
-Changes to an accepted inbox filename are held; they do not silently replace the
-original note. Withdraw the old note and add a qualified replacement. Identical
-copies of withdrawn content are also suppressed. This is exact-byte replay
-protection, not detection of semantic paraphrases. Missing inbox files are not
-treated as withdrawal.
-
-## Storage and controls
-
-The library lives under the app's data directory:
+Claude’s playground directory:
 
 ```text
-shared-memory/<hash of canonical folder path>/
-  ledger.sqlite3
-  exchange/
-    catalog.md
-    inbox/        # agents contribute new files here
-    records/      # core-generated snapshots
+~/.claude/projects/-Users-megatron-workspaces-cross-agent-memory-playground/memory/
+  MEMORY.md
+  <category indexes>.md
+  <native topic files>.md
 ```
 
-Development state is isolated to this checkout's `out/runtime/debug`, unless
-`TWINE_DATA_DIRECTORY` is explicitly provided. The policy is local, outside the
-repository; another repository cannot enable it by shipping a configuration file.
-Different folder paths, including worktrees, get separate libraries. A renamed
-folder does not automatically inherit the former folder's binding.
+The current installed Codex importer owns its copies under:
 
-Disable sharing to stop new intake and delivery; enabling again admits pending
-inbox files under the same policy. Withdrawal removes the note from the generated
-view and retains history and suppression. It is not payload erasure. Already-read
-agent contexts and previous copies cannot be revoked by deleting a local file.
+```text
+~/.codex/memories/extensions/external_agent_import/resources/
+  -Users-megatron-workspaces-cross-agent-memory-playground/
+```
 
-Notes are stored on this Mac, but either harness may send selected content to its
-model provider. This trial has no extra model service or semantic summarizer.
-Use nonsecret folder-specific knowledge. The native clients receive directory
-access to the exchange area; all processes still run as the same local user.
-This is an application policy, not a security sandbox between hostile agents.
+Codex owns consolidation from those imported resources. Twine does not modify
+its generated `MEMORY.md`, summary files or SQLite state to simulate ingestion.
+Claude’s native index is loaded at startup and topic files are read as needed;
+see [Claude’s memory documentation](https://code.claude.com/docs/en/memory).
+The playground `AGENTS.md` and `CLAUDE.md` contain only project scope and evaluation
+boundaries. Neither prescribes memory retrieval nor points at the former store.
 
-## Current limits
+## Implementation
 
-- The original 128-note and 16 KiB inbox-note ceilings have been removed. The complete
-  inbox is scanned, including entries beyond the former scan cutoff. Storage and
-  refresh work still grow with the library; this is not a claim of infinite capacity.
-- Generic IPC request limits and the existing native source reader's bounds still
-  apply to manual Add/import operations. File-based inbox intake has no fixed shared-note quota.
-- A file-based catalog and exact content snapshots; no semantic retrieval service.
-- No automatic semantic consolidation, contradiction resolution, transcript capture,
-  AMIS exchange/export, or claim of AMIS publisher conformance.
-- No native global-store synchronization. Snapshot imports preserve their source
-  location but are not updated when the native original changes.
-- No automatic proof of model use. Test the handoff in both harnesses and inspect
-  their actual reads. The app does not run a paid model merely to check a write.
-- Background intake requires the folder to remain open in Twine. Launch refresh
-  still catches up before a newly started supported harness receives context.
+`twine-core/src/memories/native_import.rs` owns folder validation, native location
+discovery, feature gating, import selection and completion interpretation. The
+Swift–Rust bridge passes requests and responses; Swift’s `Memories/` subsystem
+renders native paths and import states through `CoreClient`.
 
-These constraints keep the first trial focused on the shared-library and bounded
-discovery path from the MemCurrent-informed proposal. AMIS revision/derivation
-interchange and reviewed model consolidation remain separate follow-up work.
+The installed Codex 0.164 build gates memory migration separately behind
+`external_agent_memory_import`. Twine starts only the importer child with
+`codex --enable external_agent_memory_import app-server`; no persisted settings
+change. An ordinary existing CLI session may omit memory import without this
+flag. This native feature opt-in adds no memory-retrieval startup instructions.
 
-## How sharing works today
+Status inspection reads Codex’s effective configuration, then uses
+`externalAgentConfig/detect`. Import submits only a `MEMORY` item for this exact
+Claude project key through `externalAgentConfig/import`. Other migration types
+are not forwarded. Scope checks reject a mismatched native directory or missing
+project association. The code uses the installed Codex memory migration schema;
+an unavailable or incompatible native API is an error, not a fallback to another
+memory store.
 
-Both harnesses read one Twine-managed library: Markdown inbox contributions become
-accepted SQLite records, then the core publishes a catalog and exact Markdown
-snapshots. Harness launch instructions grant access and point to that catalog.
-Agents search or inspect its metadata and read the relevant full files. Startup
-instructions do not contain the entire library or a fixed eight-topic preview.
+Codex’s documented [app-server API](https://learn.chatgpt.com/docs/app-server)
+provides detection, selected import and completion notifications. Twine matches
+`externalAgentConfig/import/completed` to the returned import ID and verifies
+success for the selected source. An accepted request with missing completion is
+reported as unconfirmed. A completed file import still does not establish native
+consolidation or model recall.
 
-This route does not normalize to AMIS or convert back into native memory stores.
-A selected native import is a one-time text snapshot. A future AMIS canonical
-record layer could preserve portable identities, revisions, lineage and scope
-while using this same read path. Native adapters would be optional and would
-need to describe any semantic loss; copying every native store is not required.
+The previous launch-only shared-memory instructions and exchange directory access
+are removed. Normal workflow role instructions remain independent of memory.
+No process is started merely to fabricate a memory conversation.
 
-## Validation
+## Verified playground evidence
 
-Use `make fmt` and `make check` from the repository root. Shared-memory coverage
-includes the real Swift-to-Rust bridge, opt-in policy, isolation between folders,
-new-note intake, changed-note holds, duplicate withdrawal, replay suppression,
-projection failure recovery, descriptor-relative path access, and both harness
-instruction mappings. These checks do not independently demonstrate model recall.
+- [Migration report](../../../../cross-agent-memory-playground/native-migration-report.json):
+  1,001 source records, including one later user note, migrated with original bodies
+  preserved and source hashes verified. Claude has 1,019 native Markdown files:
+  1,001 topics, 17 category indexes and a 33-line, 1,582-byte `MEMORY.md`.
+- [Native recall report](../../../../cross-agent-memory-playground/native-recall-report.json):
+  a fresh Claude CLI session answered “Which customer and account key should I use
+  for a demo?” correctly in 6.31 seconds and read a native topic. There were no
+  appended Twine memory instructions, extra directory grants, available external
+  catalog or permission denials.
+- [Native Codex detection](../../../../cross-agent-memory-playground/native-codex-detection.json):
+  the importer child with the native feature enabled detected exactly one memory
+  item for this playground. The compiled bridge returned `ready`,
+  `canImport=true`, and 1,019 native files. Saved settings were unchanged; no
+  import was executed.
+- Codex native import remains pending the user’s action. Native Codex consolidation
+  and recall have not been verified. The full 20-question native suite is unscored.
+- `make fmt` and full `make check` passed: 577 Rust tests (45 bridge + 532 core;
+  11 existing ignores), plus 372 Swift tests across 483 executions.
+- The debug build and code-signature verification passed. Both Rust and Swift
+  reviews cleared. Logs: [full check](../../out/validation/native-memory/check.log)
+  and [debug build](../../out/validation/native-memory/build.log).
+- The native playground was registered and opened using fresh app state with no
+  shared-memory directory. See the [folder receipt](../../../../cross-agent-memory-playground/native-folder-receipt.json).
 
-Current local results (24 October 2026): `make fmt` and `make check` passed.
-Rust: 45 bridge tests and 523 core tests passed; 11 existing core tests ignored.
-Swift: 368 tests passed (479 executions including parameterized cases).
-The focused native UI smoke test and debug app build passed. Both required
-reviewers found no remaining blocking issues. Logs and the current UI screenshot
-are in `out/validation/cross-agent-memory-scale/`.
+Native importer tests exercise memory-only selection, folder scope, read-only
+status, completion matching and unavailable native configuration. No live native
+import-button click test or completed Codex import is claimed; actual import and
+native Codex recall remain separate pending steps.
 
-The live playground preserves its original four notes and admits 996 additions:
-1,000 shared memories, with all new records verified byte-for-byte and a largest
-record of 256 KiB. Local subprocess/core/JSON measurements were 7.78 s for initial
-admission/publication, 89.1 ms median over three steady refreshes, and 19.5 ms to
-read the largest note. These timings exclude Swift rendering and model inference.
-No live model recall score is claimed. The playground includes 20 recall prompts
-and an operator answer key outside the project and exchange directories.
+## Historical evidence and limits
 
-Schema v2 migrates existing notes and suppression unchanged and persists the last
-publication result. Detail reads use a deferred database transaction and do not
-scan the inbox or republish records. They still examine stored bodies to derive
-metadata titles; refresh work still grows with the library.
+The former external shared library is explicitly disabled. Old memory bodies
+remain in `~/workspaces/.twine-memory-playground-state` as historical state.
+The new native window uses separate app state with no shared-memory directory.
+Legacy reports and bodies are not used for current native delivery.
+The old publication report and catalog-based model tests do not establish native
+loading or recall. Do not rerun the retired loader to validate this architecture.
+
+A native import is a snapshot. Later source edits need another native import;
+there is no automatic Codex-to-Claude reverse path. Removal from one native store
+does not erase earlier imported copies or already-loaded conversations. Each
+harness owns its memory lifecycle and context-loading behavior.
+
+The trial adds no fixed note-count or topic-size quota. Native harness limits and
+protocol transport bounds still apply. Memory content remains local until its
+owning harness reads and sends it to the selected model provider.

@@ -84,7 +84,6 @@ impl Application {
                 windows: 0,
             })
             .windows += 1;
-        application.shared_memory_directory = Some(path.clone());
         application.window_storage = Some(WindowStorageLease { path });
         Ok(application)
     }
