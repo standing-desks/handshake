@@ -30,7 +30,9 @@ APP_DOC_DIR := $(OUT)/docs/swift
 DMG_TOOLS_DIR := $(OUT)/packaging/tools
 ACTIONLINT ?= actionlint
 # The test host uses fresh temporary data; Xcode products and results stay in out/tests.
-TEST_ENV := TEST_RUNNER_HANDSHAKE_PREFERENCES_SUITE=com.twineproject.Twine.tests.unit-host
+TEST_ENV := TEST_RUNNER_HANDSHAKE_PREFERENCES_SUITE=com.twineproject.Twine.tests.unit-host \
+	TEST_RUNNER_DEVELOPER_DIR="$${DEVELOPER_DIR:-$$(xcode-select -p)}" \
+	TEST_RUNNER_PATH="$$(dirname "$$(xcrun --find git)"):$$PATH"
 
 # PREBUILT=1 runs a target without its prerequisites. CI uses it to run tests from unpacked test products.
 needs = $(if $(PREBUILT),,$(1))
