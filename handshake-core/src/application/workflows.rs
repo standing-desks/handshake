@@ -429,7 +429,7 @@ impl Application {
             if workflow.run.is_some() {
                 restore_run(&mut workflow, inner.folders.store())?;
             } else if workflow.kind == WorkflowKind::SingleAgent {
-                // Only an agent that was still running when Twine stopped was interrupted.
+                // Only an agent that was still running when Handshake stopped was interrupted.
                 workflow.status = match stored.agent_status {
                     Some(status) if status != WorkflowStatus::Running => status,
                     _ => WorkflowStatus::Interrupted,

@@ -470,7 +470,7 @@ mod tests {
 
     #[test]
     fn import_paths_are_relative_absolute_or_home_relative() {
-        let directory = Path::new("/config/twine");
+        let directory = Path::new("/config/handshake");
         assert_eq!(
             import_path(directory, Path::new("themes/custom.toml"), None),
             Some(directory.join("themes/custom.toml"))

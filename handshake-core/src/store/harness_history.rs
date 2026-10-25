@@ -123,7 +123,7 @@ impl Store {
                 params![sql_integer(workflow.0)?,session,native.turn,native.parent],|r|unsigned_column(r,0)
             ).optional()?
         };
-        // Older Claude/Pi logs do not share Twine's turn UUID. Require a unique exact prompt
+        // Older Claude/Pi logs do not share Handshake's turn UUID. Require a unique exact prompt
         // title AND native timestamp in the already linked harness conversation; ambiguous
         // matches are left unavailable, never attached to whichever step is newest.
         let span = if span.is_some() {

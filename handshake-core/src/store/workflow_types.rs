@@ -40,7 +40,7 @@ impl Store {
         definition: &str,
         created_at: u64,
     ) -> Result<Option<u32>, StoreError> {
-        // Take the write lock before reading the latest version, so another Twine process can't
+        // Take the write lock before reading the latest version, so another Handshake process can't
         // add the same version in between.
         let transaction = self
             .connection

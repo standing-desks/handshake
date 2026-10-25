@@ -852,7 +852,7 @@ mod tests {
     #[test]
     fn first_load_creates_basic_settings_and_preserves_edits() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("twine/config.toml");
+        let path = directory.path().join("handshake/config.toml");
         let loaded = Config::load(&path);
         assert_eq!(loaded.config, Config::default());
         assert_eq!(loaded.diagnostics, []);

@@ -628,8 +628,8 @@ mod tests {
     fn workflows_follow_the_selected_config_directory() {
         for directory in [
             "/checkout/out/runtime/debug/config",
-            "/home/user/.config/twine",
-            "/custom/twine",
+            "/home/user/.config/handshake",
+            "/custom/handshake",
         ] {
             assert_eq!(
                 workflow_file_directory(Some(&Path::new(directory).join("config.toml"))),

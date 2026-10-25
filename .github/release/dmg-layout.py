@@ -57,9 +57,9 @@ with DSStore.open(str(mount / ".DS_Store"), "w+") as store:
         "backgroundImageAlias": background.to_bytes(),
         # Finder image backgrounds need explicit RGB components. Keep the
         # approved charcoal canvas in both system appearances.
-        "backgroundColorRed": 32 / 255,
-        "backgroundColorGreen": 35 / 255,
-        "backgroundColorBlue": 38 / 255,
+        "backgroundColorRed": 41 / 255,
+        "backgroundColorGreen": 42 / 255,
+        "backgroundColorBlue": 43 / 255,
         "arrangeBy": "none",
         "iconSize": 80.0,
         "textSize": 13.0,

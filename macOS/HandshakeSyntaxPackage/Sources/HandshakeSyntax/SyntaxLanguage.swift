@@ -19,7 +19,7 @@ import TreeSitterTSX
 import TreeSitterTypeScript
 import TreeSitterYAML
 
-/// The native grammars shipped with Twine. Unknown file types remain plain text.
+/// The native grammars shipped with Handshake. Unknown file types remain plain text.
 public enum SyntaxLanguage: String, CaseIterable, Sendable {
     case swift, rust, python, json, javascript, typescript, tsx, toml, yaml, bash
     case html, css, c, cpp, csharp, go, java, ruby

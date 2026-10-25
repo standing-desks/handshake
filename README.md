@@ -46,10 +46,20 @@ installed and signed in. Terminal workflows need nothing else.
 
 Quit Twine and Handshake before upgrading. New installs use
 `brew install --cask standing-desks/tap/handshake`. For an existing Homebrew
-install, run `brew update`, then `brew upgrade --cask handshake` after the tap's
-rename migration is available. Historical `twine-app` and `twine-ade` casks map
-to `handshake`. Existing `twineproject/tap` users can stay on that tap; they do
-not need to switch taps or install a second copy.
+install, run these commands after the tap's rename migration is available:
+
+```sh
+brew trust --cask standing-desks/tap/handshake
+brew update
+brew upgrade --cask standing-desks/tap/handshake
+```
+
+Homebrew 6 and newer require explicit trust for the renamed cask; trust in an
+old name does not follow the rename. Omit the trust command on older Homebrew
+versions that do not provide it. See [Homebrew's tap trust guidance](https://docs.brew.sh/Tap-Trust).
+Historical `twine-app` and `twine-ade` casks map to `handshake`. Existing
+`twineproject/tap` users should use `twineproject/tap/handshake` in both the trust
+and upgrade commands; they do not need to switch taps or install a second copy.
 
 For a manual install, copy **Handshake.app** from the new DMG into
 **Applications**. Replace an existing Handshake copy, or move the old
