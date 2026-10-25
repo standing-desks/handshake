@@ -8,7 +8,7 @@ typealias TerminalInputPreparation = @MainActor () async throws -> Void
 let terminalLogger = Logger(subsystem: "com.twineproject.Twine", category: "terminal")
 
 /// Feeds a retained terminal view and forwards input and size changes. Workflow shells are owned
-/// by twine-core; standalone terminals retain the start/close behavior.
+/// by handshake-core; standalone terminals retain the start/close behavior.
 @MainActor
 final class TerminalController: NSObject, TerminalViewDelegate {
     private let coreClient: CoreClient
@@ -133,7 +133,7 @@ final class TerminalController: NSObject, TerminalViewDelegate {
             } catch CoreFailure.commandRejected {
                 // A shell that has already been closed needs no further cleanup.
             } catch CoreFailure.notRunning {
-                // Stopping twine-core also terminates all owned shells.
+                // Stopping handshake-core also terminates all owned shells.
             } catch {
                 terminalLogger.error(
                     "Could not close terminal: \(error.localizedDescription, privacy: .public)"

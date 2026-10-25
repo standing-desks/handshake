@@ -25,7 +25,7 @@ impl Store {
             if run.status == RunStatus::Running {
                 run.finish(
                     RunStatus::Interrupted,
-                    "Twine stopped while the workflow was running.",
+                    "Handshake stopped while the workflow was running.",
                 );
                 save_run_state(
                     &transaction,
@@ -50,7 +50,7 @@ impl Store {
             observed_at: crate::workflow::timestamp(),
             status: TraceSpanStatus::Stopped,
             kind: TraceEventKind::ProcessStopped,
-            message: "Process interrupted when Twine stopped.",
+            message: "Process interrupted when Handshake stopped.",
             // The last accepted output boundary was in memory; preserve existing anchors instead
             // of inventing a byte offset for this recovery event.
             anchor: None,

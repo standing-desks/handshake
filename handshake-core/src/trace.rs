@@ -1,4 +1,4 @@
-//! Durable records of activity Twine performs or observes, separate from terminal bytes.
+//! Durable records of activity Handshake performs or observes, separate from terminal bytes.
 
 use thiserror::Error;
 

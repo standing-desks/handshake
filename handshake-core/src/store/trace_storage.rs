@@ -1,4 +1,4 @@
-//! Retain compact records independently from full detail files. Only Twine-owned files are
+//! Retain compact records independently from full detail files. Only Handshake-owned files are
 //! cleaned; native harness conversations remain untouched.
 
 use std::collections::HashSet;

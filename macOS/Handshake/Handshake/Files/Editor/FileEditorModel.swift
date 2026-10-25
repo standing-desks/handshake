@@ -4,7 +4,7 @@ import Observation
 
 private let fileEditorLogger = Logger(subsystem: "com.twineproject.Twine", category: "file-editor")
 
-/// One open file's editing buffer; twine-core supplies disk versions and performs every save.
+/// One open file's editing buffer; handshake-core supplies disk versions and performs every save.
 @Observable
 final class FileEditorModel: Identifiable {
     let id = UUID()

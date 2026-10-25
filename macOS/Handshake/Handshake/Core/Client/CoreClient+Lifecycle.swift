@@ -4,7 +4,7 @@ import OSLog
 private let coreLogger = Logger(subsystem: "com.twineproject.Twine", category: "core")
 
 extension CoreClient {
-    /// Waits until twine-core is running. Throws if it fails or the waiting task is cancelled.
+    /// Waits until handshake-core is running. Throws if it fails or the waiting task is cancelled.
     func waitUntilRunning() async throws {
         while true {
             try Task.checkCancellation()

@@ -99,7 +99,7 @@ extension HandshakeUITests {
         let app = try makeApp()
         app.launch()
         defer { app.terminate() }
-        let title = app.staticTexts["Welcome to Twine"].firstMatch
+        let title = app.staticTexts["Welcome to Handshake"].firstMatch
         XCTAssertTrue(title.waitForExistence(timeout: 10))
         let height = title.frame.height
         app.menuBars.menuBarItems["View"].click()
@@ -108,7 +108,7 @@ extension HandshakeUITests {
         app.typeKey("n", modifierFlags: .command)
         XCTAssertTrue(app.windows.element(boundBy: 1).waitForExistence(timeout: 5))
         for window in app.windows.allElementsBoundByIndex {
-            waitForZoomHeight(height * 1.1, of: window.staticTexts["Welcome to Twine"])
+            waitForZoomHeight(height * 1.1, of: window.staticTexts["Welcome to Handshake"])
         }
         app.terminate()
         app.launch()

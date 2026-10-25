@@ -22,8 +22,8 @@ bug report and let us know!
 ## Find an Issue
 
 We have good first issues for new contributors and help wanted issues suitable
-for any contributor. [good first issue](https://github.com/standing-desks/twine/labels/good%20first%20issue) has extra information to
-help you make your first contribution. [help wanted](https://github.com/standing-desks/twine/labels/help%20wanted) are issues
+for any contributor. [good first issue](https://github.com/standing-desks/handshake/labels/good%20first%20issue) has extra information to
+help you make your first contribution. [help wanted](https://github.com/standing-desks/handshake/labels/help%20wanted) are issues
 suitable for someone who isn't a core maintainer and is good to move onto after
 your first pull request.
 
@@ -34,7 +34,7 @@ that you want to work on it. Something like "I want to work on this" is fine.
 
 - [Build from source](README.md#build-from-source)
 - [Check your changes](README.md#check-your-changes)
-- [Development guide](https://standing-desks.github.io/twine/documentation/development/)
+- [Development guide](https://standing-desks.github.io/handshake/documentation/development/)
 - [Repository conventions](AGENTS.md)
 
 ## Brand and Interface Design

@@ -45,7 +45,7 @@ struct HandshakeApp: App {
                     Color.clear
                 case .failed(let message):
                     ContentUnavailableView(
-                        "Twine Couldn't Start", systemImage: "exclamationmark.triangle", description: Text(message))
+                        "Handshake Couldn't Start", systemImage: "exclamationmark.triangle", description: Text(message))
                 case .ready(let presentation):
                     FolderWindowRoot(id: id.wrappedValue ?? initialWindowID, windows: presentation.windows)
                         .environment(presentation.settings)

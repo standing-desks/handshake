@@ -262,7 +262,7 @@ pub struct Application {
 
 impl Application {
     /// Creates the application with production queue limits and the user's config file, keeping
-    /// its database in `data_directory`, and reopens the folder that was open when Twine last quit.
+    /// its database in `data_directory`, and reopens the folder that was open when Handshake last quit.
     ///
     /// # Errors
     ///
@@ -684,7 +684,7 @@ impl Drop for Application {
             for id in ids {
                 if let Ok(observation) = self.terminals.observe(id)
                     && let Err(error) =
-                        inner.stop_trace(id, observation, "Process stopped when Twine quit.")
+                        inner.stop_trace(id, observation, "Process stopped when Handshake quit.")
                 {
                     tracing::warn!(%error, "failed to persist trace during shutdown");
                 }

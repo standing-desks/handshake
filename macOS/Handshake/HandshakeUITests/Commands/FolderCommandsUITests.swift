@@ -7,7 +7,7 @@ extension HandshakeUITests {
         let app = try makeApp()
         app.launch()
         let window = app.windows.firstMatch
-        XCTAssertTrue(app.staticTexts["Welcome to Twine"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Welcome to Handshake"].waitForExistence(timeout: 10))
         window.buttons[XCUIIdentifierCloseWindow].click()
         XCTAssertTrue(window.waitForNonExistence(timeout: 10))
         XCTAssertEqual(app.state, .runningForeground)
@@ -21,7 +21,7 @@ extension HandshakeUITests {
         XCTAssertFalse(app.menuItems["Close Folder"].isEnabled)
         XCTAssertFalse(app.menuItems["Save"].isEnabled)
         newWindow.click()
-        XCTAssertTrue(app.staticTexts["Welcome to Twine"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Welcome to Handshake"].waitForExistence(timeout: 10))
         window.buttons[XCUIIdentifierCloseWindow].click()
         XCTAssertTrue(window.waitForNonExistence(timeout: 10))
 
@@ -31,7 +31,7 @@ extension HandshakeUITests {
         XCTAssertEqual(app.windows.count, 1)
         picker.buttons["Cancel"].click()
         XCTAssertTrue(picker.waitForNonExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Welcome to Twine"].exists)
+        XCTAssertTrue(app.staticTexts["Welcome to Handshake"].exists)
         window.buttons[XCUIIdentifierCloseWindow].click()
         XCTAssertTrue(window.waitForNonExistence(timeout: 10))
 

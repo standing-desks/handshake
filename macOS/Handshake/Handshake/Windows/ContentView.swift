@@ -12,7 +12,7 @@ import UniformTypeIdentifiers
 
 private let folderLogger = Logger(subsystem: "com.twineproject.Twine", category: "folders")
 
-/// What the window shows for the twine-core state.
+/// What the window shows for the handshake-core state.
 enum WindowContent: Equatable {
     /// Waiting for the core's first snapshot. The window stays empty rather than flash the start page
     /// before the last folder reopens.
@@ -65,7 +65,7 @@ struct ContentView: View {
             Color.clear
         case .failed(let message):
             ContentUnavailableView(
-                "Twine Couldn't Start",
+                "Handshake Couldn't Start",
                 systemImage: "exclamationmark.triangle",
                 description: Text(message)
             )

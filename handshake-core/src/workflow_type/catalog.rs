@@ -7,7 +7,7 @@ use crate::store::{Store, StoreError, StoredWorkflowType};
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum WorkflowTypeRef {
-    /// Built-in types change only with Twine itself, so they follow the running app.
+    /// Built-in types change only with Handshake itself, so they follow the running app.
     Builtin(BuiltinType),
     /// One version of a user-made type. Versions never change once stored.
     User { type_id: u64, version: u32 },

@@ -23,16 +23,18 @@ for (const button of downloadButtons) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
     try {
-      const response = await fetch("https://api.github.com/repos/standing-desks/twine/releases/latest", {
+      const response = await fetch("https://api.github.com/repos/standing-desks/handshake/releases/latest", {
         headers: { Accept: "application/vnd.github+json" },
         cache: "no-store",
         signal: controller.signal,
       });
       if (!response.ok) throw new Error("Release lookup failed");
       const release = await response.json();
-      const asset = release.assets?.find((asset) =>
-        asset.state === "uploaded" && /^Twine-.+-macos-(arm64|universal)\.dmg$/.test(asset.name)
-      );
+      const assets = release.assets?.filter((asset) =>
+        asset.state === "uploaded" && asset.browser_download_url
+      ) ?? [];
+      const asset = assets.find((asset) => /^Handshake-.+-macos-(arm64|universal)\.dmg$/.test(asset.name))
+        ?? assets.find((asset) => /^Twine-.+-macos-(arm64|universal)\.dmg$/.test(asset.name));
       if (!asset?.browser_download_url) {
         message.textContent = "A DMG installer isn’t available for the latest release yet.";
         fallback.hidden = false;
@@ -40,7 +42,8 @@ for (const button of downloadButtons) {
       }
 
       for (const link of downloadButtons) link.href = asset.browser_download_url;
-      message.textContent = "Your DMG download is starting. Open it and drag Twine to Applications.";
+      const product = asset.name.startsWith("Handshake-") ? "Handshake" : "Twine";
+      message.textContent = `Your DMG download is starting. Open it and drag ${product} to Applications.`;
       window.location.assign(asset.browser_download_url);
     } catch {
       message.textContent = "Couldn’t find the latest download. Please try again.";

@@ -118,7 +118,7 @@ pub(crate) fn signal_process_group(process_id: i32, signal: i32) -> std::io::Res
 pub(crate) fn signal_session(session_id: libc::pid_t, signal: i32) -> std::io::Result<()> {
     if session_id == unsafe { libc::getsid(0) } {
         return Err(std::io::Error::other(
-            "child shares Twine's process session",
+            "child shares Handshake's process session",
         ));
     }
 

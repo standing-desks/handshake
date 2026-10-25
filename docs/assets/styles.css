@@ -1,6 +1,6 @@
 :root {
   color-scheme: light;
-  --paper: #f7f8f2;
+  --paper: #F4F1EB;
   --ink: #232b26;
   --muted: #5e665f;
   --green: #446932;
@@ -24,9 +24,8 @@ a:focus-visible, button:focus-visible { outline: 3px solid var(--green); outline
 .skip-link { position: absolute; left: 16px; top: -100px; z-index: 10; padding: 12px 16px; background: var(--ink); color: white; }
 .skip-link:focus { top: 16px; }
 .header { display: flex; align-items: center; justify-content: space-between; padding-block: 28px; }
-.brand { display: inline-flex; gap: 10px; align-items: center; text-decoration: none; font-size: 27px; letter-spacing: -1.3px; font-weight: 750; }
-.brand img { border-radius: 11px; }
-.brand-period { color: var(--green); }
+.brand { display: inline-flex; gap: 12px; align-items: center; text-decoration: none; font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif; font-size: 30px; letter-spacing: -0.045em; font-weight: 600; color: #202326; }
+.brand img { width: 60px; height: 60px; padding: 6px; object-fit: contain; }
 .header nav { display: flex; align-items: center; gap: 32px; font-size: 14px; font-weight: 550; }
 .header nav a { text-decoration: none; }
 .header nav a:hover, .footer a:hover { color: var(--green); }
@@ -121,7 +120,7 @@ h3 { font-size: 17px; letter-spacing: -.35px; line-height: 1.35; font-weight: 65
 .source-note { color: var(--muted); font-size: 12px; line-height: 1.6; }
 .source-note a { color: var(--ink); }
 .footer { display: grid; grid-template-columns: 1fr auto; gap: 22px; padding-block: 35px; border-top: 1px solid var(--line); }
-.footer-brand { font-size: 25px; }
+.footer-brand { font-size: 30px; }
 .footer p { color: var(--muted); font-size: 11px; line-height: 1.75; margin: 9px 0 0; }
 .footer nav { display: flex; align-items: center; gap: 25px; font-size: 12px; }
 .footer nav a { text-decoration: none; }
@@ -183,11 +182,9 @@ h3 { font-size: 17px; letter-spacing: -.35px; line-height: 1.35; font-weight: 65
 
 @media (max-width: 720px) {
   .wrap { width: calc(100% - 40px); }
-  .header { padding-block: 20px; }
-  .header nav { gap: 18px; font-size: 12px; }
+  .header { padding-block: 20px; flex-wrap: wrap; gap: 16px; }
+  .header nav { width: 100%; justify-content: space-between; gap: 18px; font-size: 12px; }
   .nav-github { padding: 8px 11px; }
-  .brand { font-size: 24px; gap: 8px; }
-  .brand img { width: 34px; height: 34px; }
   .hero { padding-top: 47px; }
   .eyebrow { font-size: 9px; letter-spacing: 1px; }
   h1 { font-size: clamp(39px, 7.4vw, 54px); letter-spacing: -2.3px; margin-block: 23px 20px; }

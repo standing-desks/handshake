@@ -21,7 +21,7 @@ final class HandshakeUITests: XCTestCase {
         let app = try makeApp()
         app.launch()
 
-        XCTAssertTrue(app.staticTexts["Welcome to Twine"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Welcome to Handshake"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["Open Folder…"].exists)
         XCTAssertTrue(app.staticTexts["Folders you open appear here."].exists)
         app.menuBars.menuBarItems["File"].click()
@@ -44,7 +44,7 @@ final class HandshakeUITests: XCTestCase {
         XCTAssertFalse(app.buttons["Start Page"].exists)
         // The window's accessibility title also includes the subtitle, the folder's path.
         XCTAssertTrue(app.windows.firstMatch.title.hasPrefix(folder.lastPathComponent), app.debugDescription)
-        XCTAssertFalse(app.staticTexts["Welcome to Twine"].exists, app.debugDescription)
+        XCTAssertFalse(app.staticTexts["Welcome to Handshake"].exists, app.debugDescription)
 
         // The reopened folder's terminal takes typing without a click.
         let marker = folder.appending(path: "typed-marker")
@@ -54,7 +54,7 @@ final class HandshakeUITests: XCTestCase {
         wait(for: [typed], timeout: 10)
 
         closeFolder(in: app)
-        XCTAssertTrue(app.staticTexts["Welcome to Twine"].waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(app.staticTexts["Welcome to Handshake"].waitForExistence(timeout: 10), app.debugDescription)
         let recent = recentFolder(folder.lastPathComponent, in: app)
         XCTAssertTrue(recent.waitForExistence(timeout: 10), app.debugDescription)
 
@@ -62,7 +62,7 @@ final class HandshakeUITests: XCTestCase {
         XCTAssertTrue(toggle.waitForExistence(timeout: 10), app.debugDescription)
 
         closeFolder(in: app)
-        XCTAssertTrue(app.staticTexts["Welcome to Twine"].waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(app.staticTexts["Welcome to Handshake"].waitForExistence(timeout: 10), app.debugDescription)
     }
 
     @MainActor
@@ -206,8 +206,8 @@ final class HandshakeUITests: XCTestCase {
         app.typeText("trap '' HUP; (trap '' HUP; while :; do sleep 1; done) & echo $! > descendant.pid\r")
         let descendantID = try waitForProcessID(in: descendantFile)
 
-        app.menuBars.menuBarItems["Twine"].click()
-        app.menuItems["Quit Twine"].click()
+        app.menuBars.menuBarItems["Handshake"].click()
+        app.menuItems["Quit Handshake"].click()
         XCTAssertTrue(app.wait(for: .notRunning, timeout: 10))
         XCTAssertTrue(waitForProcessExit(shellID), "shell survived app quit")
         XCTAssertTrue(waitForProcessExit(descendantID), "descendant survived app quit")

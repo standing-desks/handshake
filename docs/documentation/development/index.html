@@ -3,18 +3,18 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#f7f8f2">
-    <title>Development guide — Twine</title>
-    <meta name="description" content="Build, test, and contribute to Twine, or package a release.">
-    <link rel="canonical" href="https://standing-desks.github.io/twine/documentation/development/">
+    <meta name="theme-color" content="#F4F1EB">
+    <title>Development guide — Handshake</title>
+    <meta name="description" content="Build, test, and contribute to Handshake, or package a release.">
+    <link rel="canonical" href="https://standing-desks.github.io/handshake/documentation/development/">
     <link rel="icon" type="image/png" href="../../assets/favicon.png">
     <link rel="stylesheet" href="../../assets/styles.css">
   </head>
   <body class="docs-page" id="top">
     <a class="skip-link" href="#main">Skip to content</a>
     <header class="header wrap">
-      <a class="brand" href="../../" aria-label="Twine home"><img src="../../assets/icon.png" width="40" height="40" alt=""><span>twine<span class="brand-period">.</span></span></a>
-      <nav aria-label="Main navigation"><a href="../../#workflows">Workflows</a><a href="../">Docs</a><a class="nav-github" href="https://github.com/standing-desks/twine">GitHub <span aria-hidden="true">↗</span></a></nav>
+      <a class="brand" href="../../" aria-label="Handshake home"><img src="../../assets/handshake-transparent.svg" width="48" height="48" alt=""><span>Handshake</span></a>
+      <nav aria-label="Main navigation"><a href="../../#workflows">Workflows</a><a href="../">Docs</a><a class="nav-github" href="https://github.com/standing-desks/handshake">GitHub <span aria-hidden="true">↗</span></a></nav>
     </header>
     <div class="docs-layout wrap">
       <aside class="docs-sidebar">
@@ -33,14 +33,14 @@
 </ul>
 </div>
 </nav>
-        <a class="docs-source" href="https://github.com/standing-desks/twine/blob/main/docs/documentation/development/index.html">View on GitHub <span aria-hidden="true">↗</span></a>
+        <a class="docs-source" href="https://github.com/standing-desks/handshake/blob/main/docs/documentation/development/index.html">View on GitHub <span aria-hidden="true">↗</span></a>
       </aside>
       <main id="main" class="docs-content">
         <p class="eyebrow">Development guide</p>
         <h1 id="development-guide">Development guide<a class="headerlink" href="#development-guide" title="Permanent link">#</a></h1>
-<p>Build, test, and contribute to Twine, or package a release. For installation and
+<p>Build, test, and contribute to Handshake, or package a release. For installation and
 help using the app, read the <a href="../guide/">user guide</a>.</p>
-<p>Twine consists of the macOS front end in <code>macOS/</code> and the reusable application
+<p>Handshake consists of the macOS front end in <code>macOS/</code> and the reusable application
 library in <code>handshake-core/</code>. The <code>handshake-bridge/</code> adapter exposes the library through
 a C interface for the front end.</p>
 <h2 id="development-setup">Development setup<a class="headerlink" href="#development-setup" title="Permanent link">#</a></h2>
@@ -85,9 +85,9 @@ advance a stage.</p>
 <p>Startup recovers interrupted work across all folders before publishing state. Agents retain their
 individual lifecycle status, and unfinished trace spans gain a stopped event without changing
 earlier events or transcript anchors. Completed and cancelled runs keep their outcomes. Recovery
-requires exclusive ownership of the data directory; another live Twine core prevents startup.</p>
+requires exclusive ownership of the data directory; another live Handshake core prevents startup.</p>
 <h3 id="harness-launch-and-tracing-compatibility">Harness launch and tracing compatibility<a class="headerlink" href="#harness-launch-and-tracing-compatibility" title="Permanent link">#</a></h3>
-<p>Twine reads each harness's models from its own CLI (<code>codex debug models</code>, <code>pi --list-models</code>, <code>agy models</code>, <code>omp models --json</code>, <code>opencode api model.list</code>, and
+<p>Handshake reads each harness's models from its own CLI (<code>codex debug models</code>, <code>pi --list-models</code>, <code>agy models</code>, <code>omp models --json</code>, <code>opencode api model.list</code>, and
 the aliases in <code>claude --help</code>); Claude Code also takes any typed model name. A YOLO checkbox skips
 the harness's permission prompts (<code>--dangerously-bypass-approvals-and-sandbox</code> for Codex,
 <code>--dangerously-skip-permissions</code> for Claude Code and Antigravity, <code>--auto-approve</code> for OMP); pi doesn't ask for permission, so it has none.</p>
@@ -96,10 +96,10 @@ Single-agent runs show a span for each prompt; multi-agent steps stay under the 
 Select a step to jump to its recorded terminal position. Hook payloads are bounded and recording
 is best effort. If hooks are unavailable or disabled, the ordinary agent span remains. User and
 project harness config files are never edited. Codex hook compatibility is verified with CLI
-0.159; Twine trusts only its own invocation hooks and preserves existing hook policy.
+0.159; Handshake trusts only its own invocation hooks and preserves existing hook policy.
 Pi uses a temporary extension supplied with <code>--extension</code>, verified with pi 0.99.1. It observes
 prompts as they enter the agent (including queued prompts), tool execution, and final response
-settlement. Delivery never waits on Twine, and user/project extensions remain enabled.
+settlement. Delivery never waits on Handshake, and user/project extensions remain enabled.
 Antigravity uses <code>--prompt-interactive</code> for initial tasks and keeps its terminal open for follow-up
 prompts. It retains lifecycle and workflow spans; per-prompt and tool observers aren't installed
 because <code>agy</code> doesn't expose a launch-only hook option. Its models and effort levels are discovered
@@ -178,7 +178,7 @@ error. The ownership lock is released after the recording worker has flushed and
 for that commit. CI keeps that build for 90 days; after that, re-run CI on main for the commit first.</p>
 <p>To cut a release:</p>
 <ol>
-<li>Set the version in <code>Cargo.toml</code> and update <code>Cargo.lock</code>. Set the Twine app's
+<li>Set the version in <code>Cargo.toml</code> and update <code>Cargo.lock</code>. Set the Handshake app's
    <strong>Marketing Version</strong> in both Debug and Release configurations to the same version.</li>
 <li>Move the finished changelog entries into a dated section such as
    <code>## [0.1.0] - 2026-09-30</code>, leaving <code>[Unreleased]</code> above it. The release body comes from
@@ -187,22 +187,22 @@ for that commit. CI keeps that build for 90 days; after that, re-run CI on main 
 <li>Review and merge through a pull request. Wait for push-to-main CI on that commit to pass.</li>
 <li>Create and push the tag on that reviewed main commit:</li>
 </ol>
-<pre class="highlight"><code class="language-sh">git tag -a v0.1.0 &lt;reviewed-main-commit&gt; -m 'Twine 0.1.0'
+<pre class="highlight"><code class="language-sh">git tag -a v0.1.0 &lt;reviewed-main-commit&gt; -m 'Handshake 0.1.0'
 git push origin v0.1.0</code></pre>
 <ol start="5">
 <li>Wait for Release to finish. Download the draft DMG, check its checksum, and test dragging
-   Twine into Applications and first launch on a Mac with quarantine enabled using the <a href="../guide/#install">install notes</a>. Check a shell
+   Handshake into Applications and first launch on a Mac with quarantine enabled using the <a href="../guide/#install">install notes</a>. Check a shell
    and the harnesses you intend to support, then publish the draft in GitHub Releases.
    Publishing a release that is not a prerelease notifies the Homebrew tap
    (<code>standing-desks/homebrew-tap</code>) to update its cask.</li>
 </ol>
 <p>The release contains:</p>
 <ul>
-<li><code>Twine-VERSION-macos-arm64.dmg</code>: Developer ID signed, notarized app and Applications folder shortcut in a compact installer window. The license is bundled at <code>Handshake.app/Contents/Resources/LICENSE</code>. Open the disk image, drag Twine to Applications, eject the image, and launch the installed app.</li>
-<li><code>libtwinecore-VERSION-macos-arm64.tar.gz</code>: the static C ABI library
-  as <code>libtwinecore.a</code>, matching C header, usage README, and license.
+<li><code>Handshake-VERSION-macos-arm64.dmg</code>: Developer ID signed, notarized app and Applications folder shortcut in a compact installer window. The license is bundled at <code>Handshake.app/Contents/Resources/LICENSE</code>. Open the disk image, drag Handshake to Applications, eject the image, and launch the installed app.</li>
+<li><code>libhandshakecore-VERSION-macos-arm64.tar.gz</code>: the static C ABI library
+  as <code>libhandshakecore.a</code>, matching C header, usage README, and license.
   The protocol is experimental; pin matching header/library versions.</li>
-<li><code>twine-VERSION-source.tar.gz</code>: the tagged Git source tree.</li>
+<li><code>handshake-VERSION-source.tar.gz</code>: the tagged Git source tree.</li>
 <li><code>SHA256SUMS</code>: SHA-256 checksums for the disk image and two archives.</li>
 </ul>
 <p>The released app's short version matches the tag; its build number comes from main CI.
@@ -229,9 +229,9 @@ to require a specific app version.</p>
 <p>Main CI builds and validates a DMG from the actual release app.
 The release workflow validates the signed DMG before uploading it.
 <code>make lint-ci</code> lints the workflows and build scripts.</p>
-        <p class="docs-end"><a href="#top">Back to top ↑</a><a href="https://github.com/standing-desks/twine/issues">Questions or feedback? ↗</a></p>
+        <p class="docs-end"><a href="#top">Back to top ↑</a><a href="https://github.com/standing-desks/handshake/issues">Questions or feedback? ↗</a></p>
       </main>
     </div>
-    <footer class="footer wrap"><div><a class="brand footer-brand" href="../../"><span>twine<span class="brand-period">.</span></span></a><p>A native macOS workspace for coordinating coding agents.</p></div><nav aria-label="Footer navigation"><a href="../">Documentation</a><a href="https://github.com/standing-desks/twine/releases/latest">Releases</a><a href="https://github.com/standing-desks/twine/blob/main/LICENSE">MIT License</a></nav></footer>
+    <footer class="footer wrap"><div><a class="brand footer-brand" href="../../"><span>Handshake</span></a><p>A native macOS workspace for coordinating coding agents.</p></div><nav aria-label="Footer navigation"><a href="../">Documentation</a><a href="https://github.com/standing-desks/handshake/releases/latest">Releases</a><a href="https://github.com/standing-desks/handshake/blob/main/LICENSE">MIT License</a></nav></footer>
   </body>
 </html>

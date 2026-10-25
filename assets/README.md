@@ -4,15 +4,17 @@ Source art for the Handshake identity. The SVGs here are the source of truth;
 do not edit, optimize, or recolor them. `SHA256SUMS` records their hashes
 (`cd assets && shasum -a 256 -c SHA256SUMS`).
 
-This folder is separate from `docs/assets/` (published website files) and the
-app's Xcode asset catalog.
+This folder owns shared brand sources. Component-specific assets live with
+their consumers: published files in `docs/assets/`, app icons in
+`macOS/Handshake/`, bundled images in the app's asset catalog, and installer
+artwork in `.github/release/`. The DMG uses its separate intertwining artwork.
 
 ## Files
 
 | File | Use |
 | --- | --- |
-| `handshake-square-dark.svg`, `handshake-square-light.svg` | Full-bleed squares. Feed the app icons, where macOS applies its own mask. |
-| `handshake-app-dark.svg`, `handshake-app-light.svg` | Rounded tiles. Feed the DMG artwork and the website. |
+| `handshake-square-dark.svg`, `handshake-square-light.svg` | Full-bleed squares. Reference compositions for app icons, where macOS applies its own mask. |
+| `handshake-app-dark.svg`, `handshake-app-light.svg` | Rounded tiles. Shared rounded-tile placement variants. |
 | `handshake-transparent.svg` | Symbol alone for lockups and quiet solid grounds. |
 | `handshake-avatar-dark.svg`, `handshake-avatar-light.svg` | Circular avatars. |
 | `handshake-master.svg` | Editable symbol master. |
@@ -38,11 +40,24 @@ into `assets/png/` (ignored by git) or the folder given. Favicons use the
 - **Usage:** scale the artwork proportionally. Do not stretch it, recolor the
   hands, or add glow. Keep the clasp intact.
 
+## Keeping shared artwork in sync
+
+`assets/handshake-transparent.svg` is the canonical symbol. The website, app
+asset catalog, and both Icon Composer documents carry byte-identical copies.
+The documentation-owned `docs/generate-readme-lockup.cjs` embeds this source
+in the README lockup at `docs/assets/handshake-readme-lockup.svg`.
+
+Run `make check-assets` to verify approved source checksums, all four symbol
+copies, and the generated lockup. CI runs this through `make lint-ci` and
+`make check-site`. Run `make sync-assets` to refresh the component copies and
+lockup from the canonical source; it refuses to alter approved source art.
+
 ## Release app icon
 
-`AppIcon.icon` is the macOS Icon Composer document. It is intentionally not
-wired into Xcode yet. Its embedded `Assets/handshake-transparent.svg` is
-byte-identical to the source SVG. The document was saved and the image layer
+`macOS/Handshake/AppIcon.icon` is the macOS Icon Composer document, referenced
+directly by the Xcode app target for Release. Debug selects
+`macOS/Handshake/AppIconDebug.icon`. Its embedded
+`Assets/handshake-transparent.svg` is byte-identical to the source SVG. The document was saved and the image layer
 imported in Icon Composer 27.1; the saved schema supplies the appearance and
 placement settings.
 
@@ -86,7 +101,7 @@ diffs from this validation are under `out/icon-validation/` (not source art).
 
 ## Debug app icon
 
-`AppIconDebug.icon` is the release document plus one frontmost flat badge
+`macOS/Handshake/AppIconDebug.icon` is the release document plus one frontmost flat badge
 group. Its symbol bytes, symbol group, placements, backgrounds, and platform
 settings are identical to release. Removing the badge group produces a
 pixel-identical render in all seven generation 26 renditions (zero changed
@@ -106,3 +121,11 @@ The lettering has good luminance separation in the large clear/tinted
 previews, but individual letters are too small to read comfortably at 32 px.
 Dark tint also reduces contrast. The badge was not enlarged or redrawn;
 owner approval remains part of the icon sign-off issue.
+
+## README lockup
+
+`docs/assets/handshake-readme-lockup.svg` embeds the approved transparent symbol in a 48 pt
+placement, followed by a 12 pt gap and a 30 pt system-sans wordmark at weight 600
+with −0.045 em tracking. It uses charcoal text with ivory text in dark mode.
+The embedded symbol is unchanged; this derived lockup is separate from the
+approved source art recorded in `SHA256SUMS`.

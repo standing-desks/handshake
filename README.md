@@ -1,56 +1,95 @@
-<p align="center">
-  <img src="macOS/Handshake/Handshake/Assets.xcassets/AppIcon.appiconset/twine-128.png" alt="Twine app icon" width="112" height="112">
-</p>
-
-<h1 align="center">Twine</h1>
+<h1 align="center"><img src="docs/assets/handshake-readme-lockup.svg" alt="Handshake" width="236" height="48"></h1>
 
 <p align="center">A native macOS workspace for coordinating coding agents.</p>
 
 <p align="center">
-  <a href="https://github.com/standing-desks/twine/releases/latest"><img src="https://img.shields.io/github/v/release/standing-desks/twine?color=8250df" alt="Latest release"></a>
-  <a href="https://github.com/standing-desks/twine/releases"><img src="https://img.shields.io/github/downloads/standing-desks/twine/total?color=orange" alt="Total downloads across all release assets"></a>
-  <a href="https://github.com/standing-desks/twine/actions/workflows/ci.yml"><img src="https://github.com/standing-desks/twine/actions/workflows/ci.yml/badge.svg?branch=main&amp;event=push" alt="CI status on main"></a>
+  <a href="https://github.com/standing-desks/handshake/releases/latest"><img src="https://img.shields.io/github/v/release/standing-desks/handshake?color=8250df" alt="Latest release"></a>
+  <a href="https://github.com/standing-desks/handshake/releases"><img src="https://img.shields.io/github/downloads/standing-desks/handshake/total?color=orange" alt="Total downloads across all release assets"></a>
+  <a href="https://github.com/standing-desks/handshake/actions/workflows/ci.yml"><img src="https://github.com/standing-desks/handshake/actions/workflows/ci.yml/badge.svg?branch=main&amp;event=push" alt="CI status on main"></a>
   <a href="#install"><img src="https://img.shields.io/badge/macOS-26%2B-0969da" alt="macOS 26 or later"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/standing-desks/twine" alt="MIT license"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/standing-desks/handshake" alt="MIT license"></a>
 </p>
 
 <p align="center">
   <a href="#install">Install</a> ·
   <a href="#quick-start">Quick start</a> ·
-  <a href="https://standing-desks.github.io/twine/documentation/guide/">User guide</a> ·
+  <a href="https://standing-desks.github.io/handshake/documentation/guide/">User guide</a> ·
   <a href="#contributing">Contributing</a>
 </p>
 
-Twine is the terminal-first collaboration layer for AI coding agents.
+Handshake is the terminal-first collaboration layer for AI coding agents.
 Bring agents together through controlled workflows, visual traces, and cross-agent memory.
 
 ## Install
 
-Twine requires **macOS 26 or later** on **Apple Silicon**.
+Handshake requires **macOS 26 or later** on **Apple Silicon**.
 
 Install it with [Homebrew](https://brew.sh):
 
 ```sh
-brew install --cask standing-desks/tap/twine-ade
+brew install --cask standing-desks/tap/handshake
 ```
 
-Then open Twine from Applications.
+Then open Handshake from Applications.
 
 To install manually instead, download the `.dmg` from the
-[latest release](https://github.com/standing-desks/twine/releases/latest), open it,
-and drag **Twine** onto **Applications**.
+[latest release](https://github.com/standing-desks/handshake/releases/latest), open it,
+and drag **Handshake** onto **Applications**.
 
 To update a manual install, see the
-[install notes](https://standing-desks.github.io/twine/documentation/guide/#install).
+[install notes](https://standing-desks.github.io/handshake/documentation/guide/#install).
 
 Agent workflows also need at least one [supported harness](#supported-harnesses)
 installed and signed in. Terminal workflows need nothing else.
+
+## Upgrade from Twine
+
+Quit Twine and Handshake before upgrading. New installs use
+`brew install --cask standing-desks/tap/handshake`. For an existing Homebrew
+install, run `brew update`, then `brew upgrade --cask handshake` after the tap's
+rename migration is available. Historical `twine-app` and `twine-ade` casks map
+to `handshake`. Existing `twineproject/tap` users can stay on that tap; they do
+not need to switch taps or install a second copy.
+
+For a manual install, copy **Handshake.app** from the new DMG into
+**Applications**. Replace an existing Handshake copy, or move the old
+**Twine.app** to Trash once Handshake is in place. Keep only one app to launch.
+Normal app removal or `brew uninstall --cask handshake` preserves saved data;
+do not use `--zap` if you want to keep it.
+
+On the first production launch, Handshake adopts
+`~/Library/Application Support/Twine/` into the new sibling `Handshake/` root,
+including sessions, transcripts, trace details, attachments, and workflow
+layouts. It also adopts the config tree from `$XDG_CONFIG_HOME/twine/` to
+`$XDG_CONFIG_HOME/handshake/` (default `~/.config/`). Imports, custom workflows,
+and themes move together. Existing Handshake roots take precedence and are
+never overwritten. Preference domains stay the same, preserving launch
+choices, models, and zoom.
+
+The legacy data and config roots are retained as recovery sources. Quit both
+apps before recovery. Move the new Handshake root aside rather than deleting
+it, then use the old app with its retained Twine data, or relaunch Handshake to
+retry migration. For copied roots, changes made after migration are not copied
+back into Twine. Symlink-managed config roots and linked files keep sharing
+their original targets, so edits are visible through both names; keep a separate
+backup of those target files if you need to roll back their contents.
+If migration reports that the old data is in use, quit the old app and retry.
+
+Explicit `HANDSHAKE_DATA_DIRECTORY` and `HANDSHAKE_CONFIG_PATH` overrides skip
+production/default-root migration. `HANDSHAKE_PREFERENCES_SUITE` and
+`HANDSHAKE_HARNESS_PATH` select the preference store and harness search path.
+Each of these inputs takes precedence over its corresponding `TWINE_*`
+fallback. The config-path override must be absolute; an invalid present new
+value does not fall back to the old name. Existing `twine_light`/`twine_dark`
+theme selections, imports, and customized files remain supported, including
+the existing Silica theme compatibility. Debug builds, previews, and tests use
+isolated data and never select production data migration.
 
 ## Quick start
 
 This takes about a minute and needs no agent harness.
 
-1. Open Twine and choose **Open Folder…** (⌘O). Pick any project folder.
+1. Open Handshake and choose **Open Folder…** (⌘O). Pick any project folder.
 2. Create a session. A session groups the work for one task.
 3. Add a workflow in a new tab and choose **Terminal**.
 4. Run a command in the terminal, for example `git status`.
@@ -78,25 +117,25 @@ session is a **workflow**. Select a built-in workflow or create your own agent g
 | Custom | Your own graph of agents and event links. Run agents in parallel, stream pieces, review results, or compare times. |
 
 Click **+**, then **Create your own**, to open the native graph editor in the new
-tab. Saved workflows are TOML files in `$XDG_CONFIG_HOME/twine/workflows`
-(default `~/.config/twine/workflows`). Copy these files to share workflows or keep them
+tab. Saved workflows are TOML files in `$XDG_CONFIG_HOME/handshake/workflows`
+(default `~/.config/handshake/workflows`). Copy these files to share workflows or keep them
 in version control. Agent instructions use native harness instruction channels;
 setup does not start agent work.
 
 Common tasks, each covered in the
-[user guide](https://standing-desks.github.io/twine/documentation/guide/):
+[user guide](https://standing-desks.github.io/handshake/documentation/guide/):
 
 - **Advance a workflow yourself.** Use **Mark done…** to submit a completion,
   review decision, or assignment on an agent's behalf. See
-  [agent workflows](https://standing-desks.github.io/twine/documentation/guide/#agent-workflows).
+  [agent workflows](https://standing-desks.github.io/handshake/documentation/guide/#agent-workflows).
 - **Split a terminal** into up to four panes, and paste images or drop files
   into a pane as paths. See
-  [terminal panes](https://standing-desks.github.io/twine/documentation/guide/#terminal-panes).
+  [terminal panes](https://standing-desks.github.io/handshake/documentation/guide/#terminal-panes).
 - **Browse and edit files** in the open folder with syntax highlighting. See
-  [files](https://standing-desks.github.io/twine/documentation/guide/#files).
-- **Change the terminal font** in **Twine → Settings…** (⌘,), which edits
-  `~/.config/twine/config.toml` and applies changes on save. See
-  [configuration](https://standing-desks.github.io/twine/documentation/guide/#configuration).
+  [files](https://standing-desks.github.io/handshake/documentation/guide/#files).
+- **Change the terminal font** in **Handshake → Settings…** (⌘,), which edits
+  `~/.config/handshake/config.toml` and applies changes on save. See
+  [configuration](https://standing-desks.github.io/handshake/documentation/guide/#configuration).
 
   ```toml
   [terminal]
@@ -110,7 +149,7 @@ Common tasks, each covered in the
   missing timings or request bodies remain marked as unrecorded. **Show full
   details** opens complete saved inputs and results.
   The storage control shows usage, pins a step, and clears completed, unpinned
-  details. Twine keeps compact metadata in SQLite and deduplicates large details
+  details. Handshake keeps compact metadata in SQLite and deduplicates large details
   in adjacent files. Active steps and pinned details can exceed the cache budget.
   Native harness files remain untouched.
 
@@ -127,7 +166,7 @@ Common tasks, each covered in the
 
 ### Supported harnesses
 
-A **harness** is the external agent CLI that fills a role. Twine finds each one
+A **harness** is the external agent CLI that fills a role. Handshake finds each one
 by its command on your shell's `PATH`:
 
 | Harness | Command | Prompt and tool detail in Traces |
@@ -141,23 +180,23 @@ by its command on your shell's `PATH`:
 
 Install and authenticate harnesses separately. Model choices come from each
 harness's own CLI, and provider access and usage charges follow your harness
-configuration. Twine never edits your harness config files.
+configuration. Handshake never edits your harness config files.
 
 ## Project status
 
-Twine is in **early development**. It is usable day to day, but features,
+Handshake is in **early development**. It is usable day to day, but features,
 integrations, and saved formats can change between releases, and there are no
 stability guarantees yet. The [changelog](CHANGELOG.md) lists what changed in
 each release.
 
 Known limitations:
 
-- Agents run directly in the open folder. Twine does not create worktrees or
+- Agents run directly in the open folder. Handshake does not create worktrees or
   sandboxes, and file ownership between parallel workers is advisory.
-- Twine is an interactive desktop app. It does not run workflows unattended or
+- Handshake is an interactive desktop app. It does not run workflows unattended or
   headless.
 - Harness support depends on CLI versions, and a harness update can break an
-  integration until Twine catches up.
+  integration until Handshake catches up.
 - Tracing is best effort. Recorded terminal output is capped at 64 MiB per
   terminal and 512 MiB overall, so older output can expire.
 - Resuming a conversation depends on the harness recording a session handle.
@@ -167,8 +206,8 @@ Known limitations:
 [Contributing Guide](CONTRIBUTING.md) · [Developer Certificate of Origin](DCO)
 
 Bug reports and feedback on real workflows are welcome in
-[GitHub Issues](https://github.com/standing-desks/twine/issues). Include your macOS,
-Twine, and harness versions, what you expected, and what happened. For larger
+[GitHub Issues](https://github.com/standing-desks/handshake/issues). Include your macOS,
+Handshake, and harness versions, what you expected, and what happened. For larger
 changes, open an issue to discuss the idea before you start. Changes reach
 `main` through pull requests.
 
@@ -182,14 +221,15 @@ You will need:
 - **Stable Rust**, installed through [rustup](https://rustup.rs).
 
 ```sh
-git clone https://github.com/standing-desks/twine.git
-cd twine
+git clone https://github.com/standing-desks/handshake.git handshake-checkout
+cd handshake-checkout
 make debug
 open out/debug/Build/Products/Debug/Handshake.app
 ```
 
+Run these commands from the checkout root, regardless of its directory name.
 Debug builds keep their data in `out/runtime/debug/`, separate from an installed
-copy of Twine.
+copy of Handshake.
 
 ### Check your changes
 
@@ -208,9 +248,9 @@ make          # list every target
 | `macOS/` | The SwiftUI and AppKit front end. |
 | `handshake-core/` | The Rust application library that owns behavior and saved state. |
 | `handshake-bridge/` | The C ABI adapter between the two. |
-| `docs/` | Source for the [website and guides](https://standing-desks.github.io/twine/). |
+| `docs/` | Source for the [website and guides](https://standing-desks.github.io/handshake/). |
 
-The [development guide](https://standing-desks.github.io/twine/documentation/development/)
+The [development guide](https://standing-desks.github.io/handshake/documentation/development/)
 covers setup, harness integration, and releases.
 [CONTEXT.md](CONTEXT.md) defines the terms used in the code and UI, and
 [AGENTS.md](AGENTS.md) holds the repository conventions.
@@ -218,15 +258,15 @@ covers setup, harness integration, and releases.
 ## Security
 
 Please report vulnerabilities privately through
-[GitHub security advisories](https://github.com/standing-desks/twine/security/advisories/new)
+[GitHub security advisories](https://github.com/standing-desks/handshake/security/advisories/new)
 instead of a public issue.
 
 ## Acknowledgments
 
 Thank you to [AI Tinkerers Seattle](https://seattle.aitinkerers.org/) for the
-opportunity to demo and premiere Twine. Twine's terminal emulation uses
+opportunity to demo and premiere Twine. Handshake's terminal emulation uses
 [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm).
 
 ## License
 
-Twine is available under the [MIT License](LICENSE).
+Handshake is available under the [MIT License](LICENSE).

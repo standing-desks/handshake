@@ -1,5 +1,5 @@
 //! Content-addressed full details. Timeline snapshots carry small previews; readers page the
-//! original UTF-8 without truncating what was recorded. Files are private to Twine.
+//! original UTF-8 without truncating what was recorded. Files are private to Handshake.
 
 use std::fmt::Write as _;
 use std::io::{Read, Seek, SeekFrom, Write};

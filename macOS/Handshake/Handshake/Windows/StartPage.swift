@@ -23,13 +23,13 @@ struct StartPage: View {
 
     private var content: some View {
         VStack(spacing: 0) {
-            Image(.twineLogo)
+            Image(.handshakeLogo)
                 .resizable()
                 .scaledToFit()
                 .frame(width: 62, height: 62)
                 .accessibilityHidden(true)
                 .padding(.bottom, 27)
-            Text("Welcome to Twine")
+            Text("Welcome to Handshake")
                 .startPageTitleStyle()
                 .padding(.bottom, 9)
             subtitle
@@ -58,9 +58,9 @@ struct StartPage: View {
             Label {
                 switch folder.reason {
                 case .missing:
-                    Text("Twine couldn't open “\(name)” because it can't be found.")
+                    Text("Handshake couldn't open “\(name)” because it can't be found.")
                 case .inaccessible:
-                    Text("Twine couldn't open “\(name)” because it can't be accessed.")
+                    Text("Handshake couldn't open “\(name)” because it can't be accessed.")
                 }
             } icon: {
                 Image(systemName: "exclamationmark.triangle.fill")
