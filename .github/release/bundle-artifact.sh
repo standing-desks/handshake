@@ -55,9 +55,9 @@ case "${1:-}" in
     bundle)
         build="${2:?build directory required}"
         bundle="${3:?bundle directory required}"
-        framework=out/frameworks/release/TwineCore.xcframework/macos-arm64
+        framework=out/frameworks/release/HandshakeCore.xcframework/macos-arm64
         arm64_only "$build/Twine.app/Contents/MacOS/Twine"
-        arm64_only "$framework/libtwine_bridge.a"
+        arm64_only "$framework/libhandshake_bridge.a"
         mkdir -p "$bundle" out/packaging
         staging="$(mktemp -d "$PWD/out/packaging/bundle-stage.XXXXXX")"
         trap 'rm -rf "$staging"' EXIT
@@ -67,8 +67,8 @@ case "${1:-}" in
         /usr/libexec/PlistBuddy -c "Set :TwineBuildVersion $build_version" "$staging/Twine.app/Contents/Info.plist" 2>/dev/null || \
             /usr/libexec/PlistBuddy -c "Add :TwineBuildVersion string $build_version" "$staging/Twine.app/Contents/Info.plist"
         ditto -c -k --sequesterRsrc --keepParent "$staging/Twine.app" "$bundle/Twine.app.zip"
-        cp "$framework/libtwine_bridge.a" "$bundle/libtwinecore.a"
-        cp "$framework/Headers/twine_bridge.h" "$bundle/twine_bridge.h"
+        cp "$framework/libhandshake_bridge.a" "$bundle/libtwinecore.a"
+        cp "$framework/Headers/handshake_bridge.h" "$bundle/handshake_bridge.h"
         git rev-parse HEAD > "$bundle/commit.txt"
         ;;
     package)
@@ -105,9 +105,9 @@ case "${1:-}" in
         library="$staging/libtwinecore-$version-macos-arm64"
         mkdir -p "$library/include"
         cp "$bundle/libtwinecore.a" "$library/libtwinecore.a"
-        cp "$bundle/twine_bridge.h" "$library/include/twine_bridge.h"
+        cp "$bundle/handshake_bridge.h" "$library/include/handshake_bridge.h"
         arm64_only "$library/libtwinecore.a"
-        test -s "$library/include/twine_bridge.h"
+        test -s "$library/include/handshake_bridge.h"
         sed -e "s/@VERSION@/$version/g" -e "s/@RELEASE_TAG@/$release_tag/g" \
             .github/release/library-README.txt > "$library/README.txt"
         cp LICENSE "$library/LICENSE"

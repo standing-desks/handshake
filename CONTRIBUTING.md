@@ -58,12 +58,13 @@ choices are outside the adopted identity scope.
 
 ## Naming and Compatibility
 
-Use **Handshake** for the product. The target component names are
+Use **Handshake** for the product. The component names are
 `handshake-core` (Rust application library), `handshake-bridge` (C ABI adapter),
 `HandshakeCore` (Swift core package), and `HandshakeSyntax` (Swift syntax package).
 Use the domain vocabulary in [CONTEXT.md](CONTEXT.md) and the architecture rules
-in [AGENTS.md](AGENTS.md). Existing filesystem paths remain valid until the
-corresponding directories are renamed.
+in [AGENTS.md](AGENTS.md). The macOS app lives in `macOS/Handshake/`; the Swift
+packages live in `macOS/HandshakeCorePackage/` and
+`macOS/HandshakeSyntaxPackage/`.
 
 For this release, preserve the existing macOS bundle IDs, including
 `com.twineproject.Twine` and `com.twineproject.Twine.development`, and the

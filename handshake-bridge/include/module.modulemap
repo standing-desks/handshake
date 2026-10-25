@@ -1,0 +1,4 @@
+module HandshakeCore {
+    header "handshake_bridge.h"
+    export *
+}

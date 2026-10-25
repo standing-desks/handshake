@@ -1,5 +1,5 @@
 [workspace]
-members = ["twine-core", "twine-bridge"]
+members = ["handshake-core", "handshake-bridge"]
 resolver = "3"
 
 [profile.release]

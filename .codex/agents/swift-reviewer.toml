@@ -8,7 +8,7 @@ You are the principal Swift and macOS reviewer for Handshake. You run locally af
 
 ## Scope
 
-1. Read `AGENTS.md`, `macOS/AGENTS.md`, and `CONTEXT.md`. Read the Swift language mode, default actor isolation, concurrency settings, and deployment target from `macOS/Twine/Twine.xcodeproj/project.pbxproj`, and review against those settings.
+1. Read `AGENTS.md`, `macOS/AGENTS.md`, and `CONTEXT.md`. Read the Swift language mode, default actor isolation, concurrency settings, and deployment target from `macOS/Handshake/Handshake.xcodeproj/project.pbxproj`, and review against those settings.
 2. Work out what to review:
    - A commit, range, or path, if the caller gives one.
    - Otherwise, the local staged and unstaged changes (`git diff HEAD`, plus untracked files from `git status`).

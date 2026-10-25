@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="macOS/Twine/Twine/Assets.xcassets/AppIcon.appiconset/twine-128.png" alt="Twine app icon" width="112" height="112">
+  <img src="macOS/Handshake/Handshake/Assets.xcassets/AppIcon.appiconset/twine-128.png" alt="Twine app icon" width="112" height="112">
 </p>
 
 <h1 align="center">Twine</h1>
@@ -185,7 +185,7 @@ You will need:
 git clone https://github.com/standing-desks/twine.git
 cd twine
 make debug
-open out/debug/Build/Products/Debug/Twine.app
+open out/debug/Build/Products/Debug/Handshake.app
 ```
 
 Debug builds keep their data in `out/runtime/debug/`, separate from an installed
@@ -206,8 +206,8 @@ make          # list every target
 | Path | Contents |
 | --- | --- |
 | `macOS/` | The SwiftUI and AppKit front end. |
-| `twine-core/` | The Rust application library that owns behavior and saved state. |
-| `twine-bridge/` | The C ABI adapter between the two. |
+| `handshake-core/` | The Rust application library that owns behavior and saved state. |
+| `handshake-bridge/` | The C ABI adapter between the two. |
 | `docs/` | Source for the [website and guides](https://standing-desks.github.io/twine/). |
 
 The [development guide](https://standing-desks.github.io/twine/documentation/development/)

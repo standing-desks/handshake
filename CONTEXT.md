@@ -2,7 +2,7 @@
 
 Handshake organizes coding work in a folder into sessions, each made of workflows where agents collaborate.
 
-The target component names are `handshake-core` and `handshake-bridge` for the Rust library and C ABI adapter, and `HandshakeCore` and `HandshakeSyntax` for the Swift core and syntax packages. Filesystem paths retain their current names until the directories are renamed.
+The component names are `handshake-core` and `handshake-bridge` for the Rust library and C ABI adapter, and `HandshakeCore` and `HandshakeSyntax` for the Swift core and syntax packages.
 
 ## Language
 
