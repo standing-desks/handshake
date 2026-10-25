@@ -916,7 +916,7 @@ exec '{}' "$@"
         assert!(
             !std::fs::read_to_string(extension)
                 .unwrap()
-                .contains("__TWINE_SOCKET__")
+                .contains("__HANDSHAKE_SOCKET__")
         );
         extension.to_owned()
     }
@@ -1400,9 +1400,9 @@ exec '{}' "$@"
     }
 
     #[test]
-    #[ignore = "requires authenticated Pi with DeepSeek; set TWINE_REAL_PI to its absolute path"]
+    #[ignore = "requires authenticated Pi with DeepSeek; set HANDSHAKE_REAL_PI to its absolute path"]
     fn real_pi_deepseek_models_record_tool_steps() {
-        let pi = std::env::var("TWINE_REAL_PI").expect("set TWINE_REAL_PI");
+        let pi = std::env::var("HANDSHAKE_REAL_PI").expect("set HANDSHAKE_REAL_PI");
         for model in ["deepseek-flash", "deepseek-v4-pro"] {
             let folder = tempfile::tempdir().unwrap();
             let bin = tempfile::tempdir().unwrap();
@@ -1422,7 +1422,7 @@ exec '{}' "$@"
                 effort: None,
                 yolo: false,
                 workflow_id: id, harness: HarnessId::Pi,
-                prompt: "Trace smoke test: use bash to run `printf TWINE45_TRACE_SMOKE` exactly once, then reply Done. Do not read or write files or run other commands.".into(), size: SIZE,
+                prompt: "Trace smoke test: use bash to run `printf HANDSHAKE45_TRACE_SMOKE` exactly once, then reply Done. Do not read or write files or run other commands.".into(), size: SIZE,
             });
             let terminal = workflow(&app, id).terminal_id;
             let deadline = Instant::now() + Duration::from_secs(120);
@@ -1444,13 +1444,13 @@ exec '{}' "$@"
                     assert!(
                         events.iter().any(|event| event
                             .message
-                            .starts_with("Run printf TWINE45_TRACE_SMOKE")),
+                            .starts_with("Run printf HANDSHAKE45_TRACE_SMOKE")),
                         "missing {model} tool start: {events:?}"
                     );
                     assert!(
                         events.iter().any(|event| event
                             .message
-                            .starts_with("Finished: Run printf TWINE45_TRACE_SMOKE")),
+                            .starts_with("Finished: Run printf HANDSHAKE45_TRACE_SMOKE")),
                         "missing {model} tool result: {events:?}"
                     );
                     assert!(events.iter().all(|event| {
@@ -2105,9 +2105,9 @@ exec '{}' "$@"
     }
 
     #[test]
-    #[ignore = "requires authenticated Codex; set TWINE_REAL_CODEX to its absolute path"]
+    #[ignore = "requires authenticated Codex; set HANDSHAKE_REAL_CODEX to its absolute path"]
     fn real_codex_records_tool_steps() {
-        let codex = std::env::var("TWINE_REAL_CODEX").expect("set TWINE_REAL_CODEX");
+        let codex = std::env::var("HANDSHAKE_REAL_CODEX").expect("set HANDSHAKE_REAL_CODEX");
         let folder = tempfile::tempdir().unwrap();
         let bin = tempfile::tempdir().unwrap();
         let mut app = Application::with_event_capacity(4096).unwrap();
@@ -2127,7 +2127,7 @@ exec '{}' "$@"
             effort: None,
             yolo: false,
             workflow_id: id, harness: HarnessId::Codex,
-            prompt: "Trace smoke test: run the shell command `printf TWINE44_TRACE_SMOKE` exactly once, then reply Done. Do not read or write files or run other tools.".into(), size: SIZE,
+            prompt: "Trace smoke test: run the shell command `printf HANDSHAKE44_TRACE_SMOKE` exactly once, then reply Done. Do not read or write files or run other tools.".into(), size: SIZE,
         });
         let terminal = workflow(&app, id).terminal_id;
         let deadline = Instant::now() + Duration::from_secs(120);
@@ -2147,15 +2147,15 @@ exec '{}' "$@"
             {
                 let events = app.trace_events(span.span_id, None, 30).unwrap().events;
                 assert!(
-                    events
-                        .iter()
-                        .any(|event| event.message.starts_with("Run printf TWINE44_TRACE_SMOKE")),
+                    events.iter().any(|event| event
+                        .message
+                        .starts_with("Run printf HANDSHAKE44_TRACE_SMOKE")),
                     "missing tool start: {events:?}"
                 );
                 assert!(
                     events.iter().any(|event| event
                         .message
-                        .starts_with("Finished: Run printf TWINE44_TRACE_SMOKE")),
+                        .starts_with("Finished: Run printf HANDSHAKE44_TRACE_SMOKE")),
                     "missing tool result: {events:?}"
                 );
                 assert!(

@@ -71,8 +71,10 @@ For this release, preserve the existing macOS bundle IDs, including
 `com.twineproject.Twine` log subsystem. These Twine names are intentional
 compatibility identifiers that maintain application identity and log continuity.
 
-Keep existing config and theme inputs readable, including the config at
-`~/.config/twine/config.toml`. For supported environment-variable inputs, read
+Use `~/.config/handshake/config.toml` by default, adopting the existing
+`~/.config/twine/` tree when the Handshake root is not established. Keep legacy
+config and theme inputs readable and retain the source. For supported
+environment-variable inputs, read
 `HANDSHAKE_*` first and use the corresponding `TWINE_*` input as a fallback.
 Preserve historical releases and user content; do not rewrite either to apply
 the new name.

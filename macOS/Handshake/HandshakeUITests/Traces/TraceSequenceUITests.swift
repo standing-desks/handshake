@@ -71,7 +71,7 @@ extension HandshakeUITests {
     /// Historical core records exercise the real read path without relying on live harness timing.
     @MainActor
     private func seedSequenceHistory(_ app: XCUIApplication) throws {
-        let directory = try XCTUnwrap(app.launchEnvironment["TWINE_DATA_DIRECTORY"])
+        let directory = try XCTUnwrap(app.launchEnvironment["HANDSHAKE_DATA_DIRECTORY"])
         var database: OpaquePointer?
         defer { sqlite3_close(database) }
         XCTAssertEqual(sqlite3_open("\(directory)/twine.db", &database), SQLITE_OK)

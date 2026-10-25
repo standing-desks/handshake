@@ -12,6 +12,8 @@ use toml::de::DeTable;
 mod diagnostics;
 mod editing;
 mod imports;
+mod migration;
+pub use migration::ConfigMigrationError;
 mod themes;
 
 pub use diagnostics::{ConfigDiagnostic, ConfigProblem};
@@ -189,16 +191,33 @@ impl Config {
     #[must_use]
     pub fn user_path() -> Option<PathBuf> {
         user_config_path(
+            std::env::var_os("HANDSHAKE_CONFIG_PATH").as_deref(),
             std::env::var_os("TWINE_CONFIG_PATH").as_deref(),
             std::env::var_os("XDG_CONFIG_HOME").as_deref(),
             std::env::home_dir().as_deref(),
         )
     }
 
-    /// Loads `TWINE_CONFIG_PATH`, otherwise `$XDG_CONFIG_HOME/twine/config.toml` or
-    /// `~/.config/twine/config.toml`. The override must be an absolute file path.
+    /// Adopts the legacy config tree only for the default root, before runtime/editor creation.
+    pub(crate) fn prepare_user() -> Result<(), ConfigMigrationError> {
+        prepare_user_config_path(
+            std::env::var_os("HANDSHAKE_CONFIG_PATH").as_deref(),
+            std::env::var_os("TWINE_CONFIG_PATH").as_deref(),
+            std::env::var_os("XDG_CONFIG_HOME").as_deref(),
+            std::env::home_dir().as_deref(),
+        )
+        .map(|_| ())
+    }
+
+    /// Loads `HANDSHAKE_CONFIG_PATH`, then `TWINE_CONFIG_PATH`, otherwise the default
+    /// `$XDG_CONFIG_HOME/handshake/config.toml` or `~/.config/handshake/config.toml`.
+    /// Explicit overrides must be absolute file paths and never trigger default-root migration.
     #[must_use]
     pub fn load_user() -> Self {
+        if let Err(error) = Self::prepare_user() {
+            tracing::error!(%error, "configuration migration failed");
+            return Self::default();
+        }
         let Some(path) = Self::user_path() else {
             tracing::error!("cannot find user config directory; using defaults");
             return Self::default();
@@ -272,22 +291,38 @@ impl Config {
 }
 
 fn user_config_path(
+    handshake: Option<&OsStr>,
     twine: Option<&OsStr>,
     xdg: Option<&OsStr>,
     home: Option<&Path>,
 ) -> Option<PathBuf> {
-    if let Some(path) = twine {
+    if let Some(path) = handshake.or(twine) {
         return Some(Path::new(path))
             .filter(|path| path.is_absolute())
             .map(Path::to_owned);
     }
     xdg.map(Path::new)
         .filter(|path| path.is_absolute())
-        .map(|path| path.join("twine/config.toml"))
+        .map(|path| path.join("handshake/config.toml"))
         .or_else(|| {
             home.filter(|path| path.is_absolute())
-                .map(|home| home.join(".config/twine/config.toml"))
+                .map(|home| home.join(".config/handshake/config.toml"))
         })
+}
+
+fn prepare_user_config_path(
+    handshake: Option<&OsStr>,
+    twine: Option<&OsStr>,
+    xdg: Option<&OsStr>,
+    home: Option<&Path>,
+) -> Result<Option<PathBuf>, ConfigMigrationError> {
+    let path = user_config_path(handshake, twine, xdg, home);
+    if handshake.or(twine).is_none()
+        && let Some(destination) = path.as_deref().and_then(Path::parent)
+    {
+        migration::adopt(&destination.with_file_name("twine"), destination)?;
+    }
+    Ok(path)
 }
 
 fn file_diagnostic(path: &Path, error: &impl std::fmt::Display) -> ConfigDiagnostic {
@@ -374,8 +409,8 @@ fn default_source() -> Result<String, ConfigFileError> {
         .expect("terminal is a table")
         .retain(|key, _| matches!(key, "font_family" | "font_size"));
     Ok(format!(
-        "# Twine configuration. Settings saved in Twine apply immediately.\n\
-         # More options: https://standing-desks.github.io/twine/documentation/guide/#configuration\n\n{}",
+        "# Handshake configuration. Settings saved in Handshake apply immediately.\n\
+         # More options: https://standing-desks.github.io/handshake/documentation/guide/#configuration\n\n{}",
         toml::to_string_pretty(&defaults)?
     ))
 }
@@ -430,20 +465,68 @@ mod tests {
     fn xdg_config_path_uses_absolute_xdg_or_home_fallback() {
         let home = Some(Path::new("/home/user"));
         assert_eq!(
-            user_config_path(None, Some(OsStr::new("/xdg")), home),
-            Some(PathBuf::from("/xdg/twine/config.toml"))
+            user_config_path(None, None, Some(OsStr::new("/xdg")), home),
+            Some(PathBuf::from("/xdg/handshake/config.toml"))
         );
         for xdg in [None, Some(OsStr::new("")), Some(OsStr::new("relative"))] {
             assert_eq!(
-                user_config_path(None, xdg, home),
-                Some(PathBuf::from("/home/user/.config/twine/config.toml"))
+                user_config_path(None, None, xdg, home),
+                Some(PathBuf::from("/home/user/.config/handshake/config.toml"))
             );
         }
         assert_eq!(
-            user_config_path(None, Some(OsStr::new("/xdg")), None),
-            Some(PathBuf::from("/xdg/twine/config.toml"))
+            user_config_path(None, None, Some(OsStr::new("/xdg")), None),
+            Some(PathBuf::from("/xdg/handshake/config.toml"))
         );
-        assert_eq!(user_config_path(None, None, None), None);
+        assert_eq!(user_config_path(None, None, None, None), None);
+    }
+
+    #[test]
+    fn explicit_overrides_never_adopt_default_config_even_when_the_new_override_is_invalid() {
+        let root = tempfile::tempdir().unwrap();
+        let legacy = root.path().join("twine");
+        fs::create_dir(&legacy).unwrap();
+        fs::write(legacy.join("config.toml"), "original").unwrap();
+        let custom = root.path().join("custom/config.toml");
+        let xdg = Some(root.path().as_os_str());
+        assert_eq!(
+            prepare_user_config_path(Some(custom.as_os_str()), None, xdg, None).unwrap(),
+            Some(custom.clone())
+        );
+        assert_eq!(
+            prepare_user_config_path(None, Some(custom.as_os_str()), xdg, None).unwrap(),
+            Some(custom.clone())
+        );
+        assert_eq!(
+            prepare_user_config_path(Some(OsStr::new("")), Some(custom.as_os_str()), xdg, None)
+                .unwrap(),
+            None
+        );
+        assert!(!root.path().join("handshake").exists());
+        assert!(!custom.exists());
+        assert_eq!(
+            fs::read_to_string(legacy.join("config.toml")).unwrap(),
+            "original"
+        );
+    }
+
+    #[test]
+    fn handshake_override_wins_even_when_invalid_and_legacy_remains_a_fallback() {
+        let old = Some(OsStr::new("/legacy/config.toml"));
+        assert_eq!(
+            user_config_path(Some(OsStr::new("/new/config.toml")), old, None, None),
+            Some(PathBuf::from("/new/config.toml"))
+        );
+        assert_eq!(
+            user_config_path(None, old, None, None),
+            Some(PathBuf::from("/legacy/config.toml"))
+        );
+        for new in ["", "relative/config.toml"] {
+            assert_eq!(
+                user_config_path(Some(OsStr::new(new)), old, None, None),
+                None
+            );
+        }
     }
 
     #[test]
@@ -451,11 +534,16 @@ mod tests {
         let xdg = Some(OsStr::new("/user/config"));
         let home = Some(Path::new("/home/user"));
         assert_eq!(
-            user_config_path(Some(OsStr::new("/checkout/out/config.toml")), xdg, home),
+            user_config_path(
+                None,
+                Some(OsStr::new("/checkout/out/config.toml")),
+                xdg,
+                home
+            ),
             Some(PathBuf::from("/checkout/out/config.toml"))
         );
         for twine in [Some(OsStr::new("")), Some(OsStr::new("relative"))] {
-            assert_eq!(user_config_path(twine, xdg, home), None);
+            assert_eq!(user_config_path(None, twine, xdg, home), None);
         }
     }
 
@@ -773,13 +861,11 @@ mod tests {
         assert!(source.contains("font_family = \"\""));
         assert!(source.contains("font_size = 13.0"));
         assert!(source.contains("[theme]"));
-        assert!(source.contains("light = \"twine_light\""));
-        assert!(source.contains("dark = \"twine_dark\""));
-        assert!(
-            source.contains(
-                "https://standing-desks.github.io/twine/documentation/guide/#configuration"
-            )
-        );
+        assert!(source.contains("light = \"handshake_light\""));
+        assert!(source.contains("dark = \"handshake_dark\""));
+        assert!(source.contains(
+            "https://standing-desks.github.io/handshake/documentation/guide/#configuration"
+        ));
         assert_eq!(
             source.lines().filter(|line| line.starts_with('#')).count(),
             2

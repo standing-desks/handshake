@@ -164,9 +164,10 @@ extension HandshakeUITests {
             at: bin.appending(path: "pi"),
             withDestinationURL: URL(filePath: "/usr/bin/true"))
         let app = try makeApp(lastOpenFolder: folder)
-        app.launchEnvironment["TWINE_TEST_PREFERENCES_SUITE"] = "com.twineproject.Twine.tests.TwineRunUITests-\(UUID())"
-        app.launchEnvironment["TWINE_TEST_APPEARANCE"] = appearance
-        app.launchEnvironment["TWINE_HARNESS_PATH"] = "\(folder.path)/bin:/bin:/usr/bin"
+        app.launchEnvironment["HANDSHAKE_TEST_PREFERENCES_SUITE"] =
+            "com.twineproject.Twine.tests.TwineRunUITests-\(UUID())"
+        app.launchEnvironment["HANDSHAKE_TEST_APPEARANCE"] = appearance
+        app.launchEnvironment["HANDSHAKE_HARNESS_PATH"] = "\(folder.path)/bin:/bin:/usr/bin"
         app.launch()
         func item(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))

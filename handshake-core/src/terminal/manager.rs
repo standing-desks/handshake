@@ -141,11 +141,11 @@ impl TerminalManager {
             let mut command = command;
             if let Some(home) = &self.test_shell_home {
                 if integrate && shell.file_name().is_some_and(|name| name == "bash") {
-                    command.env("TWINE_USER_HOME", home);
+                    command.env("HANDSHAKE_USER_HOME", home);
                 } else {
                     command.env("HOME", home);
                 }
-                command.env("TWINE_USER_ZDOTDIR", home);
+                command.env("HANDSHAKE_USER_ZDOTDIR", home);
                 command.env("XDG_CONFIG_HOME", home.join(".config"));
                 command.env("HISTFILE", home.join(".history"));
             }
@@ -688,8 +688,8 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let pid_file = directory.path().join("shell.pid");
         let mut command = CommandBuilder::new("/bin/sh");
-        command.args(["-c", "echo $$ > \"$TWINE_TEST_PID\"; read line"]);
-        command.env("TWINE_TEST_PID", &pid_file);
+        command.args(["-c", "echo $$ > \"$HANDSHAKE_TEST_PID\"; read line"]);
+        command.env("HANDSHAKE_TEST_PID", &pid_file);
         let terminal_id = manager
             .start_test_command(command, test_terminal_size(), None, Arc::new(|_, _, _| {}))
             .unwrap();
@@ -1060,7 +1060,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn close_cancels_reader_when_detached_descendant_keeps_slave_open() {
-        if let Some(directory) = std::env::var_os("TWINE_TEST_DETACHED_PTY_DIRECTORY") {
+        if let Some(directory) = std::env::var_os("HANDSHAKE_TEST_DETACHED_PTY_DIRECTORY") {
             run_detached_pty_fixture(Path::new(&directory));
             return;
         }
@@ -1076,8 +1076,8 @@ mod tests {
         // Isolate reader cancellation from the EOF caused by a controlling session's hangup.
         command.set_controlling_tty(false);
         command.args(DETACHED_PTY_FIXTURE_ARGS);
-        command.env("TWINE_TEST_DETACHED_PTY_DIRECTORY", directory.path());
-        command.env("TWINE_TEST_DETACHED_PTY_ROLE", "parent");
+        command.env("HANDSHAKE_TEST_DETACHED_PTY_DIRECTORY", directory.path());
+        command.env("HANDSHAKE_TEST_DETACHED_PTY_ROLE", "parent");
         let terminal_id = manager
             .start_test_command(
                 command,
@@ -1241,12 +1241,12 @@ mod tests {
         let mut quiet_shell = CommandBuilder::new("/bin/sh");
         quiet_shell.args([
             "-c",
-            "trap '' HUP; echo $$ > \"$TWINE_TEST_DIR/shell.pid\"; \
+            "trap '' HUP; echo $$ > \"$HANDSHAKE_TEST_DIR/shell.pid\"; \
              (trap '' HUP; while :; do sleep 1; done) & \
-             echo $! > \"$TWINE_TEST_DIR/descendant.pid\"; \
+             echo $! > \"$HANDSHAKE_TEST_DIR/descendant.pid\"; \
              while :; do sleep 1; done",
         ]);
-        quiet_shell.env("TWINE_TEST_DIR", &directory);
+        quiet_shell.env("HANDSHAKE_TEST_DIR", &directory);
         let quiet_id = manager
             .start_test_command(
                 quiet_shell,
@@ -1259,9 +1259,9 @@ mod tests {
         let mut noisy_shell = CommandBuilder::new("/bin/sh");
         noisy_shell.args([
             "-c",
-            "echo $$ > \"$TWINE_TEST_DIR/noisy.pid\"; exec /usr/bin/yes",
+            "echo $$ > \"$HANDSHAKE_TEST_DIR/noisy.pid\"; exec /usr/bin/yes",
         ]);
-        noisy_shell.env("TWINE_TEST_DIR", &directory);
+        noisy_shell.env("HANDSHAKE_TEST_DIR", &directory);
         let noisy_id = manager
             .start_test_command(
                 noisy_shell,
@@ -1319,11 +1319,11 @@ mod tests {
             shell.args([
                 "-c",
                 &format!(
-                    "trap '' HUP; echo $$ > \"$TWINE_TEST_DIR/{name}.pid\"; \
+                    "trap '' HUP; echo $$ > \"$HANDSHAKE_TEST_DIR/{name}.pid\"; \
                      while :; do sleep 1; done"
                 ),
             ]);
-            shell.env("TWINE_TEST_DIR", &directory);
+            shell.env("HANDSHAKE_TEST_DIR", &directory);
             let terminal_id = manager
                 .start_test_command(shell, test_terminal_size(), None, Arc::new(|_, _, _| {}))
                 .expect("shell should start");
@@ -1382,12 +1382,12 @@ mod tests {
         let mut shell = CommandBuilder::new("/bin/sh");
         shell.args([
             "-c",
-            "trap '' HUP; set -m; echo $$ > \"$TWINE_TEST_DIR/shell.pid\"; \
+            "trap '' HUP; set -m; echo $$ > \"$HANDSHAKE_TEST_DIR/shell.pid\"; \
              (trap '' HUP; while :; do sleep 1; done) & \
-             echo $! > \"$TWINE_TEST_DIR/descendant.pid\"; \
+             echo $! > \"$HANDSHAKE_TEST_DIR/descendant.pid\"; \
              while :; do sleep 1; done",
         ]);
-        shell.env("TWINE_TEST_DIR", &directory);
+        shell.env("HANDSHAKE_TEST_DIR", &directory);
         manager
             .start_test_command(shell, test_terminal_size(), None, Arc::new(|_, _, _| {}))
             .expect("shell should start");
@@ -1427,9 +1427,9 @@ mod tests {
         let mut command = CommandBuilder::new("/bin/sh");
         command.args([
             "-c",
-            "echo $$ > \"$TWINE_TEST_DIR/shell.pid\"; trap '' HUP; while :; do sleep 1; done",
+            "echo $$ > \"$HANDSHAKE_TEST_DIR/shell.pid\"; trap '' HUP; while :; do sleep 1; done",
         ]);
-        command.env("TWINE_TEST_DIR", &directory);
+        command.env("HANDSHAKE_TEST_DIR", &directory);
         let terminal_id = manager
             .start_test_command(command, test_terminal_size(), None, Arc::new(|_, _, _| {}))
             .expect("shell should start");
@@ -1497,7 +1497,7 @@ mod tests {
     #[cfg(unix)]
     fn run_detached_pty_fixture(directory: &Path) {
         let ready_path = directory.join("descendant.pid");
-        match std::env::var("TWINE_TEST_DETACHED_PTY_ROLE")
+        match std::env::var("HANDSHAKE_TEST_DETACHED_PTY_ROLE")
             .unwrap()
             .as_str()
         {
@@ -1508,7 +1508,7 @@ mod tests {
                 )]
                 let child = std::process::Command::new(std::env::current_exe().unwrap())
                     .args(DETACHED_PTY_FIXTURE_ARGS)
-                    .env("TWINE_TEST_DETACHED_PTY_ROLE", "descendant")
+                    .env("HANDSHAKE_TEST_DETACHED_PTY_ROLE", "descendant")
                     .spawn()
                     .expect("Rust descendant should start");
                 assert_eq!(
@@ -1577,7 +1577,7 @@ mod tests {
             .expect("system time should be after the Unix epoch")
             .as_nanos();
         std::env::temp_dir().join(format!(
-            "twine-terminal-test-{}-{nanos}",
+            "handshake-terminal-test-{}-{nanos}",
             std::process::id()
         ))
     }

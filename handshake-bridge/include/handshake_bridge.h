@@ -37,6 +37,14 @@ typedef struct HandshakeTerminalChunk {
     HandshakeBuffer bytes;
 } HandshakeTerminalChunk;
 
+// Explicit production migration. Input paths use the same pointer/length bounds as client_create.
+// Does not open a client. Output JSON is {error:null} or {error:"actionable failure"}; release it
+// with handshake_buffer_release. Keep the startup/error screen visible until success.
+HandshakeStatus handshake_migrate_data(
+    const uint8_t *legacy, size_t legacy_length,
+    const uint8_t *destination, size_t destination_length, HandshakeBuffer *out_result
+);
+
 // User settings access requires no client or open folder. Reads return a FilePreview JSON;
 // saves accept the file-save request and return saved/conflict/failed JSON. Only the configured
 // user config file can be saved. Output ownership follows handshake_buffer_release.

@@ -122,14 +122,14 @@ jobs:
         run: command -v fish >/dev/null || brew install fish
       - name: Run library tests
         env:
-          TWINE_REQUIRE_FISH_TESTS: '1'
+          HANDSHAKE_REQUIRE_FISH_TESTS: '1'
         run: make test-lib
       - name: Install agent test dependencies
         run: command -v node >/dev/null || brew install node
       - name: Test agent extensions
         run: |
-          TWINE_NODE="$(command -v node)"
-          export TWINE_NODE
+          HANDSHAKE_NODE="$(command -v node)"
+          export HANDSHAKE_NODE
           make test-lib LIB_TEST_ARGS='harness::pi::tests::omp_extension -- --include-ignored'
           make test-lib LIB_TEST_ARGS='harness::pi::tests::pi_extension_preserves -- --include-ignored'
           make test-lib LIB_TEST_ARGS='harness::opencode::tests::plugin_records -- --include-ignored'

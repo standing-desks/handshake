@@ -10,6 +10,8 @@ use crate::files::{self, FileError, FilePreview, FileSaveOutcome, FileSaveReques
 
 #[derive(Debug, Error)]
 pub enum ConfigEditError {
+    #[error(transparent)]
+    Migration(#[from] super::ConfigMigrationError),
     #[error("Cannot find the user config directory.")]
     MissingDirectory,
     #[error("Could not open the config file: {0}")]
@@ -27,6 +29,7 @@ pub enum ConfigEditError {
 /// # Errors
 /// Returns an error if the user config directory cannot be found or the starter file cannot be created.
 pub fn read_user_file() -> Result<FilePreview, ConfigEditError> {
+    Config::prepare_user()?;
     read_file(&Config::user_path().ok_or(ConfigEditError::MissingDirectory)?)
 }
 
@@ -35,6 +38,7 @@ pub fn read_user_file() -> Result<FilePreview, ConfigEditError> {
 /// # Errors
 /// Returns an error for a different path, an unavailable config directory, or a failed file save.
 pub fn save_user_file(request: &FileSaveRequest) -> Result<FileSaveOutcome, ConfigEditError> {
+    Config::prepare_user()?;
     save_file(
         &Config::user_path().ok_or(ConfigEditError::MissingDirectory)?,
         request,
@@ -196,11 +200,9 @@ mod tests {
             panic!("expected text")
         };
         assert!(source.contains("[theme]"));
-        assert!(
-            source.contains(
-                "https://standing-desks.github.io/twine/documentation/guide/#configuration"
-            )
-        );
+        assert!(source.contains(
+            "https://standing-desks.github.io/handshake/documentation/guide/#configuration"
+        ));
         assert!(!source.contains("[terminal.colors]"));
         fs::write(&path, "# Keep my comments\ninvalid = @\n").unwrap();
         assert_eq!(

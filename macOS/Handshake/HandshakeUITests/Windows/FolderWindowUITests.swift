@@ -10,7 +10,7 @@ extension HandshakeUITests {
     private func checkFullScreenSidebar(appearance: String) throws {
         let folder = try makeTestFolder(prefix: "TwineSidebar")
         let app = try makeApp(lastOpenFolder: folder)
-        app.launchEnvironment["TWINE_TEST_APPEARANCE"] = appearance
+        app.launchEnvironment["HANDSHAKE_TEST_APPEARANCE"] = appearance
         app.launch()
         defer { app.terminate() }
 
@@ -88,7 +88,7 @@ extension HandshakeUITests {
         try "ref: refs/heads/a-long-branch-name-for-checking-footer-truncation\n".write(
             to: folder.appending(path: ".git/HEAD"), atomically: true, encoding: .utf8)
         let app = try makeApp(lastOpenFolder: folder)
-        app.launchEnvironment["TWINE_TEST_APPEARANCE"] = appearance
+        app.launchEnvironment["HANDSHAKE_TEST_APPEARANCE"] = appearance
         app.launch()
         let choices = app.scrollViews["newTabChoices"]
         XCTAssertTrue(choices.waitForExistence(timeout: 10), app.debugDescription)
@@ -135,7 +135,7 @@ extension HandshakeUITests {
     private func checkFolderWindow(appearance: String) throws {
         let folder = try createFolder()
         let app = try makeApp(lastOpenFolder: folder)
-        app.launchEnvironment["TWINE_TEST_APPEARANCE"] = appearance
+        app.launchEnvironment["HANDSHAKE_TEST_APPEARANCE"] = appearance
         app.launch()
 
         let toggle = sidebarToggle(in: app)

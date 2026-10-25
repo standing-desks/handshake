@@ -1,5 +1,5 @@
-# Catppuccin Latte terminal colors. Edit this file, then restart Twine.
-# Adapted for Twine from https://github.com/catppuccin/alacritty/blob/main/catppuccin-latte.toml
+# Catppuccin Latte terminal colors. Edit this file, then restart Handshake.
+# Adapted for Handshake from https://github.com/catppuccin/alacritty/blob/main/catppuccin-latte.toml
 # License and attribution: licenses/catppuccin.txt
 [terminal.colors]
 background = "#eff1f5"

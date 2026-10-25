@@ -164,7 +164,7 @@ extension HandshakeUITests {
     @MainActor
     private func launchSyntaxEditor(folder: URL, appearance: String) throws -> XCUIApplication {
         let app = try makeApp(lastOpenFolder: folder)
-        app.launchEnvironment["TWINE_TEST_APPEARANCE"] = appearance
+        app.launchEnvironment["HANDSHAKE_TEST_APPEARANCE"] = appearance
         app.launch()
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
         resizeWindow(app.windows.firstMatch, to: CGSize(width: 1_000, height: 700))

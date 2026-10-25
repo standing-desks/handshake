@@ -21,7 +21,7 @@ pub(crate) struct CompletionCommand {
 impl CompletionCommand {
     pub(crate) fn new() -> io::Result<Self> {
         let directory = tempfile::Builder::new()
-            .prefix("twine-agent-completion-")
+            .prefix("handshake-agent-completion-")
             .tempdir()?;
         let script = directory.path().join("complete");
         fs::write(
@@ -72,7 +72,7 @@ impl CompletionCommand {
 impl CompletionInbox {
     pub(crate) fn new() -> io::Result<Self> {
         let directory = tempfile::Builder::new()
-            .prefix("twine-completion-")
+            .prefix("handshake-completion-")
             .tempdir()?;
         let script = directory.path().join("complete");
         // dirname is evaluated before entering the directory; the path may contain spaces.
@@ -91,7 +91,7 @@ impl CompletionInbox {
                 // A timeout must not unlock an outstanding submission or receipt. Only a
                 // consumed receipt or disposal of the stopped role releases this lock.
                 "trap - EXIT\n",
-                // Wait for validation before returning to the interactive harness. Twine retains
+                // Wait for validation before returning to the interactive harness. Handshake retains
                 // this mailbox until the helper acknowledges acceptance or consumes rejection.
                 "attempt=0\n",
                 "while [ \"$attempt\" -lt 200 ]; do\n",
@@ -102,13 +102,13 @@ impl CompletionInbox {
                 "  fi\n",
                 "  if [ -f accepted ]; then\n",
                 "    touch acknowledged\n",
-                "    echo 'Completion accepted by Twine.'\n",
+                "    echo 'Completion accepted by Handshake.'\n",
                 "    exit 0\n",
                 "  fi\n",
                 "  sleep 0.05\n",
                 "  attempt=$((attempt + 1))\n",
                 "done\n",
-                "echo 'Timed out waiting for Twine to accept or reject completion.' >&2\n",
+                "echo 'Timed out waiting for Handshake to accept or reject completion.' >&2\n",
                 "exit 1\n",
             ),
         )?;

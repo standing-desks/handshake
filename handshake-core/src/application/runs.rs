@@ -2298,7 +2298,7 @@ $prompt" ;; esac
     esac
     if [ -n "$completion" ] || [ -n "$decision" ]; then
     curl --silent --unix-socket "$socket" --data-binary "{\"type\":\"prompt\",\"turn_id\":\"$turn\",\"detail\":\"Assignment\"}" http://localhost/
-    case "$command" in *twine-agent-completion-*)
+    case "$command" in *handshake-agent-completion-*)
         while [ ! -f "$(dirname "$command")/current" ]; do sleep 0.01; done ;;
     esac
     if [ -z "$completion" ]; then
@@ -2811,7 +2811,7 @@ $prompt" ;; esac
             r#"#!/usr/bin/python3
 import json, os, re, sys
 config = json.loads(os.environ['OPENCODE_CONFIG_CONTENT'])
-plugin = next(path.removeprefix('file://') for path in config['plugin'] if path.endswith('twine-observer.mjs'))
+plugin = next(path.removeprefix('file://') for path in config['plugin'] if path.endswith('handshake-observer.mjs'))
 with open(plugin) as source:
     match = re.search(r'output.system.push\(("(?:\\.|[^"\\])*")\)', source.read())
 instructions = json.loads(match.group(1))
@@ -3136,7 +3136,7 @@ os.execvp('pi', ['pi', '--append-system-prompt', instructions, '--', prompt])
             }));
             assert!(
                 !input.contains("You are Implementer")
-                    && !input.contains("You are part of a Twine")
+                    && !input.contains("You are part of a Handshake")
             );
             assert_eq!(continued.agents[0].terminal_id, terminal);
             assert_eq!(
@@ -4446,9 +4446,9 @@ os.execvp('pi', ['pi', '--append-system-prompt', instructions, '--', prompt])
     /// Opt-in smoke test: uses an authenticated, installed Codex in a disposable folder. The wrapper
     /// selects its noninteractive mode so unattended verification doesn't need a trust-dialog click.
     #[test]
-    #[ignore = "requires a real authenticated Codex; set TWINE_REAL_CODEX to its absolute path"]
+    #[ignore = "requires a real authenticated Codex; set HANDSHAKE_REAL_CODEX to its absolute path"]
     fn real_adversarial_workflow_completes() {
-        let codex = std::env::var("TWINE_REAL_CODEX").expect("set TWINE_REAL_CODEX");
+        let codex = std::env::var("HANDSHAKE_REAL_CODEX").expect("set HANDSHAKE_REAL_CODEX");
         let folder = tempfile::tempdir().unwrap();
         let bin = tempfile::tempdir().unwrap();
         let wrapper = bin.path().join("codex");
@@ -4471,7 +4471,7 @@ os.execvp('pi', ['pi', '--append-system-prompt', instructions, '--', prompt])
         let id = app.snapshot().unwrap().workflows.workflows[0].workflow_id;
         accepted(&app, Command::StartWorkflowRun { workflow_id: id,
             workflow_type: WorkflowTypeRef::Builtin(BuiltinType::Adversarial),
-            prompt: "This is a small smoke test. Implementer: create proof.txt containing exactly 'Twine workflow works' followed by a newline, then submit completion using the supplied command. Reviewer: read proof.txt, approve if correct, and submit the explicit review decision. Do not use git, install tools, or change anything else. Execute the completion command; do not merely describe it.".into(),
+            prompt: "This is a small smoke test. Implementer: create proof.txt containing exactly 'Handshake workflow works' followed by a newline, then submit completion using the supplied command. Reviewer: read proof.txt, approve if correct, and submit the explicit review decision. Do not use git, install tools, or change anything else. Execute the completion command; do not merely describe it.".into(),
             roles: vec![RoleLaunch { role: "implementer".into(), harness: HarnessId::Codex, model: None, effort: None, yolo: false },
                         RoleLaunch { role: "reviewer".into(), harness: HarnessId::Codex, model: None, effort: None, yolo: false }], size: SIZE });
         let deadline = Instant::now() + Duration::from_secs(240);
@@ -4486,7 +4486,7 @@ os.execvp('pi', ['pi', '--append-system-prompt', instructions, '--', prompt])
                 break;
             }
             if Instant::now() >= deadline || workflow.status != WorkflowStatus::Running {
-                let log = std::env::temp_dir().join("twine-real-adversarial-output.txt");
+                let log = std::env::temp_dir().join("handshake-real-adversarial-output.txt");
                 std::fs::write(&log, terminal_output).unwrap();
                 panic!("real run didn't complete; inspect {}", log.display());
             }
@@ -4494,7 +4494,7 @@ os.execvp('pi', ['pi', '--append-system-prompt', instructions, '--', prompt])
         }
         assert_eq!(
             std::fs::read_to_string(folder.path().join("proof.txt")).unwrap(),
-            "Twine workflow works\n"
+            "Handshake workflow works\n"
         );
     }
 }

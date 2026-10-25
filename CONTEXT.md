@@ -55,4 +55,4 @@ A timestamped record of activity that Handshake observes or performs during a wo
 The bytes exchanged with an agent's or shell's terminal. It is distinct from structured trace events.
 
 **Config file**:
-The user's settings at `~/.config/twine/config.toml`, such as color scheme.
+The user's settings at `~/.config/handshake/config.toml`, such as color scheme. Existing Twine configuration is adopted when the Handshake config root is not established.

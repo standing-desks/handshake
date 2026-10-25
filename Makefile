@@ -30,7 +30,7 @@ APP_DOC_DIR := $(OUT)/docs/swift
 DMG_TOOLS_DIR := $(OUT)/packaging/tools
 ACTIONLINT ?= actionlint
 # The test host uses fresh temporary data; Xcode products and results stay in out/tests.
-TEST_ENV := TEST_RUNNER_TWINE_PREFERENCES_SUITE=com.twineproject.Twine.tests.unit-host
+TEST_ENV := TEST_RUNNER_HANDSHAKE_PREFERENCES_SUITE=com.twineproject.Twine.tests.unit-host
 
 # PREBUILT=1 runs a target without its prerequisites. CI uses it to run tests from unpacked test products.
 needs = $(if $(PREBUILT),,$(1))
@@ -147,7 +147,11 @@ lint-lib: ## Lint the library
 
 .PHONY: test-lib
 test-lib: ## Test the library (LIB_TEST_ARGS='filter -- flags')
-	cargo test --workspace --locked $(LIB_TEST_ARGS)
+	@set -eu; \
+	handshake_config_tests=$$(mktemp -d "$${TMPDIR:-/tmp}/handshake-config-tests.XXXXXX"); \
+	trap 'rm -rf "$$handshake_config_tests"' EXIT; \
+	env -u HANDSHAKE_CONFIG_PATH -u TWINE_CONFIG_PATH XDG_CONFIG_HOME="$$handshake_config_tests" \
+		cargo test --workspace --locked $(LIB_TEST_ARGS)
 
 .PHONY: check-lib
 check-lib: lint-lib test-lib ## Lint and test the library
@@ -164,10 +168,10 @@ lint-app: $(call needs,deps-debug) ## Lint the app
 .PHONY: test-app
 test-app: $(call needs,build-tests) ## Run the app's unit tests
 	@set -eu; \
-	twine_test_data=$$(mktemp -d "$${TMPDIR:-/tmp}/twine-unit-tests.XXXXXX"); \
-	trap 'rm -rf "$$twine_test_data"' EXIT; \
-	TEST_RUNNER_TWINE_DATA_DIRECTORY="$$twine_test_data" \
-	TEST_RUNNER_XDG_CONFIG_HOME="$$twine_test_data/config" $(TEST_ENV) \
+	handshake_test_data=$$(mktemp -d "$${TMPDIR:-/tmp}/handshake-unit-tests.XXXXXX"); \
+	trap 'rm -rf "$$handshake_test_data"' EXIT; \
+	TEST_RUNNER_HANDSHAKE_DATA_DIRECTORY="$$handshake_test_data" \
+	TEST_RUNNER_XDG_CONFIG_HOME="$$handshake_test_data/config" $(TEST_ENV) \
 		$(TEST_RUN) -only-testing:HandshakeTests
 
 .PHONY: check-app

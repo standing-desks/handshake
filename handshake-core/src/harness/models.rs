@@ -47,7 +47,7 @@ pub enum ModelListError {
     Start(&'static str),
     #[error("{0} took too long to list its models.")]
     Timeout(&'static str),
-    #[error("{0} listed its models in a form Twine doesn't recognize.")]
+    #[error("{0} listed its models in a form Handshake doesn't recognize.")]
     Unreadable(&'static str),
 }
 

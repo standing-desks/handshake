@@ -5,6 +5,7 @@ mod error;
 mod ffi;
 mod logging;
 mod memories;
+mod migration;
 mod protocol;
 #[cfg(test)]
 mod test_support;
@@ -795,11 +796,9 @@ mod tests {
         assert_eq!(file["status"], "text");
         let source = file["text"].as_str().unwrap();
         assert!(source.contains("[theme]"));
-        assert!(
-            source.contains(
-                "https://standing-desks.github.io/twine/documentation/guide/#configuration"
-            )
-        );
+        assert!(source.contains(
+            "https://standing-desks.github.io/handshake/documentation/guide/#configuration"
+        ));
         assert!(!source.contains("[terminal.colors]"));
         let mut request = serde_json::json!({
             "path": file["path"], "folder": Path::new(file["path"].as_str().unwrap()).parent().unwrap(),
@@ -919,7 +918,7 @@ mod tests {
             HandshakeStatus::Ok
         );
         assert!(!client.is_null());
-        assert!(home.path().join(".config/twine/config.toml").is_file());
+        assert!(home.path().join(".config/handshake/config.toml").is_file());
         client
     }
 

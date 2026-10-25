@@ -10,8 +10,8 @@ import { dirname, join } from "node:path";
 const agentTurns = new Map();
 
 export default function (pi) {
-  const socketPath = __TWINE_SOCKET__;
-  const isOmp = __TWINE_OMP__;
+  const socketPath = __HANDSHAKE_SOCKET__;
+  const isOmp = __HANDSHAKE_OMP__;
   const queue = [];
   const calls = new Map();
   const children = new Map();

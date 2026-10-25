@@ -31,8 +31,8 @@ pub(crate) mod steps;
 /// How long to wait for the login shell to report its `PATH`.
 const LOGIN_SHELL_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_LOGIN_SHELL_OUTPUT: u64 = 64 * 1024;
-const PATH_START: &[u8] = b"__TWINE_PATH__";
-const PATH_END: &[u8] = b"__TWINE_END__";
+const PATH_START: &[u8] = b"__HANDSHAKE_PATH__";
+const PATH_END: &[u8] = b"__HANDSHAKE_END__";
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -270,7 +270,7 @@ fn login_shell_path(shell: &Path, cancelled: &AtomicBool) -> Option<OsString> {
     let mut command = Command::new(shell);
     command
         .args(["-i", "-l", "-c"])
-        .arg("printf '\\n__TWINE_PATH__%s__TWINE_END__\\n' \"$(printenv PATH)\"")
+        .arg("printf '\\n__HANDSHAKE_PATH__%s__HANDSHAKE_END__\\n' \"$(printenv PATH)\"")
         .stdin(Stdio::null())
         .stdout(output.try_clone().ok()?)
         .stderr(Stdio::null());
@@ -380,11 +380,11 @@ mod tests {
     #[test]
     fn parses_path_between_markers_and_ignores_banners() {
         assert_eq!(
-            parse_path(b"PATH=/wrong\nbanner\n__TWINE_PATH__/a:/b__TWINE_END__\n"),
+            parse_path(b"PATH=/wrong\nbanner\n__HANDSHAKE_PATH__/a:/b__HANDSHAKE_END__\n"),
             Some(OsString::from("/a:/b"))
         );
         assert_eq!(parse_path(b"PATH=/wrong\n"), None);
-        assert_eq!(parse_path(b"__TWINE_PATH____TWINE_END__"), None);
+        assert_eq!(parse_path(b"__HANDSHAKE_PATH____HANDSHAKE_END__"), None);
     }
 
     fn fake_shell(directory: &Path, body: &str) -> PathBuf {
@@ -400,7 +400,7 @@ mod tests {
         // Like a zsh that only sets up its version manager in the interactive rc file.
         let shell = fake_shell(
             directory.path(),
-            "echo banner PATH=/wrong\n[ \"$1 $2\" = '-i -l' ] && printf '\\n__TWINE_PATH__/interactive__TWINE_END__\\n'",
+            "echo banner PATH=/wrong\n[ \"$1 $2\" = '-i -l' ] && printf '\\n__HANDSHAKE_PATH__/interactive__HANDSHAKE_END__\\n'",
         );
 
         assert_eq!(
@@ -416,7 +416,7 @@ mod tests {
         let shell = fake_shell(
             directory.path(),
             &format!(
-                "sleep 60 & echo $! > '{}'; printf '\\n__TWINE_PATH__/fast__TWINE_END__\\n'",
+                "sleep 60 & echo $! > '{}'; printf '\\n__HANDSHAKE_PATH__/fast__HANDSHAKE_END__\\n'",
                 pid_path.display()
             ),
         );
@@ -451,19 +451,19 @@ mod tests {
     #[test]
     fn locates_an_executable_and_reports_a_missing_one() {
         let directory = tempfile::tempdir().expect("a directory should be available");
-        let binary = directory.path().join("twine-test-harness");
+        let binary = directory.path().join("handshake-test-harness");
         std::fs::write(&binary, "#!/bin/sh\n").expect("binary should be written");
         std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o755))
             .expect("permissions should be set");
         let found = HarnessDefinition {
             name: "Test",
-            binary: "twine-test-harness",
+            binary: "handshake-test-harness",
             reads_at_prefix_as_file: false,
             prompt_option: None,
             subcommand: None,
         };
         let missing = HarnessDefinition {
-            binary: "twine-no-such-harness",
+            binary: "handshake-no-such-harness",
             ..found
         };
         let path = Some(directory.path().as_os_str());
@@ -472,6 +472,6 @@ mod tests {
         let error = locate_in(&missing, None, path).expect_err("a missing binary is not found");
 
         assert_eq!(located.program, binary);
-        assert!(error.to_string().contains("`twine-no-such-harness`"));
+        assert!(error.to_string().contains("`handshake-no-such-harness`"));
     }
 }

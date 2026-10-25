@@ -58,14 +58,14 @@ extension HandshakeUITests {
     private func makeLocalPiApp(_ fixture: LocalPiFixture) -> XCUIApplication {
         let app = fixture.applicationPath.map { XCUIApplication(url: URL(filePath: $0)) } ?? XCUIApplication()
         app.launchArguments = ["-ApplePersistenceIgnoreState", "YES"]
-        app.launchEnvironment["TWINE_DATA_DIRECTORY"] = fixture.dataDirectory
-        app.launchEnvironment["TWINE_HARNESS_PATH"] = fixture.harnessPath
+        app.launchEnvironment["HANDSHAKE_DATA_DIRECTORY"] = fixture.dataDirectory
+        app.launchEnvironment["HANDSHAKE_HARNESS_PATH"] = fixture.harnessPath
         app.launchEnvironment["PI_CODING_AGENT_DIR"] = fixture.piDirectory
         app.launchEnvironment["PI_OFFLINE"] = "1"
-        app.launchEnvironment["TWINE_BENCH_RUN_ID"] = fixture.runID
-        app.launchEnvironment["TWINE_BENCH_COMPLETION_WITNESS"] = fixture.completionWitness
+        app.launchEnvironment["HANDSHAKE_BENCH_RUN_ID"] = fixture.runID
+        app.launchEnvironment["HANDSHAKE_BENCH_COMPLETION_WITNESS"] = fixture.completionWitness
         let preferencesSuite = "com.twineproject.Twine.tests.TwineLocalPi-\(UUID())"
-        app.launchEnvironment["TWINE_PREFERENCES_SUITE"] = preferencesSuite
+        app.launchEnvironment["HANDSHAKE_PREFERENCES_SUITE"] = preferencesSuite
         // XCTest can stop on an assertion without unwinding Swift defer blocks.
         addTeardownBlock {
             await MainActor.run {

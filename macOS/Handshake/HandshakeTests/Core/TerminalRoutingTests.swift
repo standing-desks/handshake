@@ -99,7 +99,7 @@ struct TerminalRoutingTests {
 
     @Test @MainActor func terminalCoreRunsShellInRequestedDirectory() async throws {
         let directory = FileManager.default.temporaryDirectory.appending(
-            component: "twine-terminal-\(UUID().uuidString)",
+            component: "handshake-terminal-\(UUID().uuidString)",
             directoryHint: .isDirectory
         )
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)

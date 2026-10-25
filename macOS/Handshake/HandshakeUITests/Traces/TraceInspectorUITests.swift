@@ -8,7 +8,7 @@ extension HandshakeUITests {
         try writeInspectorNativeHistory(in: folder)
         let app = try makeApp(lastOpenFolder: folder)
         app.launchEnvironment["SHELL"] = "/bin/sh"
-        app.launchEnvironment["TWINE_HARNESS_PATH"] = "\(folder.path)/bin:/bin:/usr/bin"
+        app.launchEnvironment["HANDSHAKE_HARNESS_PATH"] = "\(folder.path)/bin:/bin:/usr/bin"
         app.launchEnvironment["CLAUDE_CONFIG_DIR"] = folder.appending(path: "native").path
         app.launch()
         defer { app.terminate() }
@@ -135,7 +135,7 @@ extension HandshakeUITests {
         try writeInspectorAgent(in: folder)
         let app = try makeApp(lastOpenFolder: folder)
         app.launchEnvironment["SHELL"] = "/bin/sh"
-        app.launchEnvironment["TWINE_HARNESS_PATH"] = "\(folder.path)/bin:/bin:/usr/bin"
+        app.launchEnvironment["HANDSHAKE_HARNESS_PATH"] = "\(folder.path)/bin:/bin:/usr/bin"
         app.launch()
         defer { app.terminate() }
         XCTAssertTrue(app.buttons["workflowTab-1"].waitForExistence(timeout: 10))

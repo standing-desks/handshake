@@ -8,8 +8,8 @@ struct WorkflowLaunchPreferencesTests {
     @Test func explicitLaunchSuiteIsIsolatedFromOtherLaunches() throws {
         let first = "com.twineproject.Twine.tests.TwineLaunchTests-\(UUID())"
         let second = "com.twineproject.Twine.tests.TwineLaunchTests-\(UUID())"
-        let firstStore = WorkflowLaunchPreferences.defaultStore(environment: ["TWINE_PREFERENCES_SUITE": first])
-        let secondStore = WorkflowLaunchPreferences.defaultStore(environment: ["TWINE_PREFERENCES_SUITE": second])
+        let firstStore = WorkflowLaunchPreferences.defaultStore(environment: ["HANDSHAKE_PREFERENCES_SUITE": first])
+        let secondStore = WorkflowLaunchPreferences.defaultStore(environment: ["HANDSHAKE_PREFERENCES_SUITE": second])
         defer {
             firstStore.removePersistentDomain(forName: first)
             secondStore.removePersistentDomain(forName: second)
@@ -17,7 +17,7 @@ struct WorkflowLaunchPreferencesTests {
         let choice = HarnessChoice(harness: .piAgent, model: "spark1/qwen38-27b")
         WorkflowLaunchPreferences(defaults: firstStore).remember(
             ["worker": [choice]], for: type(id: 1, version: 1, min: 1, max: 1))
-        let reloaded = WorkflowLaunchPreferences.defaultStore(environment: ["TWINE_PREFERENCES_SUITE": first])
+        let reloaded = WorkflowLaunchPreferences.defaultStore(environment: ["HANDSHAKE_PREFERENCES_SUITE": first])
         #expect(
             WorkflowLaunchPreferences(defaults: reloaded).choices(for: type(id: 1, version: 1, min: 1, max: 1))[
                 "worker"] == [choice])
@@ -25,6 +25,34 @@ struct WorkflowLaunchPreferencesTests {
             WorkflowLaunchPreferences(defaults: secondStore).choices(for: type(id: 1, version: 1, min: 1, max: 1))[
                 "worker"] == [.init(harness: .codex)])
         #expect(WorkflowLaunchPreferences.defaultStore(environment: [:]) === UserDefaults.standard)
+    }
+
+    @Test func legacyPreferencesKeepModelsAndZoomUnderTheNewOverride() throws {
+        let legacySuite = "com.twineproject.Twine.tests.TwineLaunchTests-\(UUID())"
+        let otherSuite = "com.twineproject.Twine.tests.TwineLaunchTests-\(UUID())"
+        let legacy = WorkflowLaunchPreferences.defaultStore(environment: ["TWINE_PREFERENCES_SUITE": legacySuite])
+        let other = try #require(UserDefaults(suiteName: otherSuite))
+        defer {
+            legacy.removePersistentDomain(forName: legacySuite)
+            other.removePersistentDomain(forName: otherSuite)
+        }
+        let choice = HarnessChoice(harness: .piAgent, model: "local/model", effort: "high", yolo: true)
+        WorkflowLaunchPreferences(defaults: legacy).remember(
+            ["worker": [choice]], for: type(id: 1, version: 1, min: 1, max: 1))
+        AppZoom(defaults: legacy).zoomIn()
+        let current = WorkflowLaunchPreferences.defaultStore(environment: [
+            "HANDSHAKE_PREFERENCES_SUITE": legacySuite, "TWINE_PREFERENCES_SUITE": otherSuite,
+        ])
+        #expect(
+            WorkflowLaunchPreferences(defaults: current).choices(
+                for: type(id: 1, version: 1, min: 1, max: 1))["worker"] == [choice])
+        #expect(AppZoom(defaults: current).scale == 1.1)
+        #expect(AppZoom(defaults: other).scale == 1)
+        // A present empty new override keeps its existing default-store behavior.
+        #expect(
+            WorkflowLaunchPreferences.defaultStore(environment: [
+                "HANDSHAKE_PREFERENCES_SUITE": "", "TWINE_PREFERENCES_SUITE": legacySuite,
+            ]) === UserDefaults.standard)
     }
 
     @Test func lastHarnessesPersistByTypeAndAcrossNewCustomVersions() throws {

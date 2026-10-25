@@ -1,5 +1,5 @@
-# Nord terminal colors. Edit this file, then restart Twine.
-# Adapted for Twine from https://github.com/nordtheme/alacritty/blob/main/src/nord.yaml
+# Nord terminal colors. Edit this file, then restart Handshake.
+# Adapted for Handshake from https://github.com/nordtheme/alacritty/blob/main/src/nord.yaml
 # License and attribution: licenses/nord.txt
 [terminal.colors]
 background = "#2e3440"

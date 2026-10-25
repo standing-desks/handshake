@@ -128,7 +128,7 @@ pub(crate) fn truncate(value: &str, limit: usize) -> String {
 
 pub(crate) fn observation_id(input: &serde_json::Value) -> String {
     static NEXT: AtomicU64 = AtomicU64::new(1);
-    input["_twine_observation_id"].as_str().map_or_else(
+    input["_handshake_observation_id"].as_str().map_or_else(
         || {
             let time = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -169,7 +169,7 @@ impl StepInbox {
     ) -> io::Result<Self> {
         // macOS limits Unix socket paths to 104 bytes; its usual temporary directory is too long.
         let directory = tempfile::Builder::new()
-            .prefix("twine-steps-")
+            .prefix("handshake-steps-")
             .tempdir_in("/tmp")?;
         let socket_path = directory.path().join("events.sock");
         let listener = UnixListener::bind(&socket_path)?;
@@ -307,7 +307,7 @@ impl StepInbox {
     /// Hooks are observers only: bounded input and runtime, no output, and no failure status.
     pub(crate) fn hook_command(&self) -> String {
         format!(
-            "{{ twine_body=$(/usr/bin/mktemp '{}/record.XXXXXXXX'); /bin/cat >\"$twine_body\"; /usr/bin/printf '{{\"payload_file\":\"%s\"}}' \"$twine_body\" | /usr/bin/curl --silent --max-time 1 --output /dev/null --header 'Expect:' --unix-socket '{}' --data-binary @- http://localhost/; }} >/dev/null 2>&1 || true",
+            "{{ handshake_body=$(/usr/bin/mktemp '{}/record.XXXXXXXX'); /bin/cat >\"$handshake_body\"; /usr/bin/printf '{{\"payload_file\":\"%s\"}}' \"$handshake_body\" | /usr/bin/curl --silent --max-time 1 --output /dev/null --header 'Expect:' --unix-socket '{}' --data-binary @- http://localhost/; }} >/dev/null 2>&1 || true",
             self.directory
                 .path()
                 .to_string_lossy()
@@ -402,9 +402,9 @@ fn resolve_body(
         let _ = std::fs::remove_file(&path);
         None
     };
-    value["_twine_observation_id"] = path.file_name()?.to_string_lossy().into_owned().into();
+    value["_handshake_observation_id"] = path.file_name()?.to_string_lossy().into_owned().into();
     if let Some(event) = event {
-        value = serde_json::json!({"event":event,"turn":turn,"payload":value,"_twine_observation_id":path.file_name()?.to_string_lossy()});
+        value = serde_json::json!({"event":event,"turn":turn,"payload":value,"_handshake_observation_id":path.file_name()?.to_string_lossy()});
     }
     Some((serde_json::to_vec(&value).ok()?, raw))
 }

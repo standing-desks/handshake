@@ -82,7 +82,7 @@ extension HandshakeUITests {
     private func checkTraces(appearance: String) throws {
         let folder = try traceFolder()
         let app = try makeApp(lastOpenFolder: folder)
-        app.launchEnvironment["TWINE_TEST_APPEARANCE"] = appearance
+        app.launchEnvironment["HANDSHAKE_TEST_APPEARANCE"] = appearance
         app.launchEnvironment["SHELL"] = "/bin/sh"
         app.launch()
         defer { app.terminate() }

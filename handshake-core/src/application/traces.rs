@@ -833,6 +833,7 @@ mod tests {
                 panic!("missing transcript");
             };
             assert!(page.replay_available);
+            assert!(String::from_utf8_lossy(&page.bytes).contains(";handshake=handshake-shell-"));
             assert!(page.bytes[..usize::try_from(start.byte_offset).unwrap()].ends_with(b"\x07"));
             if index == 0 {
                 assert!(
@@ -893,7 +894,7 @@ mod tests {
             check_command_shell(shell);
         } else {
             assert!(
-                std::env::var_os("TWINE_REQUIRE_FISH_TESTS").is_none(),
+                std::env::var_os("HANDSHAKE_REQUIRE_FISH_TESTS").is_none(),
                 "install fish to run the shell integration tests"
             );
         }

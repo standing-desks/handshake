@@ -1,4 +1,4 @@
-# Silica light terminal colors. Edit this file, then restart Twine.
+# Silica light terminal colors. Edit this file, then restart Handshake.
 [terminal.colors]
 background = "#f7f4e8"
 foreground = "#1a2026"

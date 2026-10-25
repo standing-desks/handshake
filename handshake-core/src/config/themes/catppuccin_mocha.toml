@@ -1,5 +1,5 @@
-# Catppuccin Mocha terminal colors. Edit this file, then restart Twine.
-# Adapted for Twine from https://github.com/catppuccin/alacritty/blob/main/catppuccin-mocha.toml
+# Catppuccin Mocha terminal colors. Edit this file, then restart Handshake.
+# Adapted for Handshake from https://github.com/catppuccin/alacritty/blob/main/catppuccin-mocha.toml
 # License and attribution: licenses/catppuccin.txt
 [terminal.colors]
 background = "#1e1e2e"

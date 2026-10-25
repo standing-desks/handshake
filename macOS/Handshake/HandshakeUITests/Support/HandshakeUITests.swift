@@ -238,10 +238,10 @@ final class HandshakeUITests: XCTestCase {
         // A fresh core database also needs a fresh window. Ignore AppKit's saved window state,
         // including an empty window list left by a unit-test host or a previous UI test.
         app.launchArguments = ["-ApplePersistenceIgnoreState", "YES"]
-        app.launchEnvironment["TWINE_DATA_DIRECTORY"] = dataDirectory.path(percentEncoded: false)
+        app.launchEnvironment["HANDSHAKE_DATA_DIRECTORY"] = dataDirectory.path(percentEncoded: false)
         app.launchEnvironment["XDG_CONFIG_HOME"] = dataDirectory.appending(path: "config").path
         // Remember preferences across this app's relaunches without inheriting the user's saved zoom.
-        app.launchEnvironment["TWINE_PREFERENCES_SUITE"] = dataDirectory.lastPathComponent
+        app.launchEnvironment["HANDSHAKE_PREFERENCES_SUITE"] = dataDirectory.lastPathComponent
         return app
     }
 
