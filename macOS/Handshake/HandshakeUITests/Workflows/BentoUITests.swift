@@ -48,7 +48,7 @@ extension HandshakeUITests {
     func testBentoLayoutPersistsAcrossRelaunchAndSmallWindowsShowFewerPanes() throws {
         let folder = try makeTestFolder(prefix: "TwineBentoUITests")
         let app = try makeApp(lastOpenFolder: folder)
-        app.launchEnvironment["TWINE_TEST_APPEARANCE"] = "Dark"
+        app.launchEnvironment["HANDSHAKE_TEST_APPEARANCE"] = "Dark"
         app.launch()
         XCTAssertTrue(app.buttons["workflowTab-1"].waitForExistence(timeout: 10), app.debugDescription)
         resizeWindow(app.windows.firstMatch, to: CGSize(width: 1100, height: 760))
@@ -74,7 +74,7 @@ extension HandshakeUITests {
         try checkSmallWindowsShowFewerPanes(panes, subtabs: subtabs, folder: folder, app: app)
 
         // The layout comes back after relaunch, with the Worker first and focused.
-        let dataDirectory = try XCTUnwrap(app.launchEnvironment["TWINE_DATA_DIRECTORY"])
+        let dataDirectory = try XCTUnwrap(app.launchEnvironment["HANDSHAKE_DATA_DIRECTORY"])
         let saved = URL(filePath: dataDirectory).appending(path: "workflow-layouts.json")
         waitForFile(saved, containing: "\"focusedAgentID\":4", in: app)
         app.terminate()

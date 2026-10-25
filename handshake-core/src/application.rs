@@ -34,7 +34,15 @@ mod windows;
 mod workflow_types;
 mod workflows;
 
-const DATABASE_FILE_NAME: &str = "twine.db";
+// Existing explicit data roots keep their legacy filename until deliberately migrated.
+fn database_path(directory: &Path) -> PathBuf {
+    let migrated = directory.join("handshake.db");
+    if migrated.exists() {
+        migrated
+    } else {
+        directory.join("twine.db")
+    }
+}
 const DEFAULT_EVENT_CAPACITY: usize = 4_096;
 const DEFAULT_TERMINAL_CAPACITY_BYTES: usize = 1024 * 1024;
 const DEFAULT_TERMINAL_CAPACITY_CHUNKS: usize = 4_096;
@@ -261,6 +269,7 @@ impl Application {
     /// Returns an error if the database cannot be opened or migrated, transcript storage cannot
     /// be opened or is owned by another core, or the initial ready event cannot be recorded.
     pub fn new(data_directory: &Path) -> Result<Self, ApplicationError> {
+        Config::prepare_user()?;
         Self::with_config(data_directory, Config::load_user())
     }
 
@@ -276,7 +285,7 @@ impl Application {
         let transcripts = Arc::new(TranscriptRecorder::open(
             &data_directory.join("transcripts"),
         )?);
-        let store = Store::open(&data_directory.join(DATABASE_FILE_NAME))?;
+        let store = Store::open(&database_path(data_directory))?;
         Self::with_store(store, config, DEFAULT_EVENT_CAPACITY, transcripts)
     }
 
@@ -700,6 +709,10 @@ fn rejection(code: &str, error: &dyn std::error::Error) -> CommandDisposition {
 
 #[derive(Debug, Error)]
 pub enum ApplicationError {
+    #[error(transparent)]
+    ConfigMigration(#[from] crate::config::ConfigMigrationError),
+    #[error(transparent)]
+    DataMigration(#[from] crate::DataMigrationError),
     #[error("Could not create a workflow signal inbox: {0}")]
     CompletionInbox(std::io::Error),
     #[error(transparent)]

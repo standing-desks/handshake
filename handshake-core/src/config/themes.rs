@@ -12,8 +12,8 @@ mod bundled;
 
 const SILICA_LIGHT: &str = include_str!("themes/silica_light.toml");
 const SILICA_DARK: &str = include_str!("themes/silica_dark.toml");
-const TWINE_LIGHT: &str = include_str!("themes/twine_light.toml");
-const TWINE_DARK: &str = include_str!("themes/twine_dark.toml");
+const HANDSHAKE_LIGHT: &str = include_str!("themes/handshake_light.toml");
+const HANDSHAKE_DARK: &str = include_str!("themes/handshake_dark.toml");
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(default)]
@@ -25,8 +25,8 @@ pub struct ThemeConfig {
 impl Default for ThemeConfig {
     fn default() -> Self {
         Self {
-            light: ThemeName("twine_light".to_owned()),
-            dark: ThemeName("twine_dark".to_owned()),
+            light: ThemeName("handshake_light".to_owned()),
+            dark: ThemeName("handshake_dark".to_owned()),
         }
     }
 }
@@ -229,8 +229,8 @@ pub struct TerminalPalettes {
 impl Default for TerminalPalettes {
     fn default() -> Self {
         Self {
-            light: embedded_palette(TWINE_LIGHT),
-            dark: embedded_palette(TWINE_DARK),
+            light: embedded_palette(HANDSHAKE_LIGHT),
+            dark: embedded_palette(HANDSHAKE_DARK),
         }
     }
 }
@@ -260,56 +260,90 @@ fn embedded_palette(source: &str) -> TerminalPalette {
     }
 }
 
+fn compatibility_theme(name: &str) -> String {
+    format!("# Compatibility for existing Twine theme selections and imports.\nimport = '{name}'\n")
+}
+
+fn default_source(
+    directory: &Path,
+    name: &str,
+    source: &str,
+    twine: &str,
+    silica: &str,
+    silica_source: &str,
+) -> Result<String, ConfigDiagnostic> {
+    let legacy = directory.join("themes").join(twine);
+    match fs::read_to_string(&legacy) {
+        Ok(content) if content != compatibility_theme(name) => return Ok(content),
+        Ok(_) => {} // Our generated compatibility import must never become a self-import.
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(file_diagnostic(
+                &legacy,
+                &super::ConfigFileError::Read(error),
+            ));
+        }
+    }
+    let legacy = directory.join("themes").join(silica);
+    match fs::read_to_string(&legacy) {
+        // Accept untouched Silica from either release's generated comments, without changing its file.
+        Ok(legacy)
+            if legacy == silica_source || legacy == silica_source.replace("Handshake", "Twine") =>
+        {
+            Ok(source.to_owned())
+        }
+        Ok(customized) => Ok(customized),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(source.to_owned()),
+        Err(error) => Err(file_diagnostic(
+            &legacy,
+            &super::ConfigFileError::Read(error),
+        )),
+    }
+}
+
 pub(super) fn publish(config_path: &Path) -> Vec<(&'static str, ConfigDiagnostic)> {
     let directory = config_path.parent().unwrap_or(Path::new("."));
     bundled::publish(directory);
     let mut failures = Vec::new();
-    // Publish defaults before resolving either global imports or appearance selectors.
-    for (name, source, legacy_name, legacy_source) in [
+    for (name, source, twine, silica, silica_source) in [
         (
+            "handshake_light.toml",
+            HANDSHAKE_LIGHT,
             "twine_light.toml",
-            TWINE_LIGHT,
             "silica_light.toml",
             SILICA_LIGHT,
         ),
         (
+            "handshake_dark.toml",
+            HANDSHAKE_DARK,
             "twine_dark.toml",
-            TWINE_DARK,
             "silica_dark.toml",
             SILICA_DARK,
         ),
     ] {
         let path = directory.join("themes").join(name);
         let result = match fs::symlink_metadata(&path) {
-            Ok(_) => continue,
+            Ok(_) => Ok(()),
             Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                // Carry customized defaults forward once; untouched Silica files stay optional.
-                let legacy_path = directory.join("themes").join(legacy_name);
-                let source = match fs::read_to_string(&legacy_path) {
-                    Ok(legacy) => {
-                        if legacy == legacy_source {
-                            source.to_owned()
-                        } else {
-                            legacy
-                        }
-                    }
-                    Err(error) if error.kind() == io::ErrorKind::NotFound => source.to_owned(),
-                    Err(error) => {
-                        let diagnostic =
-                            file_diagnostic(&legacy_path, &super::ConfigFileError::Read(error));
-                        tracing::warn!(%diagnostic, "cannot migrate default theme file");
-                        failures.push((name, diagnostic));
-                        continue;
-                    }
-                };
-                write_default(&path, &source).map(|_| ())
+                default_source(directory, name, source, twine, silica, silica_source).and_then(
+                    |source| {
+                        write_default(&path, &source)
+                            .map(|_| ())
+                            .map_err(|error| file_diagnostic(&path, &error))
+                    },
+                )
             }
-            Err(error) => Err(super::ConfigFileError::Read(error)),
+            Err(error) => Err(file_diagnostic(&path, &super::ConfigFileError::Read(error))),
         };
-        if let Err(error) = result {
-            let diagnostic = file_diagnostic(&path, &error);
+        if let Err(diagnostic) = result {
             tracing::warn!(%diagnostic, "cannot publish default theme file");
             failures.push((name, diagnostic));
+            continue;
+        }
+        // These are specific supported legacy inputs, not aliases for arbitrary renamed APIs.
+        let alias = directory.join("themes").join(twine);
+        if let Err(error) = super::publish_default(&alias, &compatibility_theme(name)) {
+            failures.push((twine, file_diagnostic(&alias, &error)));
         }
     }
     failures
@@ -531,7 +565,7 @@ mod tests {
         let config = directory.path().join("config.toml");
         let themes = directory.path().join("themes");
         fs::create_dir(&themes).unwrap();
-        fs::write(themes.join("twine_dark.toml"), "invalid = @").unwrap();
+        fs::write(themes.join("handshake_dark.toml"), "invalid = @").unwrap();
         fs::write(&config, "[theme]\ndark = 'nord'\n").unwrap();
         let loaded = Config::load(&config);
         assert_eq!(loaded.diagnostics, []);
@@ -540,7 +574,7 @@ mod tests {
             "#2e3440"
         );
         assert_eq!(
-            fs::read_to_string(themes.join("twine_dark.toml")).unwrap(),
+            fs::read_to_string(themes.join("handshake_dark.toml")).unwrap(),
             "invalid = @"
         );
     }
@@ -676,11 +710,11 @@ mod tests {
         let first = Config::load(&config);
         assert_eq!(first.config, Config::default());
         assert_eq!(first.diagnostics, []);
-        let dark = directory.path().join("themes/twine_dark.toml");
-        assert_eq!(fs::read_to_string(&dark).unwrap(), TWINE_DARK);
+        let dark = directory.path().join("themes/handshake_dark.toml");
+        assert_eq!(fs::read_to_string(&dark).unwrap(), HANDSHAKE_DARK);
         assert_eq!(
-            fs::read_to_string(directory.path().join("themes/twine_light.toml")).unwrap(),
-            TWINE_LIGHT
+            fs::read_to_string(directory.path().join("themes/handshake_light.toml")).unwrap(),
+            HANDSHAKE_LIGHT
         );
         fs::write(&dark, "[terminal.colors]\nbackground = '#112233'").unwrap();
         let edited = Config::load(&config);
@@ -699,7 +733,7 @@ mod tests {
     }
 
     #[test]
-    fn untouched_legacy_defaults_adopt_twine_without_overwriting_silica() {
+    fn untouched_legacy_defaults_adopt_handshake_without_overwriting_silica() {
         let directory = tempfile::tempdir().unwrap();
         let themes = directory.path().join("themes");
         fs::create_dir(&themes).unwrap();
@@ -741,7 +775,7 @@ mod tests {
             customized
         );
         assert_eq!(
-            fs::read_to_string(themes.join("twine_dark.toml")).unwrap(),
+            fs::read_to_string(themes.join("handshake_dark.toml")).unwrap(),
             customized
         );
 
@@ -757,7 +791,7 @@ mod tests {
             first.config.terminal.palettes
         );
         assert_eq!(
-            fs::read_to_string(themes.join("twine_dark.toml")).unwrap(),
+            fs::read_to_string(themes.join("handshake_dark.toml")).unwrap(),
             customized
         );
     }
@@ -768,7 +802,7 @@ mod tests {
         let themes = directory.path().join("themes");
         fs::create_dir(&themes).unwrap();
         let legacy = themes.join("silica_dark.toml");
-        let current = themes.join("twine_dark.toml");
+        let current = themes.join("handshake_dark.toml");
         fs::write(&legacy, [0xff, 0xfe]).unwrap();
         let config = directory.path().join("config.toml");
         let first = Config::load(&config);
@@ -806,16 +840,16 @@ mod tests {
             loaded.config.terminal.palettes.dark.background.as_str(),
             "#2e3440"
         );
-        assert!(!themes.join("twine_dark.toml").exists());
+        assert!(!themes.join("handshake_dark.toml").exists());
     }
 
     #[test]
-    fn existing_twine_defaults_take_precedence_over_legacy_customizations() {
+    fn existing_handshake_defaults_take_precedence_over_legacy_customizations() {
         let directory = tempfile::tempdir().unwrap();
         let themes = directory.path().join("themes");
         fs::create_dir(&themes).unwrap();
         let current = "[terminal.colors]\nbackground = '#778899'\n";
-        fs::write(themes.join("twine_dark.toml"), current).unwrap();
+        fs::write(themes.join("handshake_dark.toml"), current).unwrap();
         fs::write(
             themes.join("silica_dark.toml"),
             "[terminal.colors]\nbackground = '#112233'\n",
@@ -828,7 +862,7 @@ mod tests {
             "#778899"
         );
         assert_eq!(
-            fs::read_to_string(themes.join("twine_dark.toml")).unwrap(),
+            fs::read_to_string(themes.join("handshake_dark.toml")).unwrap(),
             current
         );
     }
@@ -863,7 +897,7 @@ mod tests {
     fn full_palette_import_pins_the_same_colors_for_light_and_dark() {
         let directory = tempfile::tempdir().unwrap();
         let config = directory.path().join("config.toml");
-        fs::write(&config, "import = 'themes/twine_dark.toml'\n").unwrap();
+        fs::write(&config, "import = 'themes/handshake_dark.toml'\n").unwrap();
         let loaded = Config::load(&config);
         assert_eq!(loaded.diagnostics, []);
         assert_eq!(
@@ -936,5 +970,90 @@ mod tests {
             assert_eq!(loaded.config, Config::default());
             assert_eq!(loaded.diagnostics[0].problem, ConfigProblem::InvalidValue);
         }
+    }
+
+    #[test]
+    fn customized_twine_files_are_carried_once_and_legacy_selectors_keep_their_files() {
+        let root = tempfile::tempdir().unwrap();
+        let themes = root.path().join("themes");
+        fs::create_dir(&themes).unwrap();
+        let legacy = themes.join("twine_dark.toml");
+        let custom = "[terminal.colors]\nbackground = '#123456'\n";
+        fs::write(&legacy, custom).unwrap();
+        let path = root.path().join("config.toml");
+        let loaded = Config::load(&path);
+        assert_eq!(loaded.diagnostics, []);
+        assert_eq!(
+            loaded.config.terminal.palettes.dark.background.as_str(),
+            "#123456"
+        );
+        assert_eq!(
+            fs::read_to_string(themes.join("handshake_dark.toml")).unwrap(),
+            custom
+        );
+        fs::write(&legacy, "[terminal.colors]\nbackground = '#654321'\n").unwrap();
+        assert_eq!(
+            Config::load(&path)
+                .config
+                .terminal
+                .palettes
+                .dark
+                .background
+                .as_str(),
+            "#123456"
+        );
+        fs::write(&path, "[theme]\ndark = 'twine_dark'\n").unwrap();
+        assert_eq!(
+            Config::load(&path)
+                .config
+                .terminal
+                .palettes
+                .dark
+                .background
+                .as_str(),
+            "#654321"
+        );
+    }
+
+    #[test]
+    fn legacy_imports_and_selectors_resolve_and_missing_new_defaults_do_not_self_import() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("config.toml");
+        let first = Config::load(&path);
+        assert_eq!(first.config.theme.dark.as_str(), "handshake_dark");
+        fs::write(
+            &path,
+            "import = 'themes/twine_dark.toml'\n[theme]\ndark = 'twine_dark'\n",
+        )
+        .unwrap();
+        let selected = Config::load(&path);
+        assert_eq!(selected.diagnostics, []);
+        assert_eq!(
+            selected.config.terminal.palettes.dark,
+            TerminalPalettes::default().dark
+        );
+        fs::remove_file(root.path().join("themes/handshake_dark.toml")).unwrap();
+        let repaired = Config::load(&path);
+        assert_eq!(repaired.diagnostics, []);
+        assert_eq!(
+            repaired.config.terminal.palettes.dark,
+            TerminalPalettes::default().dark
+        );
+    }
+
+    #[test]
+    fn untouched_silica_from_before_the_rename_uses_current_defaults_without_rewriting_it() {
+        let root = tempfile::tempdir().unwrap();
+        let themes = root.path().join("themes");
+        fs::create_dir(&themes).unwrap();
+        let old = SILICA_DARK.replace("Handshake", "Twine");
+        fs::write(themes.join("silica_dark.toml"), &old).unwrap();
+        let loaded = Config::load(&root.path().join("config.toml"));
+        assert_eq!(loaded.diagnostics, []);
+        assert_eq!(loaded.config.terminal.palettes, TerminalPalettes::default());
+        assert_eq!(
+            fs::read_to_string(themes.join("silica_dark.toml")).unwrap(),
+            old
+        );
     }
 }

@@ -42,17 +42,14 @@ struct DevelopmentPathsTests {
         #expect(AppPaths.previewDirectory.path == checkout.appending(path: "out/runtime/debug/previews").path)
         let environment = ProcessInfo.processInfo.environment
         let examples =
-            environment["TWINE_MEMORY_EXAMPLE_ROOT"]
+            environment["HANDSHAKE_MEMORY_EXAMPLE_ROOT"]
             ?? checkout.appending(path: "designs/memory-viewer-fixtures").path
         #expect(MemoryExamples.root == examples)
-        if let override = environment["TWINE_DATA_DIRECTORY"] {
+        if let override = environment["HANDSHAKE_DATA_DIRECTORY"] ?? environment["TWINE_DATA_DIRECTORY"] {
             #expect(AppPaths.dataDirectory == URL(filePath: override, directoryHint: .isDirectory))
         } else {
-            #if DEBUG
-                #expect(AppPaths.dataDirectory.path == checkout.appending(path: "out/runtime/debug").path)
-            #else
-                #expect(AppPaths.dataDirectory == URL.applicationSupportDirectory.appending(path: "Twine"))
-            #endif
+            // Test hosts stay isolated even when built in Release without an explicit override.
+            #expect(AppPaths.dataDirectory.path == checkout.appending(path: "out/runtime/debug").path)
         }
     }
 }

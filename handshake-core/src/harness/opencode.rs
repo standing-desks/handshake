@@ -30,9 +30,9 @@ fn prepare_with_config(
         ));
     }
     let mut inbox = StepInbox::new(position, super::pi::parse)?;
-    let plugin = inbox.directory.path().join("twine-observer.mjs");
+    let plugin = inbox.directory.path().join("handshake-observer.mjs");
     let source = include_str!("opencode-plugin.js").replace(
-        "__TWINE_SOCKET__",
+        "__HANDSHAKE_SOCKET__",
         &serde_json::to_string(&inbox.socket_path)?,
     );
     std::fs::write(&plugin, source)?;
@@ -73,11 +73,11 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "requires Node; set TWINE_NODE to its absolute path"]
+    #[ignore = "requires Node; set HANDSHAKE_NODE to its absolute path"]
     fn plugin_records_model_usage_full_tools_child_lineage_and_drains_without_mutation() {
-        let node = std::env::var("TWINE_NODE").expect("set TWINE_NODE");
+        let node = std::env::var("HANDSHAKE_NODE").expect("set HANDSHAKE_NODE");
         let (inbox, _) = prepare_with_config(Arc::new(ReplayPosition::default()), None).unwrap();
-        let source = inbox.directory.path().join("twine-observer.mjs");
+        let source = inbox.directory.path().join("handshake-observer.mjs");
         let script = r"
 import assert from 'node:assert/strict';
 import {pathToFileURL} from 'node:url';

@@ -63,7 +63,7 @@ pub(super) fn program_launcher_command(
     command.args([
         "-c",
         "if cd \"$1\" 2>/dev/null; then printf '\\036'; shift; exec \"$@\"; else printf '\\037'; exit 125; fi",
-        "twine-program-launcher",
+        "handshake-program-launcher",
     ]);
     command.arg(working_directory.as_os_str());
     command.arg(program.as_os_str());
@@ -89,7 +89,7 @@ fn shell_launcher(working_directory: &Path, shell: &Path) -> CommandBuilder {
     command.args([
         "-c",
         "if cd \"$1\" 2>/dev/null; then printf '\\036'; shift; exec \"$@\"; else printf '\\037'; exit 125; fi",
-        "twine-shell-launcher",
+        "handshake-shell-launcher",
     ]);
     command.arg(working_directory.as_os_str());
     command.arg(shell.as_os_str());

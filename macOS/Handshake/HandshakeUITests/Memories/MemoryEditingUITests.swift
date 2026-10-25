@@ -28,8 +28,8 @@ extension HandshakeUITests {
         app.launchEnvironment["CODEX_HOME"] = codex.path
         app.launchEnvironment["CODEX_SQLITE_HOME"] = codex.path
         app.launchEnvironment["CLAUDE_CONFIG_DIR"] = fixture.appending(path: "claude").path
-        app.launchEnvironment["TWINE_MEMORY_INSPECTION_KIND"] = "rawMemory"
-        app.launchEnvironment["TWINE_MEMORY_INSPECTION_SCOPE"] = "global"
+        app.launchEnvironment["HANDSHAKE_MEMORY_INSPECTION_KIND"] = "rawMemory"
+        app.launchEnvironment["HANDSHAKE_MEMORY_INSPECTION_SCOPE"] = "global"
         app.launch()
         defer { app.terminate() }
         if !app.buttons["memoryEntry-outline"].waitForExistence(timeout: 10) { sidebarToggle(in: app).click() }

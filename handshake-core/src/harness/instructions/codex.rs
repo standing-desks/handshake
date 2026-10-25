@@ -35,7 +35,7 @@ pub(super) fn combined_instructions(
     let mut reader = BufReader::new(socket.try_clone()?);
     send(
         &mut socket,
-        &json!({"id": 1, "method": "initialize", "params": {"clientInfo": {"name": "twine", "version": env!("CARGO_PKG_VERSION")}}}),
+        &json!({"id": 1, "method": "initialize", "params": {"clientInfo": {"name": "handshake", "version": env!("CARGO_PKG_VERSION")}}}),
     )?;
     response(&mut reader, 1, deadline)?;
     send(&mut socket, &json!({"method": "initialized"}))?;

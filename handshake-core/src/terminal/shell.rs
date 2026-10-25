@@ -1,4 +1,4 @@
-//! Twine-owned shell hooks and their bounded OSC 133 decoder. No terminal text is interpreted.
+//! Handshake-owned shell hooks and their bounded OSC 133 decoder. No terminal text is interpreted.
 
 use std::path::Path;
 
@@ -24,7 +24,7 @@ impl ShellIntegration {
             return Ok(None);
         };
         let directory = tempfile::Builder::new()
-            .prefix("twine-shell-")
+            .prefix("handshake-shell-")
             .tempdir()
             .map_err(integration_error)?;
         let token = directory
@@ -51,22 +51,22 @@ impl ShellIntegration {
                     (".zlogin", false),
                 ] {
                     let wrapper = format!(
-                        "ZDOTDIR=$TWINE_USER_ZDOTDIR\n[[ -r $ZDOTDIR/{file} ]] && source $ZDOTDIR/{file}\nTWINE_USER_ZDOTDIR=${{ZDOTDIR:-$HOME}}\n{}\n",
+                        "ZDOTDIR=$HANDSHAKE_USER_ZDOTDIR\n[[ -r $ZDOTDIR/{file} ]] && source $ZDOTDIR/{file}\nHANDSHAKE_USER_ZDOTDIR=${{ZDOTDIR:-$HOME}}\n{}\n",
                         if next {
-                            "ZDOTDIR=$TWINE_INTEGRATION_DIR"
+                            "ZDOTDIR=$HANDSHAKE_INTEGRATION_DIR"
                         } else {
-                            "source $TWINE_INTEGRATION_DIR/integration\nunset TWINE_USER_ZDOTDIR TWINE_INTEGRATION_DIR"
+                            "source $HANDSHAKE_INTEGRATION_DIR/integration\nunset HANDSHAKE_USER_ZDOTDIR HANDSHAKE_INTEGRATION_DIR"
                         }
                     );
                     std::fs::write(directory.path().join(file), wrapper)
                         .map_err(integration_error)?;
                 }
                 command.env(
-                    "TWINE_USER_ZDOTDIR",
+                    "HANDSHAKE_USER_ZDOTDIR",
                     std::env::var_os("ZDOTDIR")
                         .unwrap_or_else(|| std::env::var_os("HOME").unwrap_or_default()),
                 );
-                command.env("TWINE_INTEGRATION_DIR", directory.path());
+                command.env("HANDSHAKE_INTEGRATION_DIR", directory.path());
                 command.env("ZDOTDIR", directory.path());
                 command.arg("-il");
             }
@@ -74,13 +74,13 @@ impl ShellIntegration {
                 // Bash 3.2 ignores ENV unless invoked as sh, and login shells ignore --rcfile.
                 // A temporary login profile restores HOME before reading the user's profile.
                 let profile = format!(
-                    "if [[ $HISTFILE == $HOME/.bash_history ]]; then HISTFILE=$TWINE_USER_HOME/.bash_history; fi\nHOME=$TWINE_USER_HOME\nunset TWINE_USER_HOME\nsource '{}'\n",
+                    "if [[ $HISTFILE == $HOME/.bash_history ]]; then HISTFILE=$HANDSHAKE_USER_HOME/.bash_history; fi\nHOME=$HANDSHAKE_USER_HOME\nunset HANDSHAKE_USER_HOME\nsource '{}'\n",
                     directory.path().join("integration").display()
                 );
                 std::fs::write(directory.path().join(".bash_profile"), profile)
                     .map_err(integration_error)?;
                 command.env(
-                    "TWINE_USER_HOME",
+                    "HANDSHAKE_USER_HOME",
                     std::env::var_os("HOME").unwrap_or_default(),
                 );
                 command.env("HOME", directory.path());
@@ -169,7 +169,7 @@ impl ShellDecoder {
         let text = std::str::from_utf8(&self.buffer).ok()?;
         let mut parts = text.strip_prefix("133;")?.split(';');
         let kind = parts.next()?;
-        if parts.next()? != format!("twine={}", self.token) {
+        if parts.next()? != format!("handshake={}", self.token) {
             return None;
         }
         match kind {
@@ -204,7 +204,7 @@ mod tests {
 
     #[test]
     fn only_our_marks_decode_at_every_chunk_boundary() {
-        let bytes = b"text\x1b]133;C\x07\x1b]133;A;twine=other\x07\x1b]133;C;twine=test;command=6563686f20e29883\x1b\\output\x1b]133;D;twine=test;7\x07";
+        let bytes = b"text\x1b]133;A;twine=test\x07\x1b]133;C;twine=test;command=66616c7365\x07\x1b]133;D;twine=test;1\x07\x1b]133;C\x07\x1b]133;A;handshake=other\x07\x1b]133;C;handshake=test;command=6563686f20e29883\x1b\\output\x1b]133;D;handshake=test;7\x07";
         for split in 0..=bytes.len() {
             let mut decoder = ShellDecoder::new("test".into());
             let mut marks = decoder.feed(&bytes[..split], 0);
@@ -224,14 +224,14 @@ mod tests {
         let mut decoder = ShellDecoder::new("test".into());
         assert_eq!(
             decoder.feed(
-                b"\x1b]133;C;twine=test;command=gg\x07\x1b]133;D;twine=test;x\x07",
+                b"\x1b]133;C;handshake=test;command=gg\x07\x1b]133;D;handshake=test;x\x07",
                 0
             ),
             []
         );
         let mut bytes = b"\x1b]".to_vec();
         bytes.extend(vec![b'x'; MAX_MARK_BYTES + 1]);
-        bytes.extend(b"\x07\x1b]133;A;twine=test\x07");
+        bytes.extend(b"\x07\x1b]133;A;handshake=test\x07");
         assert_eq!(
             decoder.feed(&bytes, 0),
             vec![(ShellMark::Prompt, bytes.len() as u64)]

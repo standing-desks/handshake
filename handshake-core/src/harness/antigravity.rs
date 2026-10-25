@@ -1,7 +1,7 @@
 //! Antigravity lifecycle hooks supplied through a launch-only added directory.
 //!
 //! User and global customizations are never edited. Hooks bridge `agy`'s
-//! customization event contracts to Twine's bounded step inbox.
+//! customization event contracts to Handshake's bounded step inbox.
 
 use std::ffi::OsString;
 use std::io;
@@ -35,7 +35,7 @@ pub(crate) fn prepare(position: Arc<ReplayPosition>) -> io::Result<(StepInbox, V
     }
 
     let hooks = json!({
-        "twine": {
+        "handshake": {
             "SessionStart": [
                 {
                     "type": "command",

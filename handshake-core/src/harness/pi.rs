@@ -17,10 +17,10 @@ pub(crate) fn prepare(
     harness: HarnessId,
 ) -> io::Result<(StepInbox, Vec<OsString>)> {
     let inbox = StepInbox::new(position, parse)?;
-    let extension = inbox.directory.path().join("twine.js");
+    let extension = inbox.directory.path().join("handshake.js");
     let source = include_str!("pi-extension.js")
         .replace(
-            "__TWINE_OMP__",
+            "__HANDSHAKE_OMP__",
             if harness == HarnessId::Omp {
                 "true"
             } else {
@@ -28,7 +28,7 @@ pub(crate) fn prepare(
             },
         )
         .replace(
-            "__TWINE_SOCKET__",
+            "__HANDSHAKE_SOCKET__",
             &serde_json::to_string(&inbox.socket_path)?,
         );
     std::fs::write(&extension, source)?;
@@ -339,9 +339,9 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "requires Node; set TWINE_NODE to its absolute path"]
+    #[ignore = "requires Node; set HANDSHAKE_NODE to its absolute path"]
     fn pi_extension_preserves_shutdown_bursts_for_pi_and_omp() {
-        let node = std::env::var("TWINE_NODE").expect("set TWINE_NODE");
+        let node = std::env::var("HANDSHAKE_NODE").expect("set HANDSHAKE_NODE");
         for (harness, child) in [
             (HarnessId::Pi, false),
             (HarnessId::Omp, false),
@@ -388,9 +388,9 @@ assert.ok(Date.now()-start < 3500, 'shutdown exceeded its deadline');
     }
 
     #[test]
-    #[ignore = "requires Node; set TWINE_NODE to its absolute path"]
+    #[ignore = "requires Node; set HANDSHAKE_NODE to its absolute path"]
     fn pi_extension_preserves_bounded_shutdown_when_transport_stalls() {
-        let node = std::env::var("TWINE_NODE").expect("set TWINE_NODE");
+        let node = std::env::var("HANDSHAKE_NODE").expect("set HANDSHAKE_NODE");
         let (inbox, arguments) =
             prepare(Arc::new(ReplayPosition::default()), HarnessId::Pi).unwrap();
         let stalled_socket = inbox.directory.path().join("stalled.sock");
@@ -432,9 +432,9 @@ await new Promise(resolve => server.close(resolve));
     }
 
     #[test]
-    #[ignore = "requires Node; set TWINE_NODE to its absolute path"]
+    #[ignore = "requires Node; set HANDSHAKE_NODE to its absolute path"]
     fn omp_extension_records_parallel_nested_children_under_original_root_turn() {
-        let node = std::env::var("TWINE_NODE").expect("set TWINE_NODE");
+        let node = std::env::var("HANDSHAKE_NODE").expect("set HANDSHAKE_NODE");
         let (inbox, arguments) =
             prepare(Arc::new(ReplayPosition::default()), HarnessId::Omp).unwrap();
         let script = r"
@@ -527,10 +527,10 @@ await root('session_shutdown', {});
     }
 
     #[test]
-    #[ignore = "requires Node and installed Pi SDK; set TWINE_NODE and TWINE_PI_PACKAGE"]
+    #[ignore = "requires Node and installed Pi SDK; set HANDSHAKE_NODE and HANDSHAKE_PI_PACKAGE"]
     fn pi_installed_extension_runner_delivers_nested_tool_activity() {
-        let node = std::env::var("TWINE_NODE").expect("set TWINE_NODE");
-        let package = std::env::var("TWINE_PI_PACKAGE").expect("set TWINE_PI_PACKAGE");
+        let node = std::env::var("HANDSHAKE_NODE").expect("set HANDSHAKE_NODE");
+        let package = std::env::var("HANDSHAKE_PI_PACKAGE").expect("set HANDSHAKE_PI_PACKAGE");
         let (inbox, arguments) =
             prepare(Arc::new(ReplayPosition::default()), HarnessId::Pi).unwrap();
         let script = r"
@@ -603,9 +603,9 @@ await emit({type:'session_shutdown'});
     }
 
     #[test]
-    #[ignore = "requires Node; set TWINE_NODE to its absolute path"]
+    #[ignore = "requires Node; set HANDSHAKE_NODE to its absolute path"]
     fn omp_extension_preserves_continuations_and_ignores_child_sessions() {
-        let node = std::env::var("TWINE_NODE").expect("set TWINE_NODE");
+        let node = std::env::var("HANDSHAKE_NODE").expect("set HANDSHAKE_NODE");
         let (inbox, arguments) =
             prepare(Arc::new(ReplayPosition::default()), HarnessId::Omp).unwrap();
         let script = r"
@@ -672,9 +672,9 @@ await emit('session_shutdown', {});
     }
 
     #[test]
-    #[ignore = "requires Node; set TWINE_NODE to its absolute path"]
+    #[ignore = "requires Node; set HANDSHAKE_NODE to its absolute path"]
     fn pi_extension_preserves_queued_prompts_and_tool_identity() {
-        let node = std::env::var("TWINE_NODE").expect("set TWINE_NODE");
+        let node = std::env::var("HANDSHAKE_NODE").expect("set HANDSHAKE_NODE");
         let (inbox, arguments) =
             prepare(Arc::new(ReplayPosition::default()), HarnessId::Pi).unwrap();
         let script = r"

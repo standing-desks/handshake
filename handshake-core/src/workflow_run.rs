@@ -736,7 +736,7 @@ impl WorkflowRun {
                 return self.prompt.clone();
             }
             return format!(
-                "Task:\n{}\n\nIncoming work:\n{incoming}\n\nComplete this assignment using your existing Twine signal command.",
+                "Task:\n{}\n\nIncoming work:\n{incoming}\n\nComplete this assignment using your existing Handshake signal command.",
                 self.prompt
             );
         }
@@ -796,7 +796,7 @@ impl WorkflowRun {
             "Wait for a task or a handoff. The next user message supplies the work."
         };
         format!(
-            "You are {} in a Twine workflow.\n{}\n\n{}\n\nFirst assignment only:\nThe first task uses the {} stage and JSON example below. Later Twine task messages supply the current stage and JSON example. Use those current rules for each later assignment.\n\nAll agents work directly in this folder. Do not create a worktree or isolated checkout. Give parallel workers non-overlapping file sets; file ownership is advisory.\n\nWhen finished, explicitly submit JSON on stdin to this command:\n{} <<'TWINE_COMPLETION'\n{}\nTWINE_COMPLETION\n\n{}\nFor the first assignment only, supply an assignment for each receiver in this example. Use its exact role and instance, with actual sub-tasks and file sets. For each later assignment, use the receiver list in the current Twine task message. Omit assignments if that list is empty. For each new user task, include task with the user's full task text. A process exit or terminal message does not complete the stage. A rejected submission returns feedback; correct it and submit again. Keep using this completion command for subsequent assignments and user follow-ups in this conversation. The user can also mark done in Twine.\n",
+            "You are {} in a Handshake workflow.\n{}\n\n{}\n\nFirst assignment only:\nThe first task uses the {} stage and JSON example below. Later Handshake task messages supply the current stage and JSON example. Use those current rules for each later assignment.\n\nAll agents work directly in this folder. Do not create a worktree or isolated checkout. Give parallel workers non-overlapping file sets; file ownership is advisory.\n\nWhen finished, explicitly submit JSON on stdin to this command:\n{} <<'HANDSHAKE_COMPLETION'\n{}\nHANDSHAKE_COMPLETION\n\n{}\nFor the first assignment only, supply an assignment for each receiver in this example. Use its exact role and instance, with actual sub-tasks and file sets. For each later assignment, use the receiver list in the current Handshake task message. Omit assignments if that list is empty. For each new user task, include task with the user's full task text. A process exit or terminal message does not complete the stage. A rejected submission returns feedback; correct it and submit again. Keep using this completion command for subsequent assignments and user follow-ups in this conversation. The user can also mark done in Handshake.\n",
             agent.label,
             role.instructions,
             task,
@@ -1152,7 +1152,7 @@ mod tests {
         let mut run = run(BuiltinType::Coordinator.legacy_definition());
         let setup = run.instructions(1, "complete");
         assert!(setup.contains("First assignment only"));
-        assert!(setup.contains("Later Twine task messages supply the current stage"));
+        assert!(setup.contains("Later Handshake task messages supply the current stage"));
         assert!(run.complete(1, 1, signal(Decision::Done)).is_err());
         let mut split = signal(Decision::Done);
         split.assignments = (1..=2)

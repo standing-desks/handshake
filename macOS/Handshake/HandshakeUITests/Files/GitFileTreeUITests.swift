@@ -67,7 +67,7 @@ extension HandshakeUITests {
         try runGit(folder, ["commit", "-am", "main"])
         try runGit(folder, ["merge", "other"], expectedStatus: 1)
         let app = try makeApp(lastOpenFolder: folder)
-        app.launchEnvironment["TWINE_TEST_APPEARANCE"] = "Light"
+        app.launchEnvironment["HANDSHAKE_TEST_APPEARANCE"] = "Light"
         app.launch()
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
         waitForGit("Merge conflict", at: readme, in: app)

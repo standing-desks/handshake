@@ -1,5 +1,5 @@
-# Gruvbox Dark terminal colors. Edit this file, then restart Twine.
-# Adapted for Twine from https://github.com/morhetz/gruvbox/blob/master/colors/gruvbox.vim
+# Gruvbox Dark terminal colors. Edit this file, then restart Handshake.
+# Adapted for Handshake from https://github.com/morhetz/gruvbox/blob/master/colors/gruvbox.vim
 # License and attribution: licenses/gruvbox.txt
 # Medium contrast. Selection uses the palette's bg2 color.
 [terminal.colors]

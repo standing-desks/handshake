@@ -561,7 +561,7 @@ mod tests {
                 .integrated_shell
         );
         stream
-            .publish_blocking(id, b"\x1b]133;D;twine=test;1\x07".to_vec())
+            .publish_blocking(id, b"\x1b]133;D;handshake=test;1\x07".to_vec())
             .unwrap();
         stream.finish(id).unwrap();
         stream.next_chunk().unwrap();
@@ -577,11 +577,12 @@ mod tests {
         stream
             .publish_blocking(
                 id,
-                b"\x1b]133;L;twine=test\x07\x1b]133;C;twine=test;command=66616c7365\x07".to_vec(),
+                b"\x1b]133;L;handshake=test\x07\x1b]133;C;handshake=test;command=66616c7365\x07"
+                    .to_vec(),
             )
             .unwrap();
         stream
-            .publish_blocking(id, b"\x1b]133;A;twine=test\x07".to_vec())
+            .publish_blocking(id, b"\x1b]133;A;handshake=test\x07".to_vec())
             .unwrap();
         let observations = stream.take_shell_observations().unwrap();
         assert_eq!(observations.len(), 1);
@@ -595,10 +596,10 @@ mod tests {
         let second = stream.open().unwrap();
         stream.integrate_shell(first, "first".into()).unwrap();
         stream.integrate_shell(second, "second".into()).unwrap();
-        let marks = b"\x1b]133;A;twine=first\x07".repeat(128);
+        let marks = b"\x1b]133;A;handshake=first\x07".repeat(128);
         stream.publish_blocking(first, marks.clone()).unwrap();
         stream.publish_blocking(first, marks).unwrap();
-        let output = b"\x1b]133;C;twine=second;command=66616c7365\x07output".to_vec();
+        let output = b"\x1b]133;C;handshake=second;command=66616c7365\x07output".to_vec();
         stream.publish_blocking(second, output.clone()).unwrap();
         let observations = stream.take_shell_observations().unwrap();
         assert!(
@@ -617,7 +618,7 @@ mod tests {
         let stream = TerminalStream::for_test(4096, 4).unwrap();
         let id = stream.open().unwrap();
         stream.integrate_shell(id, "test".into()).unwrap();
-        let bytes = b"\x1b]133;C;twine=test;command=66616c7365\x07".to_vec();
+        let bytes = b"\x1b]133;C;handshake=test;command=66616c7365\x07".to_vec();
         let boundary = bytes.len() as u64;
         stream
             .lock_inner()

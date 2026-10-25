@@ -5,7 +5,7 @@ import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 export default async function ({ client }) {
-  const socketPath = __TWINE_SOCKET__;
+  const socketPath = __HANDSHAKE_SOCKET__;
   const sessions = new Map();
   const queue = [];
   let pending, closed = false, draining = false, drained;

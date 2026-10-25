@@ -217,7 +217,7 @@ actor CoreWorker: CoreTransport {
         return operation(client)
     }
 
-    private func consume(_ buffer: inout HandshakeBuffer) throws -> Data {
+    func consume(_ buffer: inout HandshakeBuffer) throws -> Data {
         let data: Data
         if buffer.length == 0 {
             data = Data()
@@ -229,7 +229,7 @@ actor CoreWorker: CoreTransport {
         return data
     }
 
-    private func check(_ status: HandshakeStatus) throws {
+    func check(_ status: HandshakeStatus) throws {
         switch status {
         case HANDSHAKE_STATUS_OK:
             return

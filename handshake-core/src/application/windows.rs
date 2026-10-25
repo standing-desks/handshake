@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
-use super::{Application, ApplicationError, DATABASE_FILE_NAME, DEFAULT_EVENT_CAPACITY};
+use super::{Application, ApplicationError, DEFAULT_EVENT_CAPACITY, database_path};
 use crate::config::Config;
 use crate::folder::Folders;
 use crate::store::Store;
@@ -44,6 +44,7 @@ impl Application {
     /// # Errors
     /// Returns an error if storage, recovery, or runtime initialization fails.
     pub fn new_window(data_directory: &Path) -> Result<Self, ApplicationError> {
+        Config::prepare_user()?;
         std::fs::create_dir_all(data_directory).map_err(|source| {
             crate::store::StoreError::CreateDirectory {
                 path: data_directory.into(),
@@ -65,7 +66,7 @@ impl Application {
             Some(entry) => Arc::clone(&entry.recorder),
             None => Arc::new(TranscriptRecorder::open(&path.join("transcripts"))?),
         };
-        let mut store = Store::open(&data_directory.join(DATABASE_FILE_NAME))?;
+        let mut store = Store::open(&database_path(data_directory))?;
         if restore {
             store.recover_interrupted_work()?;
         }

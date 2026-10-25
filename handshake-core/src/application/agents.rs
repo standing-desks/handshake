@@ -19,18 +19,21 @@ fn locate(
     definition: &HarnessDefinition,
     test_path: Option<&std::ffi::OsStr>,
     login_path: &LoginPath,
+    environment: impl Fn(&str) -> Option<std::ffi::OsString>,
 ) -> Result<LocatedHarness, HarnessError> {
     if let Some(path) = test_path {
         return locate_in(definition, Some(path), None);
     }
-    // UI tests point this at a stub harness, like `TWINE_DATA_DIRECTORY` points at test data.
-    if let Some(path) = std::env::var_os("TWINE_HARNESS_PATH") {
+    // An explicit override searches only that path, including for UI-test stub harnesses.
+    if let Some(path) =
+        environment("HANDSHAKE_HARNESS_PATH").or_else(|| environment("TWINE_HARNESS_PATH"))
+    {
         return locate_in(definition, Some(&path), None);
     }
     locate_in(
         definition,
         login_path.get().as_deref(),
-        std::env::var_os("PATH").as_deref(),
+        environment("PATH").as_deref(),
     )
 }
 
@@ -45,7 +48,9 @@ impl Application {
         let test_path = self.harness_path.as_deref();
         #[cfg(not(test))]
         let test_path = None;
-        locate(definition, test_path, &self.login_path)
+        locate(definition, test_path, &self.login_path, |key| {
+            std::env::var_os(key)
+        })
     }
 
     /// Starts listing the models `harness` offers, read from its own CLI on another thread, so a
@@ -61,7 +66,12 @@ impl Application {
         let test_path: Option<std::ffi::OsString> = None;
         let login_path = Arc::clone(&self.login_path);
         self.model_lists.request(harness, folder, move || {
-            locate(harness.definition(), test_path.as_deref(), &login_path)
+            locate(
+                harness.definition(),
+                test_path.as_deref(),
+                &login_path,
+                |key| std::env::var_os(key),
+            )
         })
     }
 
@@ -328,6 +338,41 @@ mod tests {
             )
             .unwrap();
         application
+    }
+
+    #[test]
+    fn harness_override_prefers_handshake_and_keeps_explicit_paths_exclusive() {
+        let current = tempfile::tempdir().unwrap();
+        let legacy = tempfile::tempdir().unwrap();
+        for directory in [current.path(), legacy.path()] {
+            let binary = directory.join("pi");
+            std::fs::write(&binary, "#!/bin/sh\n").unwrap();
+            std::fs::set_permissions(binary, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let login = LoginPath::ready(Some(legacy.path().as_os_str().to_owned()));
+        let definition = HarnessId::Pi.definition();
+        let find = |new: Option<&std::ffi::OsStr>, old: Option<&std::ffi::OsStr>| {
+            locate(definition, None, &login, |key| match key {
+                "HANDSHAKE_HARNESS_PATH" => new.map(ToOwned::to_owned),
+                "TWINE_HARNESS_PATH" => old.map(ToOwned::to_owned),
+                "PATH" => Some(legacy.path().as_os_str().to_owned()),
+                _ => None,
+            })
+        };
+        let current_path = current.path().as_os_str();
+        let legacy_path = legacy.path().as_os_str();
+        assert_eq!(
+            find(Some(current_path), Some(legacy_path)).unwrap().program,
+            current.path().join("pi")
+        );
+        assert_eq!(
+            find(None, Some(legacy_path)).unwrap().program,
+            legacy.path().join("pi")
+        );
+        assert_eq!(find(None, None).unwrap().program, legacy.path().join("pi"));
+        let missing = current.path().join("missing");
+        assert!(find(Some(missing.as_os_str()), Some(legacy_path)).is_err());
+        assert!(find(Some(std::ffi::OsStr::new("")), Some(legacy_path)).is_err());
     }
 
     #[test]

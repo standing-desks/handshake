@@ -337,11 +337,11 @@ mod tests {
     /// Invoked in separate processes by the parent test; never kills the test runner itself.
     #[test]
     fn crash_recovery_process() {
-        let Some(data) = std::env::var_os("TWINE_CRASH_TEST_DATA") else {
+        let Some(data) = std::env::var_os("HANDSHAKE_CRASH_TEST_DATA") else {
             return;
         };
         let data = Path::new(&data);
-        match std::env::var("TWINE_CRASH_TEST_MODE").unwrap().as_str() {
+        match std::env::var("HANDSHAKE_CRASH_TEST_MODE").unwrap().as_str() {
             "seed" => seed(data),
             "verify" => verify(data),
             "contend" => {
@@ -380,8 +380,8 @@ mod tests {
         KillOnDrop(
             ProcessCommand::new(std::env::current_exe().unwrap())
                 .args(["--exact", PROCESS_TEST, "--nocapture"])
-                .env("TWINE_CRASH_TEST_DATA", data)
-                .env("TWINE_CRASH_TEST_MODE", mode)
+                .env("HANDSHAKE_CRASH_TEST_DATA", data)
+                .env("HANDSHAKE_CRASH_TEST_MODE", mode)
                 .spawn()
                 .unwrap(),
         )

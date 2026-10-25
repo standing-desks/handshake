@@ -3,7 +3,9 @@
 mod application;
 mod blocking_worker;
 pub mod config;
+mod data_migration;
 mod event;
+pub use data_migration::{DataMigrationError, migrate_data_directory};
 mod files;
 mod folder;
 mod git;

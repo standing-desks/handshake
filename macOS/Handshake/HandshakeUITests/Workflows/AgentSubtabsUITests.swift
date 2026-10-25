@@ -63,7 +63,7 @@ extension HandshakeUITests {
     func testAgentsKeepTheirTerminalAtTheMinimumWindowSizeInDarkAppearance() throws {
         let folder = try makeTestFolder(prefix: "TwineAgentUITests")
         let app = try makeApp(lastOpenFolder: folder)
-        app.launchEnvironment["TWINE_TEST_APPEARANCE"] = "Dark"
+        app.launchEnvironment["HANDSHAKE_TEST_APPEARANCE"] = "Dark"
         app.launch()
         XCTAssertTrue(app.buttons["workflowTab-1"].waitForExistence(timeout: 10), app.debugDescription)
         resizeWindow(app.windows.firstMatch, to: CGSize(width: 900, height: 620))

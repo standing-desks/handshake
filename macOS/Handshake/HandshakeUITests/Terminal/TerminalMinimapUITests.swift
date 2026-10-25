@@ -7,7 +7,7 @@ extension HandshakeUITests {
             let folder = try makeTestFolder(prefix: "TwineShortMinimapUITests")
             let app = try makeApp(lastOpenFolder: folder)
             app.launchEnvironment["SHELL"] = "/bin/bash"
-            app.launchEnvironment["TWINE_TEST_APPEARANCE"] = appearance
+            app.launchEnvironment["HANDSHAKE_TEST_APPEARANCE"] = appearance
             app.launch()
             defer { app.terminate() }
             XCTAssertTrue(app.buttons["workflowTab-1"].waitForExistence(timeout: 10))

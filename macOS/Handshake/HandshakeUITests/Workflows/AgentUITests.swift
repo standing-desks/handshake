@@ -9,7 +9,7 @@ extension HandshakeUITests {
         let app = try makeApp(lastOpenFolder: folder)
         defer { app.terminate() }
         app.launchEnvironment["SHELL"] = "/bin/sh"
-        app.launchEnvironment["TWINE_HARNESS_PATH"] = "\(folder.path)/bin:/bin:/usr/bin"
+        app.launchEnvironment["HANDSHAKE_HARNESS_PATH"] = "\(folder.path)/bin:/bin:/usr/bin"
         // The child must override inherited fullscreen preferences for its own terminal.
         app.launchEnvironment["CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN"] = "0"
         app.launchEnvironment["CLAUDE_CODE_NO_FLICKER"] = "1"
@@ -75,7 +75,7 @@ extension HandshakeUITests {
         let app = try makeApp(lastOpenFolder: folder)
         defer { app.terminate() }
         app.launchEnvironment["SHELL"] = "/bin/sh"
-        app.launchEnvironment["TWINE_HARNESS_PATH"] = "\(folder.path)/bin:/bin:/usr/bin"
+        app.launchEnvironment["HANDSHAKE_HARNESS_PATH"] = "\(folder.path)/bin:/bin:/usr/bin"
         app.launch()
         XCTAssertTrue(app.buttons["workflowTab-1"].waitForExistence(timeout: 10), app.debugDescription)
         element("workflowChoice-Terminal", in: app).click()
@@ -159,7 +159,7 @@ extension HandshakeUITests {
         let app = try makeApp(lastOpenFolder: folder)
         defer { app.terminate() }
         app.launchEnvironment["SHELL"] = "/bin/sh"
-        app.launchEnvironment["TWINE_HARNESS_PATH"] = "\(folder.path)/bin:/bin:/usr/bin"
+        app.launchEnvironment["HANDSHAKE_HARNESS_PATH"] = "\(folder.path)/bin:/bin:/usr/bin"
         app.launch()
         XCTAssertTrue(app.buttons["workflowTab-1"].waitForExistence(timeout: 10), app.debugDescription)
         element("workflowChoice-Terminal", in: app).click()
@@ -236,7 +236,7 @@ extension HandshakeUITests {
         let app = try makeApp(lastOpenFolder: folder)
         // The fixture's installer uses a predictable shell without the user's interactive configuration.
         app.launchEnvironment["SHELL"] = "/bin/sh"
-        app.launchEnvironment["TWINE_HARNESS_PATH"] = "\(harnesses.path(percentEncoded: false)):/bin:/usr/bin"
+        app.launchEnvironment["HANDSHAKE_HARNESS_PATH"] = "\(harnesses.path(percentEncoded: false)):/bin:/usr/bin"
         app.launch()
         XCTAssertTrue(app.buttons["workflowTab-1"].waitForExistence(timeout: 10), app.debugDescription)
         sidebarToggle(in: app).click()
@@ -281,7 +281,7 @@ extension HandshakeUITests {
         let folder = try makeFolder()
         let harnesses = try makeEmptyDirectory()
         let app = try makeApp(lastOpenFolder: folder)
-        app.launchEnvironment["TWINE_HARNESS_PATH"] = harnesses.path(percentEncoded: false)
+        app.launchEnvironment["HANDSHAKE_HARNESS_PATH"] = harnesses.path(percentEncoded: false)
         app.launch()
         XCTAssertTrue(app.buttons["workflowTab-1"].waitForExistence(timeout: 10), app.debugDescription)
         resizeWindow(app.windows.firstMatch, to: CGSize(width: 900, height: 620))

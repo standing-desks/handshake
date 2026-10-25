@@ -291,7 +291,7 @@ pub(crate) struct Store {
 
 fn workflow_file_directory(config_path: Option<&Path>) -> PathBuf {
     config_path.and_then(Path::parent).map_or_else(
-        || std::env::temp_dir().join("twine/workflows"),
+        || std::env::temp_dir().join("handshake/workflows"),
         |directory| directory.join("workflows"),
     )
 }
@@ -357,6 +357,37 @@ impl Store {
             workflow_directory,
             _workflow_temp: temporary,
         })
+    }
+
+    /// Verify every expected domain column before a copied database becomes authoritative.
+    /// A valid SQLite file and a current `user_version` alone do not establish a usable app schema.
+    pub(crate) fn verify_schema(&self) -> Result<(), StoreError> {
+        let mut expected = Connection::open_in_memory()?;
+        migrate(&mut expected)?;
+        let mut tables = expected.prepare(
+            "SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+        )?;
+        for table in tables.query_map([], |row| row.get::<_, String>(0))? {
+            let table = table?;
+            // Identifiers come solely from our embedded schema, never caller input.
+            let mut columns = expected.prepare(&format!("PRAGMA table_info(\"{table}\")"))?;
+            let columns = columns
+                .query_map([], |row| row.get::<_, String>(1))?
+                .map(|column| column.map(|name| format!("\"{table}\".\"{name}\"")))
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            self.connection.prepare(&format!(
+                "SELECT {} FROM \"{table}\" LIMIT 0",
+                columns.join(",")
+            ))?;
+        }
+        let broken = self
+            .connection
+            .prepare("PRAGMA foreign_key_check")?
+            .exists([])?;
+        if broken {
+            return Err(rusqlite::Error::InvalidQuery.into());
+        }
+        Ok(())
     }
 
     /// Returns the recent folders, most recently opened first.

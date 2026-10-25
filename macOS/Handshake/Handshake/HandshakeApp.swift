@@ -13,12 +13,7 @@ import SwiftUI
 struct HandshakeApp: App {
     @NSApplicationDelegateAdaptor(AppTerminationDelegate.self) private var terminationDelegate
     @State private var initialWindowID = UUID()
-    @State private var windows = FolderWindows(dataDirectory: Self.dataDirectory)
-    @State private var harnessModels = HarnessModelCatalog()
-    @State private var zoom = AppZoom()
-    @State private var settings = SettingsPopup(dataDirectory: Self.dataDirectory)
-    @State private var workflowLayouts = WorkflowLayouts(
-        fileURL: Self.dataDirectory.appending(path: "workflow-layouts.json"))
+    @State private var startup = AppStartup()
 
     init() {
         // Each folder has its own window and runtime.
@@ -26,11 +21,12 @@ struct HandshakeApp: App {
         #if DEBUG
             // Configure the core before starting any runtimes. Explicit environment overrides still apply.
             let environment = ProcessInfo.processInfo.environment
-            if environment["TWINE_CONFIG_PATH"] == nil && environment["XDG_CONFIG_HOME"] == nil {
-                setenv("TWINE_CONFIG_PATH", Self.dataDirectory.appending(path: "config/config.toml").path, 1)
+            let configOverride = environment["HANDSHAKE_CONFIG_PATH"] ?? environment["TWINE_CONFIG_PATH"]
+            if configOverride == nil && environment["XDG_CONFIG_HOME"] == nil {
+                setenv("HANDSHAKE_CONFIG_PATH", Self.dataDirectory.appending(path: "config/config.toml").path, 1)
             }
             // UI tests exercise both appearances without changing the desktop's appearance.
-            switch ProcessInfo.processInfo.environment["TWINE_TEST_APPEARANCE"] {
+            switch ProcessInfo.processInfo.environment["HANDSHAKE_TEST_APPEARANCE"] {
             case "Light":
                 NSApplication.shared.appearance = NSAppearance(named: .aqua)
             case "Dark":
@@ -43,16 +39,29 @@ struct HandshakeApp: App {
 
     var body: some Scene {
         WindowGroup(id: "folder", for: UUID.self) { id in
-            FolderWindowRoot(id: id.wrappedValue ?? initialWindowID, windows: windows)
-                .environment(settings)
-                .defaultAppStorage(WorkflowLaunchPreferences.defaultStore())
-                .environment(workflowLayouts)
-                .environment(harnessModels)
-                .environment(\.appZoom, zoom)
-                .task {
-                    zoom.installKeyboardShortcuts()
-                    terminationDelegate.attach(windows: windows, layouts: workflowLayouts, settings: settings)
+            Group {
+                switch startup.state {
+                case .waiting, .preparing:
+                    Color.clear
+                case .failed(let message):
+                    ContentUnavailableView(
+                        "Twine Couldn't Start", systemImage: "exclamationmark.triangle", description: Text(message))
+                case .ready(let presentation):
+                    FolderWindowRoot(id: id.wrappedValue ?? initialWindowID, windows: presentation.windows)
+                        .environment(presentation.settings)
+                        .defaultAppStorage(WorkflowLaunchPreferences.defaultStore())
+                        .environment(presentation.layouts)
+                        .environment(presentation.harnessModels)
+                        .environment(\.appZoom, presentation.zoom)
+                        .task {
+                            presentation.zoom.installKeyboardShortcuts()
+                            terminationDelegate.attach(
+                                windows: presentation.windows, layouts: presentation.layouts,
+                                settings: presentation.settings)
+                        }
                 }
+            }
+            .task { await startup.prepare() }
         }
         .windowToolbarStyle(.unified)
         .defaultWindowPlacement { _, context in
@@ -64,8 +73,10 @@ struct HandshakeApp: App {
         .commands {
             SidebarCommands()
             UpdateCommands()
-            FolderCommands(windows: windows, settings: settings)
-            AppZoomCommands(zoom: zoom)
+            if case .ready(let presentation) = startup.state {
+                FolderCommands(windows: presentation.windows, settings: presentation.settings)
+                AppZoomCommands(zoom: presentation.zoom)
+            }
         }
     }
 

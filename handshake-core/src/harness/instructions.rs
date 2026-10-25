@@ -38,7 +38,7 @@ pub(crate) fn append(
         HarnessId::Opencode => {
             let inbox = hooks
                 .ok_or_else(|| io::Error::other("Could not prepare OpenCode role instructions."))?;
-            let path = inbox.directory.path().join("twine-observer.mjs");
+            let path = inbox.directory.path().join("handshake-observer.mjs");
             let source = std::fs::read_to_string(&path)?;
             let source = source.replace("  return {\n    \"chat.message\":", &format!(
                 "  return {{\n    \"experimental.chat.system.transform\": async (input, output) => {{ if (!input.sessionID) return; let session = sessions.get(input.sessionID); if (!session && client.session?.get) {{ const result = await client.session.get({{path:{{id:input.sessionID}}}}); session = remember(result.data); }} if (session && !session.parent) output.system.push({}); }},\n    \"chat.message\":",
@@ -139,9 +139,9 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "requires Node; set TWINE_NODE to its absolute path"]
+    #[ignore = "requires Node; set HANDSHAKE_NODE to its absolute path"]
     fn opencode_context_preserves_system_text_and_excludes_children_and_unknown_sessions() {
-        let node = std::env::var("TWINE_NODE").expect("set TWINE_NODE");
+        let node = std::env::var("HANDSHAKE_NODE").expect("set HANDSHAKE_NODE");
         let (inbox, _) = super::super::opencode::prepare(std::sync::Arc::new(
             crate::terminal::ReplayPosition::default(),
         ))
@@ -176,7 +176,7 @@ for (const sessionID of ['child','missing',undefined]) {
 ";
         let result = std::process::Command::new(node)
             .args(["--input-type=module", "-e", script])
-            .arg(inbox.directory.path().join("twine-observer.mjs"))
+            .arg(inbox.directory.path().join("handshake-observer.mjs"))
             .output()
             .unwrap();
         assert!(
