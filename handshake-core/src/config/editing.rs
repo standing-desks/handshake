@@ -194,7 +194,7 @@ mod tests {
     #[test]
     fn editor_creates_defaults_and_preserves_invalid_source() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("twine/config.toml");
+        let path = directory.path().join("handshake/config.toml");
         let file = read_file(&path).unwrap();
         let FileContent::Text(source) = file.content else {
             panic!("expected text")

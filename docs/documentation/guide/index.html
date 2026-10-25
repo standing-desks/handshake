@@ -59,7 +59,14 @@ choosing <strong>Replace</strong> when Finder asks. Your saved work and settings
 <h2 id="upgrade-from-twine">Upgrade from Twine</h2>
 <p>Quit both apps before upgrading. New installs use <code>brew install --cask standing-desks/tap/handshake</code>.
 Existing <code>twineproject/tap</code> users can stay on that tap. After the tap rename migration is available,
-run <code>brew update</code> and <code>brew upgrade --cask handshake</code>.
+run:</p>
+<pre><code>brew trust --cask standing-desks/tap/handshake
+brew update
+brew upgrade --cask standing-desks/tap/handshake</code></pre>
+<p>Homebrew 6 and newer require explicit trust for the renamed cask; trust in the old name does not follow the rename.
+Omit the trust command on older Homebrew versions that do not provide it.
+See <a href="https://docs.brew.sh/Tap-Trust">Homebrew's tap trust guidance</a>.
+For the compatibility tap, use <code>twineproject/tap/handshake</code> in both the trust and upgrade commands.
 The historical <code>twine-app</code> and <code>twine-ade</code> casks map to <code>handshake</code>.</p>
 <p>For manual replacement, copy <strong>Handshake.app</strong> from the DMG into Applications,
 replace an existing Handshake copy, and move the old <strong>Twine.app</strong> to Trash.

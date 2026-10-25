@@ -522,7 +522,7 @@ impl Collector {
             .map(|folder| claude_key(&repository_root(folder)));
         let override_key = claude_override_key();
         let expected = if locations.example {
-            Some("-demo-twine".to_owned())
+            Some("-demo-handshake".to_owned())
         } else {
             override_key.or(expected)
         };
@@ -715,7 +715,7 @@ mod tests {
             ),
             ("home/.codex/memories/skills/build/SKILL.md", "# Build"),
             (
-                "home/.claude/projects/-demo-twine/memory/MEMORY.md",
+                "home/.claude/projects/-demo-handshake/memory/MEMORY.md",
                 "# Folder",
             ),
             ("home/.claude/projects/-another/memory/MEMORY.md", "# Other"),
@@ -860,17 +860,20 @@ mod tests {
     fn remote_claude_mirrors_are_excluded_and_nested_codex_instructions_are_inherited() {
         let root = tempfile::tempdir().unwrap();
         for (name, content) in [
-            ("home/.claude/projects/-demo-twine/memory/local.md", "local"),
             (
-                "home/.claude/projects/-demo-twine/memory/team/shared/remote.md",
+                "home/.claude/projects/-demo-handshake/memory/local.md",
+                "local",
+            ),
+            (
+                "home/.claude/projects/-demo-handshake/memory/team/shared/remote.md",
                 "remote",
             ),
             (
-                "home/.claude/projects/-demo-twine/memory/mount/.memory-sync",
+                "home/.claude/projects/-demo-handshake/memory/mount/.memory-sync",
                 "{\"v\":1}",
             ),
             (
-                "home/.claude/projects/-demo-twine/memory/mount/remote.md",
+                "home/.claude/projects/-demo-handshake/memory/mount/remote.md",
                 "remote",
             ),
             ("folder/AGENTS.md", "inherited"),

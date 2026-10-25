@@ -1007,7 +1007,8 @@ mod tests {
 
     /// Writes a shell script that `SHELL` can point at, so a test controls what the terminal runs.
     fn write_test_shell(name: &str, script: &str) -> PathBuf {
-        let path = std::env::temp_dir().join(format!("twine-bridge-{name}-{}", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("handshake-bridge-{name}-{}", std::process::id()));
         std::fs::write(&path, script).expect("test shell should be written");
         #[cfg(unix)]
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700))

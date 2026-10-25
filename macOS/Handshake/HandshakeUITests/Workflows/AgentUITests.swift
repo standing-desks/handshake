@@ -208,10 +208,11 @@ extension HandshakeUITests {
         let session = app.textFields["resumeSessionID"]
         XCTAssertTrue(session.waitForExistence(timeout: 5), app.debugDescription)
         session.click()
-        session.typeText("/tmp/twine-fixture-session.jsonl")
+        session.typeText("/tmp/handshake-fixture-session.jsonl")
         app.sheets.buttons["Resume"].click()
         XCTAssertTrue(app.staticTexts["Running"].waitForExistence(timeout: 10), app.debugDescription)
-        waitForFile(folder.appending(path: "agent-arguments"), containing: "/tmp/twine-fixture-session.jsonl", in: app)
+        waitForFile(
+            folder.appending(path: "agent-arguments"), containing: "/tmp/handshake-fixture-session.jsonl", in: app)
         app.typeText("RESUMED-INPUT\r")
         waitForFile(folder.appending(path: "resumed-input"), containing: "RESUMED-INPUT", in: app)
     }

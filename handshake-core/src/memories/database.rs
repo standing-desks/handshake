@@ -588,7 +588,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let path = root.path().join("memories_v2_1.sqlite");
         let db = Connection::open(&path).unwrap();
-        db.execute_batch("CREATE TABLE stage1_outputs(thread_id TEXT, rollout_summary TEXT, rollout_slug TEXT, generated_at INTEGER); INSERT INTO stage1_outputs VALUES('a','v2 summary','twine',100);").unwrap();
+        db.execute_batch("CREATE TABLE stage1_outputs(thread_id TEXT, rollout_summary TEXT, rollout_slug TEXT, generated_at INTEGER); INSERT INTO stage1_outputs VALUES('a','v2 summary','handshake',100);").unwrap();
         let mut collector = Collector::new(false);
         discover(root.path(), None, &mut collector);
         assert_eq!(collector.entries.len(), 2);

@@ -419,7 +419,7 @@ mod tests {
     fn unavailable_pre_invocation_prompt_is_not_a_task() {
         for payload in [
             json!({"event":"PreInvocation","turn":"1"}),
-            json!({"event":"PreInvocation","turn":"2", "payload":{"transcriptPath":"/missing/twine-transcript.jsonl"}}),
+            json!({"event":"PreInvocation","turn":"2", "payload":{"transcriptPath":"/missing/handshake-transcript.jsonl"}}),
         ] {
             let step = parse(payload.to_string().as_bytes()).unwrap();
             assert_eq!(step.title, "Prompt");

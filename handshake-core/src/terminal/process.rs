@@ -160,7 +160,7 @@ fn terminate_running_process(process: &mut ChildProcess) -> ExitResult {
         if error.raw_os_error() != Some(libc::ESRCH) {
             warn!(%error, process_id, "failed to kill terminal process group");
         }
-        // The shell may have changed process groups. Still terminate the child Twine spawned.
+        // The shell may have changed process groups. Still terminate the child Handshake spawned.
         let _ = process.child.kill();
     }
     #[cfg(target_os = "macos")]

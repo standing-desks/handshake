@@ -248,7 +248,7 @@ pub(super) fn edit(
     // Validate before moving the current file. The exclusive rename cannot overwrite
     // another file, even if an external editor creates it after the catalog check.
     encode(reference, &definition)?;
-    // Preserve the previous contents even if the user has edited them outside Twine.
+    // Preserve the previous contents even if the user has edited them outside Handshake.
     atomic_write(
         &archive(directory, source),
         &encode(source, &current.definition)?,

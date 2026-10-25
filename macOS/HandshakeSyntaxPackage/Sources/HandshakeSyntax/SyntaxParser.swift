@@ -9,7 +9,7 @@ public enum SyntaxParserError: Error, Equatable, Sendable {
 
 /// Own one parser per editor document. Native parser/tree state never leaves this actor.
 public actor SyntaxParser {
-    /// Accommodate every document accepted by Twine's 2 MiB UTF8 file limit.
+    /// Accommodate every document accepted by Handshake's 2 MiB UTF8 file limit.
     public static let maximumUTF16Length = 2_097_152
     private static let maximumCaptures = 100_000
     private let parser = Parser()

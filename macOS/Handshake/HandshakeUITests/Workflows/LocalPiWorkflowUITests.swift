@@ -6,9 +6,9 @@ extension HandshakeUITests {
     /// Opt-in integration test against real local inference servers. Ordinary UI runs skip it.
     @MainActor
     func testLocalPiWorkflowSmoke() throws {
-        let fixtureURL = URL(filePath: "/tmp/twine-local-pi-fixture.json")
+        let fixtureURL = URL(filePath: "/tmp/handshake-local-pi-fixture.json")
         guard FileManager.default.fileExists(atPath: fixtureURL.path) else {
-            throw XCTSkip("Create /tmp/twine-local-pi-fixture.json to run real Pi agents.")
+            throw XCTSkip("Create /tmp/handshake-local-pi-fixture.json to run real Pi agents.")
         }
         let fixture = try JSONDecoder().decode(LocalPiFixture.self, from: Data(contentsOf: fixtureURL))
         let folder = URL(filePath: fixture.folder)

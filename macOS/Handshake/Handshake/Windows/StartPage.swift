@@ -173,7 +173,7 @@ extension View {
     private let previewFolders = CoreFolderState(
         openFolder: nil,
         recentFolders: [
-            CoreRecentFolder(path: NSHomeDirectory() + "/Developer/twine", isMissing: false),
+            CoreRecentFolder(path: NSHomeDirectory() + "/Developer/handshake", isMissing: false),
             CoreRecentFolder(path: NSHomeDirectory() + "/Developer/agents-playground", isMissing: false),
             CoreRecentFolder(path: "/Volumes/Archive/2025/prototype", isMissing: true),
         ],

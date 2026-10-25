@@ -116,11 +116,11 @@ extension HandshakeUITests {
         coordinator.click()
         let back = app.buttons["Back"]
         XCTAssertTrue(back.waitForExistence(timeout: 10), app.debugDescription)
-        for _ in 0..<12 where back.frame.midY > choices.frame.maxY - 4 {
-            choices.scroll(byDeltaX: 0, deltaY: -60)
-        }
+        scrollBackButtonIntoView(back, in: app, choices: choices)
         XCTAssertTrue(back.isHittable, app.debugDescription)
+        attachWindow(in: app, name: "\(appearance), minimum window before returning from form")
         back.click()
+        XCTAssertTrue(back.waitForNonExistence(timeout: 10), app.debugDescription)
         app.typeText("printf '%s' compact > compact.txt\r")
         let typed = expectation(
             for: NSPredicate { _, _ in
@@ -129,6 +129,21 @@ extension HandshakeUITests {
         wait(for: [typed], timeout: 10)
         XCTAssertTrue(choices.waitForNonExistence(timeout: 10), app.debugDescription)
         app.terminate()
+    }
+
+    @MainActor
+    private func scrollBackButtonIntoView(_ back: XCUIElement, in app: XCUIApplication, choices: XCUIElement) {
+        for _ in 0..<12 where back.frame.midY > choices.frame.maxY - 4 {
+            choices.scroll(byDeltaX: 0, deltaY: -60)
+        }
+        // At minimum size the workspace also scrolls. Accessibility reports the
+        // card's full frame even where the trace footer clips its controls.
+        let viewport = app.scrollViews["workspaceViewport"]
+        for _ in 0..<8 where back.frame.maxY > viewport.frame.maxY - 4 {
+            viewport.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.5))
+                .scroll(byDeltaX: 0, deltaY: -60)
+        }
+        XCTAssertLessThan(back.frame.maxY, viewport.frame.maxY)
     }
 
     @MainActor
