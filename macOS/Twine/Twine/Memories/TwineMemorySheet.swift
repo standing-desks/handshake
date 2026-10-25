@@ -55,8 +55,21 @@ struct TwineMemorySheet: View {
                                 Text(record.preview).font(.callout).foregroundStyle(.secondary).lineLimit(3)
                             }.frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        DisclosureGroup("Storage and native profiles", isExpanded: $showsDetails) {
-                            VStack(alignment: .leading, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Button {
+                                showsDetails.toggle()
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: showsDetails ? "chevron.down" : "chevron.right")
+                                        .font(.caption.weight(.semibold)).accessibilityHidden(true)
+                                    Text("Storage and native profiles")
+                                    Spacer(minLength: 0)
+                                }.frame(maxWidth: .infinity, minHeight: 24, alignment: .leading).contentShape(.rect)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("twineMemoryDetails")
+                            .accessibilityValue(showsDetails ? "Expanded" : "Collapsed")
+                            if showsDetails {
                                 path("Twine · AMIS 0.4", snapshot.amisPath)
                                 path("Claude native memory", snapshot.claudePath)
                                 path("Codex native home", snapshot.codexPath)
@@ -64,13 +77,13 @@ struct TwineMemorySheet: View {
                                     """
                                     Local consolidation makes no model calls.
                                     Codex generates its startup summary when its background memory pass and quota allow.
-                                    Existing sessions keep their original profile.
+                                    Existing Codex sessions keep their original native home.
                                     Start a fresh Twine session for shared memories.
                                     """
                                 )
                                 .font(.caption).foregroundStyle(.secondary)
-                            }.padding(.top, 8)
-                        }.accessibilityIdentifier("twineMemoryDetails")
+                            }
+                        }
                     } else if model.failure == nil {
                         ProgressView("Checking project memories…")
                     }
@@ -103,6 +116,7 @@ struct TwineMemorySheet: View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title).font(.caption.bold())
             Text(value).font(.caption.monospaced()).textSelection(.enabled)
+                .accessibilityIdentifier("twineMemoryPath-\(title)")
         }
     }
 

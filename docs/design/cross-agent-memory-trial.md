@@ -1,7 +1,8 @@
 # Automatic Twine Memories trial
 
 This branch now runs an automatic, local AMIS 0.4 memory reconciler for Codex and
-Claude Code. The visual walkthrough is
+Claude Code. The interactive memory journey is
+[journey-of-a-memory.html](journey-of-a-memory.html); the architecture walkthrough is
 [native-memory-visual-guide.html](native-memory-visual-guide.html).
 
 Twine owns the canonical AMIS library at
@@ -17,7 +18,10 @@ Use `~/workspaces/twine-memory-small/Open in Twine.command`. The new trial app i
 **Twine AMIS Memory**, bundle identifier `com.twineproject.Twine.amis-memory-trial`.
 Its application state is isolated at `~/workspaces/.twine-amis-memory-trial-state`;
 its memory store deliberately uses the standard Twine location above. The old
-1,001-topic playground is not registered for this trial.
+1,001-topic playground, both obsolete state stores and the earlier trial app were
+removed. All 1,019 injected files in its native Claude memory directory were deleted,
+and its native Codex thread was excluded from future memory generation. Unrelated
+projects and ordinary chat history were preserved.
 
 Open **Twine** beside **Memories** to see the project policy, status and current
 memories. Sharing is enabled automatically. **Sync now** is optional. Start a fresh
@@ -82,16 +86,42 @@ forgetting or recall.
 ## Validation
 
 - Full library/app format, lint, build and unit checks are recorded in
-  `out/validation/twine-memory-final-check.log`.
+  `out/validation/memory-journey/check-final.log`. One unrelated model-listing
+  process fixture missed its 300 ms startup window during a repeated run; the
+  complete rerun passed. The failed-run log is retained as
+  `out/validation/memory-journey/check-process-fixture-failure.log`.
 - Focused tests cover bidirectional capture, native updates, duplicate prevention,
   malformed documents, project isolation, receiver-binding recovery, crash windows,
   independent index edits, per-harness leases and grouped withdrawal retry.
 - The pinned AMIS reference checker validates actual generated bundles, plans,
   capabilities and receipts through the C ABI. Evidence:
   `out/validation/twine-amis/ffi-validation.json`.
-- Three real macOS UI tests pass: automatic two-way sharing and relaunch,
-  pause/reopen/resume, and 200% zoom in a narrow window. Evidence:
-  `out/validation/twine-memory-ui.log`.
+- Four real macOS UI tests pass: automatic two-way sharing with a native edit,
+  native byte verification and relaunch; pause/reopen/resume; active-session
+  deferral with automatic retry; and readable storage details with reachable actions
+  at 200% zoom. Evidence: `out/validation/memory-journey/fixture-ux-final.log`.
+- Two small seeded native facts were recalled through ordinary questions in fresh
+  agents launched from the actual Twine menus. Codex answered `maple-417` from the
+  Claude-origin memory; Claude answered `green` from the Codex-origin memory.
+  Neither prompt nor workspace contained the values. Screenshots and recorded
+  responses were checked. Evidence: `out/validation/memory-journey/ux-validation.json`.
+- Screenshot review caught an earlier case mislabeled as Claude that actually
+  launched Codex. That case was excluded; selection is now scoped and persisted
+  harness identity is checked before sending. A Claude first-run trust dialog also
+  consumed one attempted input; no model question was delivered in that attempt.
+  The corrected Claude-only run passed in 37.620 seconds. In total this renewed
+  test sent two Codex questions and one Claude question. Codex's rounded weekly
+  meter remained at 88%; Claude usage was not measured.
+- UX fixes: normal native lease deferral no longer shows a red Sync now failure;
+  the storage disclosure uses a plain accessible button that works at 200% zoom.
+- The actual small trial's AMIS library, 11 sealed plans/capability documents and
+  11 receipts pass the pinned reference validator. Evidence:
+  `out/validation/memory-journey/amis-validation.json`.
+- The old workspace and injected native memories were removed with zero model
+  calls. Evidence: `out/validation/memory-journey/cleanup.json`.
+- The new journey guide passes 144 WebKit states at 375, 768 and 1160 px, including
+  both directions, active-session and revision states, plus navigation. Evidence:
+  `out/validation/memory-journey/html-validation.json`.
 - Fresh native Codex consolidated and recalled the Claude-origin fictional account
   code. Weekly usage was 88% before and after the tiny run. Evidence:
   `out/validation/twine-amis/native-e2e.json` (Codex results).

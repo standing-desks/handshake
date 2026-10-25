@@ -108,7 +108,10 @@ pub(crate) fn execute_at(root: &Path, request: &Request) -> Result<Snapshot, Err
         Action::Status | Action::Sync => {}
     }
     if !matches!(request.action, Action::Status) {
-        library.sync(&project)?;
+        match library.sync(&project) {
+            Ok(()) | Err(Error::NativeActive) => {}
+            Err(error) => return Err(error),
+        }
     }
     library.snapshot(&project)
 }
