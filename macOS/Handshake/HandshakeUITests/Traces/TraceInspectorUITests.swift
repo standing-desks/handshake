@@ -75,8 +75,8 @@ extension HandshakeUITests {
 
     @MainActor
     private func checkNativeHistoryRelaunch(in app: XCUIApplication, callID: String, stepID: String) {
-        app.menuBars.menuBarItems["Twine"].click()
-        app.menuItems["Quit Twine"].click()
+        app.menuBars.menuBarItems["Handshake"].click()
+        app.menuItems["Quit Handshake"].click()
         XCTAssertTrue(app.wait(for: .notRunning, timeout: 10))
         app.launch()
         XCTAssertTrue(app.buttons["workflowTab-2"].waitForExistence(timeout: 10))
@@ -221,8 +221,8 @@ extension HandshakeUITests {
     private func checkInspectorRelaunch(in app: XCUIApplication, callID: String, stepID: String) {
         selectTraceViewMode("Overview", in: app)
         XCTAssertFalse(inspectorElement("traceActivityInspector", in: app).exists)
-        app.menuBars.menuBarItems["Twine"].click()
-        app.menuItems["Quit Twine"].click()
+        app.menuBars.menuBarItems["Handshake"].click()
+        app.menuItems["Quit Handshake"].click()
         XCTAssertTrue(app.wait(for: .notRunning, timeout: 10))
         app.launch()
         XCTAssertTrue(app.buttons["workflowTab-2"].waitForExistence(timeout: 10))

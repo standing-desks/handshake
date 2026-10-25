@@ -138,7 +138,7 @@ struct CoreClientTests {
             try await client.waitUntilRunning()
         }
         let message = CoreFailure.failed("no database").localizedDescription
-        #expect(message == "twine-core failed: no database")
+        #expect(message == "handshake-core failed: no database")
     }
 
     @Test @MainActor func waitingWhileIdleEndsWhenCoreStartsOrIsCancelled() async throws {

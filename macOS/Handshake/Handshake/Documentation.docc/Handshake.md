@@ -4,17 +4,17 @@ A native macOS workspace for coordinating coding agents.
 
 ## Overview
 
-Twine's macOS front end presents folder windows, sessions, workflows,
+Handshake's macOS front end presents folder windows, sessions, workflows,
 terminals, files, and traces. Application state and orchestration live in the
-`twine-core` library. ``CoreClient`` is the Swift entry point for commands and state
+`handshake-core` library. ``CoreClient`` is the Swift entry point for commands and state
 published across the C ABI.
 
 This reference includes internal app symbols. It describes the implementation
 for contributors; these symbols are not a stable library API.
 
-For installation and usage, see the [Twine user guide](https://standing-desks.github.io/twine/documentation/guide/).
+For installation and usage, see the [Handshake user guide](https://standing-desks.github.io/handshake/documentation/guide/).
 For the reusable application library and its C interface, see the
-[twine-core reference](https://standing-desks.github.io/twine/documentation/rust/).
+[handshake-core reference](https://standing-desks.github.io/handshake/documentation/rust/).
 
 ## Topics
 

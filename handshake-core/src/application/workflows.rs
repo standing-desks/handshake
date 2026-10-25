@@ -560,7 +560,7 @@ fn restore_run(
         if run.status == crate::RunStatus::Running {
             run.finish(
                 crate::RunStatus::Interrupted,
-                "Twine stopped while the workflow was running.",
+                "Handshake stopped while the workflow was running.",
             );
             interrupted = true;
         }

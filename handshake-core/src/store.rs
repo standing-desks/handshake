@@ -268,7 +268,7 @@ const MIGRATIONS: &[&str] = &[
      INSERT INTO trace_storage_preferences(id,budget_bytes,retention_days) VALUES(1,536870912,90)"
 ];
 
-/// How long a write waits for another connection, such as a second Twine process, to release the
+/// How long a write waits for another connection, such as a second Handshake process, to release the
 /// database.
 const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -276,11 +276,11 @@ const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) struct StoredFolder {
     pub(crate) path: PathBuf,
-    /// Whether the folder was open when Twine last quit.
+    /// Whether the folder was open when Handshake last quit.
     pub(crate) is_open: bool,
 }
 
-/// The SQLite database that holds Twine's persistent state.
+/// The SQLite database that holds Handshake's persistent state.
 #[derive(Debug)]
 pub(crate) struct Store {
     connection: Connection,
@@ -546,7 +546,7 @@ fn query_recent_folders(connection: &Connection) -> Result<Vec<StoredFolder>, St
 }
 
 /// Applies pending migrations in one transaction that takes the write lock before reading the
-/// schema version, so a second Twine process opening the database waits instead of migrating it
+/// schema version, so a second Handshake process opening the database waits instead of migrating it
 /// again.
 fn migrate(connection: &mut Connection) -> Result<(), StoreError> {
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -609,7 +609,7 @@ pub enum StoreError {
     },
     #[error(transparent)]
     Sqlite(#[from] rusqlite::Error),
-    #[error("database schema version {version} is not one this version of Twine supports")]
+    #[error("database schema version {version} is not one this version of Handshake supports")]
     UnsupportedSchemaVersion { version: i64 },
 }
 

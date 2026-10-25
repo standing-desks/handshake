@@ -30,7 +30,7 @@ extension HandshakeUITests {
         directory.rightClick()
         XCTAssertTrue(app.menuItems["Expand Folder"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.menuItems["Open in Finder"].exists)
-        XCTAssertFalse(app.menuItems["Open in Twine"].exists)
+        XCTAssertFalse(app.menuItems["Open in Handshake"].exists)
         XCTAssertEqual(directory.value as? String, "Collapsed")
         app.menuItems["Expand Folder"].click()
         let row = fileRow(file, in: app)
@@ -59,14 +59,14 @@ extension HandshakeUITests {
         }
 
         row.rightClick()
-        XCTAssertTrue(app.menuItems["Open in Twine"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.menuItems["Open in Handshake"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.menuItems["Open with Default App"].exists)
         XCTAssertTrue(app.menuItems["Reveal in Finder"].exists)
         let screenshot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
         screenshot.name = "File right-click menu"
         screenshot.lifetime = .keepAlways
         add(screenshot)
-        app.menuItems["Open in Twine"].click()
+        app.menuItems["Open in Handshake"].click()
         let loaded = expectation(for: NSPredicate { _, _ in text.value as? String == "second" }, evaluatedWith: nil)
         wait(for: [loaded], timeout: 3)
     }

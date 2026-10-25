@@ -1,7 +1,11 @@
-Release DMGs use `installer-background.tiff`, generated from the
-approved braided arrow in `installer-background.svg`. The tip uses two green
-facets and a defined edge. The TIFF contains 540 × 232 at 72 DPI and 1080 × 464
-at 144 DPI, with the same logical size, for standard and Retina displays.
+Release DMGs use `installer-background.tiff`, generated from
+`installer-background.svg`. The approved `assets/handshake-transparent.svg` symbol
+is embedded unchanged in an 80-point placement above the drag-to-Applications
+arrow. Its geometry and colors are preserved, with at least one eighth of the
+installer canvas clear around the symbol. The charcoal ground is `#202326`;
+filename backplates use ivory `#F4F1EB`. No wordmark is painted into the artwork.
+The TIFF contains 540 × 232 at 72 DPI and 1080 × 464 at 144 DPI, with the same
+logical size, for standard and Retina displays.
 
 Finder treats windows with background artwork as having a fixed appearance and
 renders filenames in black ([Finder background limitations](https://c-command.com/dropdmg/help/layouts)).
@@ -14,15 +18,15 @@ To change the artwork and regenerate its committed TIFF:
 ```sh
 make regenerate-dmg-artwork
 make check-bundle
-make build-dmg APP=out/packaging/Twine.app DMG=out/packaging/Twine.dmg
-TWINE_SIGNING_MODE=adhoc make validate-dmg DMG=out/packaging/Twine.dmg
+make build-dmg APP=out/packaging/Handshake.app DMG=out/packaging/Handshake.dmg
+TWINE_SIGNING_MODE=adhoc make validate-dmg DMG=out/packaging/Handshake.dmg
 ```
 
 `APP` must point to an already signed release app with its release version and
 bundled license. `build-dmg` copies it into the image without changing the app.
 `validate-dmg` takes an existing DMG and mounts it read-only to check its format,
 contents, Finder layout, artwork, app versions, architectures, signature, and
-entitlements. It does not create an app, build an image, install, or launch Twine.
+entitlements. It does not create an app, build an image, install, or launch Handshake.
 Use `VERSION=MAJOR.MINOR.PATCH` to require a specific app version.
 
 `make dmg-tools` installs the pinned `ds-store` and `mac-alias` tools into
@@ -31,15 +35,21 @@ image, writes its Finder layout using the actual mounted volume's metadata,
 ejects it, and converts it to the final compressed UDZO image. The background
 alias resolves by volume identity and file catalog ID, including after the
 image is downloaded and mounted somewhere else. No Finder or AppleScript is
-required to create the DMG. The background stays hidden; only `Twine.app` and
+required to create the DMG. The background stays hidden; only `Handshake.app` and
 the Applications shortcut are visible. Validation mounts the image at a different
 path and checks that the background alias still resolves.
 
-Actual mounted Finder window in dark and light system appearances:
+Generated artwork previews at standard and Retina resolutions (the same artwork
+is used in both system appearances):
 
-![Dark appearance](previews/dark.png)
+![Standard background](previews/background-1x.png)
 
-![Light appearance](previews/light.png)
+![Retina background](previews/background-2x.png)
+
+These previews contain only the background. Finder places the app at `(130, 134)`
+and Applications at `(410, 134)`, with native filenames over the unchanged
+backplate rectangles. Mounted-installer visual verification is tracked by
+HAND-113; these are not screenshots of a mounted installer.
 
 `make release` produces the optimized app candidate without debug information.
 CI calls `bash .github/release/bundle-artifact.sh bundle BUILD BUNDLE` to collect the app,

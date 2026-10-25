@@ -45,6 +45,8 @@ jobs:
               - 'scripts/**'
             ci:
               - *pipeline
+              - 'assets/**'
+              - 'docs/generate-readme-lockup.cjs'
               - '.github/release/**'
               - 'macOS/**/*.sh'
             lockfile:

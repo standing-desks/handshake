@@ -27,35 +27,35 @@ nonisolated enum CoreFailure: Error, Equatable, LocalizedError, Sendable {
     var errorDescription: String? {
         switch self {
         case .commandRejected(let code, let message):
-            "twine-core rejected the command (\(code)): \(message)"
+            "handshake-core rejected the command (\(code)): \(message)"
         case .failed(let message):
-            "twine-core failed: \(message)"
+            "handshake-core failed: \(message)"
         case .cursorExpired:
-            "The twine-core event cursor expired."
+            "The handshake-core event cursor expired."
         case .empty:
-            "twine-core has no value available."
+            "handshake-core has no value available."
         case .internalError:
-            "twine-core reported an internal error."
+            "handshake-core reported an internal error."
         case .invalidArgument:
-            "twine-core received an invalid argument."
+            "handshake-core received an invalid argument."
         case .invalidUTF8:
-            "twine-core received invalid UTF-8."
+            "handshake-core received invalid UTF-8."
         case .malformedCommand:
-            "The twine-core command was malformed."
+            "The handshake-core command was malformed."
         case .nullPointer:
-            "twine-core received a null pointer."
+            "handshake-core received a null pointer."
         case .notRunning:
-            "twine-core isn't running."
+            "handshake-core isn't running."
         case .terminalNotRunning:
             "The terminal process has ended."
         case .panic:
-            "twine-core panicked."
+            "handshake-core panicked."
         case .requestIDOverflow:
-            "The twine-core request ID counter overflowed."
+            "The handshake-core request ID counter overflowed."
         case .unexpectedCommandResult:
-            "twine-core returned an unexpected command result."
+            "handshake-core returned an unexpected command result."
         case .unknownStatus(let status):
-            "twine-core returned unknown status \(status)."
+            "handshake-core returned unknown status \(status)."
         }
     }
 }

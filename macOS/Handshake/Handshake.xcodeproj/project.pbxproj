@@ -12,6 +12,8 @@
 		F3A000013070000100000001 /* cmark-gfm-extensions in Frameworks */ = {isa = PBXBuildFile; productRef = F3A000023070000100000001 /* cmark-gfm-extensions */; };
 		F3B000013070000100000001 /* HandshakeSyntax in Frameworks */ = {isa = PBXBuildFile; productRef = F3B000023070000100000001 /* HandshakeSyntax */; };
 		F3C000013080000100000001 /* ../../handshake-core/workflows in Resources */ = {isa = PBXBuildFile; fileRef = F3C000023080000100000001 /* ../../handshake-core/workflows */; };
+		F3D000033080000100000001 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = F3D000013080000100000001 /* AppIcon.icon */; };
+		F3D000043080000100000001 /* AppIconDebug.icon in Resources */ = {isa = PBXBuildFile; fileRef = F3D000023080000100000001 /* AppIconDebug.icon */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -36,6 +38,8 @@
 		F266A3F43068BD6100C1232B /* HandshakeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HandshakeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		F266A3FE3068BD6100C1232B /* HandshakeUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HandshakeUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		F3C000023080000100000001 /* ../../handshake-core/workflows */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "../../handshake-core/workflows"; sourceTree = SOURCE_ROOT; };
+		F3D000013080000100000001 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.icon; path = "AppIcon.icon"; sourceTree = SOURCE_ROOT; };
+		F3D000023080000100000001 /* AppIconDebug.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.icon; path = "AppIconDebug.icon"; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -82,6 +86,8 @@
 		F266A3DE3068BD6000C1232B = {
 			isa = PBXGroup;
 			children = (
+				F3D000013080000100000001 /* AppIcon.icon */,
+				F3D000023080000100000001 /* AppIconDebug.icon */,
 				F266A3E93068BD6000C1232B /* Handshake */,
 				F3C000023080000100000001 /* ../../handshake-core/workflows */,
 				F266A3F73068BD6100C1232B /* HandshakeTests */,
@@ -224,6 +230,8 @@
 		F266A3E53068BD6000C1232B /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			files = (
+				F3D000033080000100000001 /* AppIcon.icon in Resources */,
+				F3D000043080000100000001 /* AppIconDebug.icon in Resources */,
 				F3C000013080000100000001 /* ../../handshake-core/workflows in Resources */,
 			);
 		};
@@ -424,21 +432,21 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
-				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Commands you run in Twine may need to control other apps with AppleScript.";
-				INFOPLIST_KEY_NSAudioCaptureUsageDescription = "Commands you run in Twine may need to capture system audio.";
-				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Commands you run in Twine may need to connect to Bluetooth devices.";
-				INFOPLIST_KEY_NSCalendarsUsageDescription = "Commands you run in Twine may need to access your calendars.";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Commands you run in Twine may need to use your camera.";
-				INFOPLIST_KEY_NSContactsUsageDescription = "Commands you run in Twine may need to access your contacts.";
+				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Commands you run in Handshake may need to control other apps with AppleScript.";
+				INFOPLIST_KEY_NSAudioCaptureUsageDescription = "Commands you run in Handshake may need to capture system audio.";
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Commands you run in Handshake may need to connect to Bluetooth devices.";
+				INFOPLIST_KEY_NSCalendarsUsageDescription = "Commands you run in Handshake may need to access your calendars.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Commands you run in Handshake may need to use your camera.";
+				INFOPLIST_KEY_NSContactsUsageDescription = "Commands you run in Handshake may need to access your contacts.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Commands you run in Twine may need to connect to devices on your local network.";
-				INFOPLIST_KEY_NSLocationUsageDescription = "Commands you run in Twine may need to access your location.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Commands you run in Twine may need to use your microphone.";
-				INFOPLIST_KEY_NSMotionUsageDescription = "Commands you run in Twine may need to access motion data.";
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Commands you run in Twine may need to access your photo library.";
-				INFOPLIST_KEY_NSRemindersUsageDescription = "Commands you run in Twine may need to access your reminders.";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Commands you run in Twine may need to recognize speech.";
-				INFOPLIST_KEY_NSSystemAdministrationUsageDescription = "Commands you run in Twine may need administrator privileges.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Commands you run in Handshake may need to connect to devices on your local network.";
+				INFOPLIST_KEY_NSLocationUsageDescription = "Commands you run in Handshake may need to access your location.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Commands you run in Handshake may need to use your microphone.";
+				INFOPLIST_KEY_NSMotionUsageDescription = "Commands you run in Handshake may need to access motion data.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Commands you run in Handshake may need to access your photo library.";
+				INFOPLIST_KEY_NSRemindersUsageDescription = "Commands you run in Handshake may need to access your reminders.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Commands you run in Handshake may need to recognize speech.";
+				INFOPLIST_KEY_NSSystemAdministrationUsageDescription = "Commands you run in Handshake may need administrator privileges.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -488,21 +496,21 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
-				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Commands you run in Twine may need to control other apps with AppleScript.";
-				INFOPLIST_KEY_NSAudioCaptureUsageDescription = "Commands you run in Twine may need to capture system audio.";
-				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Commands you run in Twine may need to connect to Bluetooth devices.";
-				INFOPLIST_KEY_NSCalendarsUsageDescription = "Commands you run in Twine may need to access your calendars.";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Commands you run in Twine may need to use your camera.";
-				INFOPLIST_KEY_NSContactsUsageDescription = "Commands you run in Twine may need to access your contacts.";
+				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Commands you run in Handshake may need to control other apps with AppleScript.";
+				INFOPLIST_KEY_NSAudioCaptureUsageDescription = "Commands you run in Handshake may need to capture system audio.";
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Commands you run in Handshake may need to connect to Bluetooth devices.";
+				INFOPLIST_KEY_NSCalendarsUsageDescription = "Commands you run in Handshake may need to access your calendars.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Commands you run in Handshake may need to use your camera.";
+				INFOPLIST_KEY_NSContactsUsageDescription = "Commands you run in Handshake may need to access your contacts.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Commands you run in Twine may need to connect to devices on your local network.";
-				INFOPLIST_KEY_NSLocationUsageDescription = "Commands you run in Twine may need to access your location.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Commands you run in Twine may need to use your microphone.";
-				INFOPLIST_KEY_NSMotionUsageDescription = "Commands you run in Twine may need to access motion data.";
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Commands you run in Twine may need to access your photo library.";
-				INFOPLIST_KEY_NSRemindersUsageDescription = "Commands you run in Twine may need to access your reminders.";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Commands you run in Twine may need to recognize speech.";
-				INFOPLIST_KEY_NSSystemAdministrationUsageDescription = "Commands you run in Twine may need administrator privileges.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Commands you run in Handshake may need to connect to devices on your local network.";
+				INFOPLIST_KEY_NSLocationUsageDescription = "Commands you run in Handshake may need to access your location.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Commands you run in Handshake may need to use your microphone.";
+				INFOPLIST_KEY_NSMotionUsageDescription = "Commands you run in Handshake may need to access motion data.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Commands you run in Handshake may need to access your photo library.";
+				INFOPLIST_KEY_NSRemindersUsageDescription = "Commands you run in Handshake may need to access your reminders.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Commands you run in Handshake may need to recognize speech.";
+				INFOPLIST_KEY_NSSystemAdministrationUsageDescription = "Commands you run in Handshake may need administrator privileges.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",

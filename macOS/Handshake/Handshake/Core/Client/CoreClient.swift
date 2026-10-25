@@ -249,7 +249,7 @@ final class CoreClient {
     }
 
     private func fail(_ error: any Error) {
-        coreLogger.error("twine-core failed: \(error.localizedDescription, privacy: .public)")
+        coreLogger.error("handshake-core failed: \(error.localizedDescription, privacy: .public)")
         runState = .failed(error.localizedDescription)
         eventTask?.cancel()
         eventTask = nil
@@ -327,7 +327,7 @@ extension CoreClient {
         await stopTask.value
     }
 
-    /// Permanently stops twine-core before AppKit finishes quitting.
+    /// Permanently stops handshake-core before AppKit finishes quitting.
     func stopForQuit() async {
         isTerminating = true
         await stop()

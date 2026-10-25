@@ -126,7 +126,7 @@ extension HandshakeUITests {
         chooseFolder(link, in: app)
         XCTAssertEqual(app.windows.count, 1, app.debugDescription)
         app.typeKey("n", modifierFlags: .command)
-        XCTAssertTrue(app.staticTexts["Welcome to Twine"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Welcome to Handshake"].waitForExistence(timeout: 10))
         XCTAssertEqual(app.windows.count, 2)
         let recent = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", folder.lastPathComponent))
             .firstMatch
@@ -194,7 +194,7 @@ extension HandshakeUITests {
             NSPredicate(format: "value CONTAINS %@", "because it can't be found")
         ).firstMatch
         XCTAssertTrue(explanation.waitForExistence(timeout: 10), app.debugDescription)
-        let unavailable = app.windows.matching(NSPredicate(format: "title == %@", "Twine")).firstMatch
+        let unavailable = app.windows.matching(NSPredicate(format: "title == %@", "Handshake")).firstMatch
         XCTAssertTrue(unavailable.waitForExistence(timeout: 10))
         focusFolderWindow(unavailable, in: app)
         chooseFolder(additional, in: app)

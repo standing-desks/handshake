@@ -2,7 +2,7 @@ use std::sync::LazyLock;
 
 use super::{WorkflowTypeDefinition, files};
 
-/// Stable identities for the default TOML graphs shipped with Twine.
+/// Stable identities for the default TOML graphs shipped with Handshake.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum BuiltinType {

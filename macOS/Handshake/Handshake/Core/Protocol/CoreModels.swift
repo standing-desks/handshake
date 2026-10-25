@@ -119,7 +119,7 @@ nonisolated struct CoreUnavailableFolder: Decodable, Equatable, Sendable {
     enum Reason: String, Decodable, Sendable {
         /// Nothing is at the path, or something other than a folder is.
         case missing
-        /// The folder can't be read, for example because Twine doesn't have permission.
+        /// The folder can't be read, for example because Handshake doesn't have permission.
         case inaccessible
     }
 }

@@ -32,7 +32,7 @@ pub(crate) struct TraceEnding<'a> {
 }
 
 impl Store {
-    /// Once Twine's first integration mark arrives, retain the process event while replacing its
+    /// Once Handshake's first integration mark arrives, retain the process event while replacing its
     /// lifetime interval with command intervals. Historical spans are never rewritten.
     pub(crate) fn activate_command_trace(
         &mut self,

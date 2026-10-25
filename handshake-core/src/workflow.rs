@@ -37,7 +37,7 @@ pub enum WorkflowStatus {
     Failed,
     /// The user stopped the agent.
     Cancelled,
-    /// Twine quit or crashed while the work was running; it did not finish.
+    /// Handshake quit or crashed while the work was running; it did not finish.
     Interrupted,
     Closed,
 }

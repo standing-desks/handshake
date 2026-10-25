@@ -23,17 +23,17 @@ struct UpdateCommands: Commands {
             let current = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
             if let latest = try await ReleaseUpdateCheck.availableVersion(currentVersion: current) {
                 alert.messageText = "Update Available"
-                alert.informativeText = "Twine \(latest) is available. You’re using \(current)."
+                alert.informativeText = "Handshake \(latest) is available. You’re using \(current)."
                 alert.addButton(withTitle: "Open Releases Page")
                 alert.addButton(withTitle: "Cancel")
                 guard alert.runModal() == .alertFirstButtonReturn else { return }
-                if let url = URL(string: "https://github.com/standing-desks/twine/releases") {
+                if let url = URL(string: "https://github.com/standing-desks/handshake/releases") {
                     NSWorkspace.shared.open(url)
                 }
                 return
             }
             alert.messageText = "You’re Up to Date"
-            alert.informativeText = "Twine \(current) is up to date."
+            alert.informativeText = "Handshake \(current) is up to date."
         } catch {
             alert.alertStyle = .warning
             alert.messageText = "Could Not Check for Updates"
@@ -46,13 +46,13 @@ struct UpdateCommands: Commands {
 
 enum ReleaseUpdateCheck {
     static func availableVersion(currentVersion: String) async throws -> String? {
-        guard let url = URL(string: "https://api.github.com/repos/standing-desks/twine/releases/latest") else {
+        guard let url = URL(string: "https://api.github.com/repos/standing-desks/handshake/releases/latest") else {
             throw URLError(.badURL)
         }
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 20)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("2026-03-10", forHTTPHeaderField: "X-GitHub-Api-Version")
-        request.setValue("Twine", forHTTPHeaderField: "User-Agent")
+        request.setValue("Handshake", forHTTPHeaderField: "User-Agent")
         let (data, response) = try await URLSession.shared.data(for: request)
         return try availableVersion(in: data, response: response, currentVersion: currentVersion)
     }

@@ -15,7 +15,7 @@ struct FileTreeContextMenu: View {
         if isDirectory {
             Button(isExpanded ? "Collapse Folder" : "Expand Folder", systemImage: "folder", action: toggleExpansion)
         } else {
-            Button("Open in Twine", systemImage: "doc.text") {
+            Button("Open in Handshake", systemImage: "doc.text") {
                 tabs.open(path: entry.path, folder: folder)
             }
         }

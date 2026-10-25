@@ -24,7 +24,7 @@ impl GitWatcher {
     pub(crate) fn new() -> io::Result<Self> {
         let shared = Arc::new((Mutex::new(State::default()), Condvar::new()));
         let state = Arc::clone(&shared);
-        let thread = crate::blocking_worker::spawn("twine-git".into(), move || watch(&state))?;
+        let thread = crate::blocking_worker::spawn("handshake-git".into(), move || watch(&state))?;
         Ok(Self {
             shared,
             thread: Some(thread),

@@ -82,8 +82,8 @@ extension HandshakeUITests {
 
     @MainActor
     private func relaunchSession(app: XCUIApplication, folder: URL) {
-        app.menuBars.menuBarItems["Twine"].click()
-        app.menuItems["Quit Twine"].click()
+        app.menuBars.menuBarItems["Handshake"].click()
+        app.menuItems["Quit Handshake"].click()
         XCTAssertTrue(app.wait(for: .notRunning, timeout: 10))
 
         app.launch()
@@ -106,8 +106,8 @@ extension HandshakeUITests {
         confirmDeleteSession(app: app)
         XCTAssertTrue(app.buttons["sessionRow-1"].waitForNonExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["No Open Tabs"].waitForExistence(timeout: 5))
-        app.menuBars.menuBarItems["Twine"].click()
-        app.menuItems["Quit Twine"].click()
+        app.menuBars.menuBarItems["Handshake"].click()
+        app.menuItems["Quit Handshake"].click()
         XCTAssertTrue(app.wait(for: .notRunning, timeout: 10))
         app.launch()
         XCTAssertTrue(app.buttons["newWorkflow"].waitForExistence(timeout: 10))

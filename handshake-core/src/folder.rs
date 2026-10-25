@@ -8,7 +8,7 @@ use tracing::warn;
 
 use crate::store::{Store, StoreError, StoredFolder};
 
-/// How many recently opened folders Twine remembers.
+/// How many recently opened folders Handshake remembers.
 const MAX_RECENT_FOLDERS: i64 = 10;
 
 /// The open folder and the recent folders the start page lists.
@@ -44,7 +44,7 @@ pub struct UnavailableFolder {
 pub enum UnavailableReason {
     /// Nothing is at the path, or something other than a folder is.
     Missing,
-    /// The folder can't be read, for example because Twine doesn't have permission.
+    /// The folder can't be read, for example because Handshake doesn't have permission.
     Inaccessible,
 }
 
@@ -77,7 +77,7 @@ impl Folders {
         true
     }
 
-    /// Loads the recent folders and reopens the folder that was open when Twine last quit. If it
+    /// Loads the recent folders and reopens the folder that was open when Handshake last quit. If it
     /// can't be opened, the start page shows and says why. It stays the last open folder, so a
     /// later launch reopens it once it's back, for example when its drive is reconnected.
     pub(crate) fn restore(store: Store) -> Result<Self, StoreError> {

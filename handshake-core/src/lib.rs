@@ -1,4 +1,4 @@
-//! UI-independent application core for Twine.
+//! UI-independent application core for Handshake.
 
 mod application;
 mod blocking_worker;

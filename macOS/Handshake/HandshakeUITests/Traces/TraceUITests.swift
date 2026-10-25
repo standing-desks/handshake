@@ -137,8 +137,8 @@ extension HandshakeUITests {
         resizeWindow(app.windows.firstMatch, to: CGSize(width: 900, height: 620))
         header.click()
         XCTAssertTrue(app.buttons["traceSpan-1"].waitForExistence(timeout: 10))
-        app.menuBars.menuBarItems["Twine"].click()
-        app.menuItems["Quit Twine"].click()
+        app.menuBars.menuBarItems["Handshake"].click()
+        app.menuItems["Quit Handshake"].click()
         XCTAssertTrue(app.wait(for: .notRunning, timeout: 10))
         app.launch()
         XCTAssertTrue(header.waitForExistence(timeout: 10))
@@ -149,7 +149,7 @@ extension HandshakeUITests {
         XCTAssertTrue(app.buttons["traceSpan-2"].exists, app.debugDescription)
         historical.click()
         XCTAssertTrue(app.buttons["closeTraceDetails"].waitForExistence(timeout: 5))
-        let ending = app.staticTexts.matching(NSPredicate(format: "value CONTAINS %@", "Twine quit")).firstMatch
+        let ending = app.staticTexts.matching(NSPredicate(format: "value CONTAINS %@", "Handshake quit")).firstMatch
         XCTAssertTrue(ending.waitForExistence(timeout: 5), app.debugDescription)
     }
 

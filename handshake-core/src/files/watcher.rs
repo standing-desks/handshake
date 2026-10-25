@@ -32,7 +32,7 @@ impl FileWatcher {
         let state = Arc::new((Mutex::new(State::default()), Condvar::new()));
         let shared = Arc::clone(&state);
         let git = crate::git::watcher::GitWatcher::new().map_err(FileError::StartWatcher)?;
-        let thread = crate::blocking_worker::spawn("twine-files".into(), move || {
+        let thread = crate::blocking_worker::spawn("handshake-files".into(), move || {
             let mut browser = FileBrowser::default();
             watch(&shared, |request| {
                 let Some(request) = request else {

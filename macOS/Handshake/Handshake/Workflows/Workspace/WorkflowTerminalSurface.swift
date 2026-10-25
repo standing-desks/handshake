@@ -66,7 +66,7 @@ struct WorkflowTerminalSurface: View {
             case .exited: ("Agent Exited", "No saved terminal output is available.")
             case .cancelled: ("Agent Cancelled", "No saved terminal output is available.")
             case .failed: ("Agent Failed", "No saved terminal output is available.")
-            default: ("Agent Interrupted", "Twine quit while this agent was running. Its work didn't finish.")
+            default: ("Agent Interrupted", "Handshake quit while this agent was running. Its work didn't finish.")
             }
         return ContentUnavailableView(title, systemImage: "person", description: Text(detail))
             .background(.windowBackground)

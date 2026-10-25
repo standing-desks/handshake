@@ -4,7 +4,7 @@ extension HandshakeUITests {
     @MainActor
     func testSettingsPopupLoadsSavesAndProtectsUnsavedChanges() throws {
         let configHome = try makeTestFolder(prefix: "TwineSettingsUITests")
-        let file = configHome.appending(path: "twine/config.toml")
+        let file = configHome.appending(path: "handshake/config.toml")
         try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
         let original = "# My settings\n[terminal.colors]\nblue = '#123456'\nbrblue = '#abcdef'\n"
         try original.write(to: file, atomically: true, encoding: .utf8)
@@ -12,8 +12,8 @@ extension HandshakeUITests {
         app.launchEnvironment["XDG_CONFIG_HOME"] = configHome.path
         app.launch()
         defer { app.terminate() }
-        XCTAssertTrue(app.staticTexts["Welcome to Twine"].waitForExistence(timeout: 10))
-        app.menuBars.menuBarItems["Twine"].click()
+        XCTAssertTrue(app.staticTexts["Welcome to Handshake"].waitForExistence(timeout: 10))
+        app.menuBars.menuBarItems["Handshake"].click()
         let item = app.menuBars.menuItems["Settings…"]
         XCTAssertTrue(item.waitForExistence(timeout: 3))
         item.click()
@@ -68,8 +68,8 @@ extension HandshakeUITests {
         clickDialogButton("Cancel", in: app)
         waitForQuitConfirmationToClose(in: app)
         XCTAssertEqual(text.value as? String, "# Quit should keep these edits\n")
-        app.menuBars.menuBarItems["Twine"].click()
-        let quit = app.menuItems["Quit Twine"]
+        app.menuBars.menuBarItems["Handshake"].click()
+        let quit = app.menuItems["Quit Handshake"]
         XCTAssertTrue(quit.isEnabled, app.debugDescription)
         quit.click()
         XCTAssertTrue(app.buttons["Discard Changes"].waitForExistence(timeout: 3), app.debugDescription)
@@ -82,7 +82,7 @@ extension HandshakeUITests {
         clickDialogButton("Discard Changes", in: app)
         XCTAssertTrue(app.wait(for: .notRunning, timeout: 10), "Discarding Settings must allow quit")
         app.launch()
-        XCTAssertTrue(app.staticTexts["Welcome to Twine"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Welcome to Handshake"].waitForExistence(timeout: 10))
         app.typeKey(",", modifierFlags: .command)
         XCTAssertTrue(text.waitForExistence(timeout: 5))
         app.typeKey("q", modifierFlags: .command)

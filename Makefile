@@ -187,7 +187,7 @@ ui-test-visual: ## Run the visual UI tests
 	$(MAKE) ui-test ONLY="$(UI_VISUAL_TESTS)"
 
 .PHONY: lint-ci
-lint-ci: ## Lint CI workflows and build scripts
+lint-ci: check-assets ## Lint CI workflows and build scripts
 	$(ACTIONLINT) -ignore 'label "xcode-27" is unknown'
 	shellcheck scripts/*.sh macOS/HandshakeCorePackage/*.sh macOS/Handshake/Scripts/swiftlint.sh
 
@@ -293,3 +293,14 @@ docs-app: $(call needs,deps-debug) ## Build the app API reference
 		--transform-for-static-hosting --warnings-as-errors \
 		--source-service github --source-service-base-url https://github.com/standing-desks/twine/blob/main \
 		--checkout-path "$(CURDIR)"
+
+.PHONY: check-site
+check-site: check-assets ## Check website downloads and copy controls without desktop access
+	node scripts/test-site.cjs
+
+.PHONY: check-assets sync-assets
+check-assets: ## Verify shared brand sources and component copies
+	node assets/sync.cjs
+
+sync-assets: ## Refresh component copies and the generated README lockup
+	node assets/sync.cjs --write

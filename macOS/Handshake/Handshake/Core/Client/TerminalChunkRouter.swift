@@ -1,4 +1,4 @@
-/// Holds terminal output read from twine-core until the view for its terminal takes it, within a byte
+/// Holds terminal output read from handshake-core until the view for its terminal takes it, within a byte
 /// limit shared by all terminals. Output for a closed terminal is dropped, including chunks that
 /// arrive after the close.
 struct TerminalChunkRouter {

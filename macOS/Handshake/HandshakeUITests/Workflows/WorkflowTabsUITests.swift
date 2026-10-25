@@ -86,7 +86,7 @@ extension HandshakeUITests {
             app.typeKey("w", modifierFlags: .command)
         }
         closeFolder(in: app)
-        XCTAssertTrue(app.staticTexts["Welcome to Twine"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Welcome to Handshake"].waitForExistence(timeout: 10))
         app.terminate()
     }
 
