@@ -773,7 +773,7 @@ mod tests {
         write(
             &application,
             draft.terminal_id,
-            "TWINE_MARKER=preserved; echo $$ > before.pid\n",
+            "HANDSHAKE_MARKER=preserved; echo $$ > before.pid\n",
         );
         wait_until(|| folder.path().join("before.pid").exists());
         assert_eq!(
@@ -798,7 +798,7 @@ mod tests {
         write(
             &application,
             activated.terminal_id,
-            "{ echo $$; echo $TWINE_MARKER; } > after.txt\n",
+            "{ echo $$; echo $HANDSHAKE_MARKER; } > after.txt\n",
         );
         wait_until(|| {
             std::fs::read_to_string(folder.path().join("after.txt"))

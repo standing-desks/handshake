@@ -4,7 +4,7 @@ import XCTest
 extension HandshakeUITests {
     @MainActor
     func testFileTreeContextMenusTargetClickedRowsAndPreserveEdits() throws {
-        let folder = try makeTestFolder(prefix: "TwineFileMenu")
+        let folder = try makeTestFolder(prefix: "HandshakeFileMenu")
         let nested = folder.appending(path: "nested folder")
         try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
         let first = folder.appending(path: "first.txt")

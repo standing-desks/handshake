@@ -23,7 +23,7 @@ struct WorkflowTests {
     @Test @MainActor func draftActivationAndWorkflowCloseRoundTripThroughTheRealCore() async throws {
         let directory = TemporaryPath()
         try FileManager.default.createDirectory(at: directory.url, withIntermediateDirectories: true)
-        let client = CoreClient(transport: CoreWorker(dataDirectory: directory.url.appending(path: ".twine")))
+        let client = CoreClient(transport: CoreWorker(dataDirectory: directory.url.appending(path: ".handshake")))
         client.start()
         do {
             try await client.waitUntilRunning()
@@ -61,7 +61,7 @@ struct WorkflowTests {
     @Test @MainActor func hiddenWorkflowDrainsMoreThanTheRouterCapacityWhileSelectedTerminalResponds() async throws {
         let directory = TemporaryPath()
         try FileManager.default.createDirectory(at: directory.url, withIntermediateDirectories: true)
-        let client = CoreClient(transport: CoreWorker(dataDirectory: directory.url.appending(path: ".twine")))
+        let client = CoreClient(transport: CoreWorker(dataDirectory: directory.url.appending(path: ".handshake")))
         // A small router keeps the output needed to exceed its capacity short.
         client.terminalChunkRouter = TerminalChunkRouter(capacityBytes: 32 * 1024)
         client.start()
@@ -115,9 +115,9 @@ struct WorkflowTests {
     private func prepareShell(client: CoreClient, terminalID: UInt64, view: MetalTerminalView) async throws {
         // Wait for the replacement shell's prompt before sending the next command. A shell can
         // read ahead and discard queued input when exec replaces it.
-        let command = "exec /bin/sh -c 'PS1=TWINE_\"\"READY; export PS1; exec /bin/sh'\n"
+        let command = "exec /bin/sh -c 'PS1=HANDSHAKE_\"\"READY; export PS1; exec /bin/sh'\n"
         try await client.writeTerminalInput(terminalID: terminalID, bytes: Data(command.utf8))
-        try await waitForTerminal(view, toContain: "TWINE_READY")
+        try await waitForTerminal(view, toContain: "HANDSHAKE_READY")
     }
 
     @MainActor
@@ -179,7 +179,7 @@ extension WorkflowTests {
     @Test @MainActor func sessionsAndTabsRestoreThroughTheRealCore() async throws {
         let directory = TemporaryPath()
         try FileManager.default.createDirectory(at: directory.url, withIntermediateDirectories: true)
-        let data = directory.url.appending(path: ".twine")
+        let data = directory.url.appending(path: ".handshake")
         let client = CoreClient(transport: CoreWorker(dataDirectory: data))
         client.start()
         do {

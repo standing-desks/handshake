@@ -778,7 +778,7 @@ mod tests {
     fn check_command_shell(shell: &str) {
         let folder = tempfile::tempdir().unwrap();
         let home = tempfile::tempdir().unwrap();
-        let profile = "printf 'TWINE_STARTUP\\n'\n";
+        let profile = "printf 'HANDSHAKE_STARTUP\\n'\n";
         for file in [".zshenv", ".zprofile", ".zshrc", ".zlogin", ".bash_profile"] {
             std::fs::write(home.path().join(file), profile).unwrap();
         }
@@ -792,7 +792,11 @@ mod tests {
         let workflow = create(&application, folder.path());
         wait_shell_trace(&application, &workflow, |page| page.spans.is_empty());
         let commands = [
-            ("printf 'TWINE_OUTPUT ☃\\n'", TraceSpanStatus::Completed, 0),
+            (
+                "printf 'HANDSHAKE_OUTPUT ☃\\n'",
+                TraceSpanStatus::Completed,
+                0,
+            ),
             ("false", TraceSpanStatus::Failed, 1),
             (
                 "printf 'pipe\\n' | cat; true",
@@ -841,7 +845,7 @@ mod tests {
                         &page.bytes[usize::try_from(start.byte_offset).unwrap()
                             ..usize::try_from(end.byte_offset).unwrap()]
                     )
-                    .contains("TWINE_OUTPUT ☃")
+                    .contains("HANDSHAKE_OUTPUT ☃")
                 );
                 application
                     .write_terminal_input(

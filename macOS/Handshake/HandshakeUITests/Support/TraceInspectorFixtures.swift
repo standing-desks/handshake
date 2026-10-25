@@ -41,7 +41,7 @@ extension HandshakeUITests {
 
     func inspectorFolder() throws -> URL {
         let folder = FileManager.default.temporaryDirectory.appending(
-            path: "TwineInspectorUITests-\(UUID().uuidString)")
+            path: "HandshakeInspectorUITests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
         return folder

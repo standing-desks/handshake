@@ -164,7 +164,7 @@ extension HandshakeUITests {
         XCTAssertTrue(app.buttons["workflowTab-1"].waitForExistence(timeout: 10), app.debugDescription)
         element("workflowChoice-Terminal", in: app).click()
         let installer =
-            "echo $PPID > twine.pid; mkdir bin; printf '#!/bin/sh\\n' > bin/pi; "
+            "echo $PPID > handshake.pid; mkdir bin; printf '#!/bin/sh\\n' > bin/pi; "
             + "cat stub.txt >> bin/pi; chmod +x bin/pi\r"
         app.typeText(installer)
         let installed = expectation(
@@ -181,7 +181,7 @@ extension HandshakeUITests {
             },
             evaluatedWith: nil)
         wait(for: [agentStarted], timeout: 10)
-        let processID = try XCTUnwrap(pid(in: folder.appending(path: "twine.pid")))
+        let processID = try XCTUnwrap(pid(in: folder.appending(path: "handshake.pid")))
         guard processID > 1 else { throw NSError(domain: "Invalid crash fixture PID", code: 1) }
         XCTAssertEqual(kill(processID, SIGKILL), 0)
         XCTAssertTrue(app.wait(for: .notRunning, timeout: 10))
@@ -220,8 +220,8 @@ extension HandshakeUITests {
     @MainActor
     func testSingleAgentStartsInteractivelyTakesInputAndCancels() throws {
         let folder = try makeFolder()
-        // The UI test runner is sandboxed, and macOS won't let Twine execute a script that it wrote.
-        // So the runner only writes the script's text, and Twine's own shell installs the executable.
+        // The UI test runner is sandboxed, and macOS won't let Handshake execute a script that it wrote.
+        // So the runner only writes the script's text, and Handshake's own shell installs the executable.
         try """
         case "$1" in --list-models|--help) exit 0 ;; esac
         echo $$ > agent.pid
@@ -347,7 +347,8 @@ extension HandshakeUITests {
     }
 
     private func makeFolder() throws -> URL {
-        let folder = FileManager.default.temporaryDirectory.appending(path: "TwineAgentUITests-\(UUID().uuidString)")
+        let folder = FileManager.default.temporaryDirectory.appending(
+            path: "HandshakeAgentUITests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
         return folder
@@ -355,7 +356,8 @@ extension HandshakeUITests {
 
     /// A directory with no harnesses in it.
     private func makeEmptyDirectory() throws -> URL {
-        let directory = FileManager.default.temporaryDirectory.appending(path: "TwineHarnesses-\(UUID().uuidString)")
+        let directory = FileManager.default.temporaryDirectory.appending(
+            path: "HandshakeHarnesses-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
         return directory

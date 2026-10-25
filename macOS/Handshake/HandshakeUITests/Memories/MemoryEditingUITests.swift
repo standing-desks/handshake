@@ -5,7 +5,7 @@ import XCTest
 extension HandshakeUITests {
     @MainActor
     func testSQLiteMemoryMarkdownRendersWithoutAnEditAction() throws {
-        let fixture = try makeTestFolder(prefix: "TwineSQLiteMemoryUI")
+        let fixture = try makeTestFolder(prefix: "HandshakeSQLiteMemoryUI")
         let folder = fixture.appending(path: "folder")
         let codex = fixture.appending(path: "codex")
         for directory in [folder, codex] {
@@ -142,11 +142,12 @@ extension HandshakeUITests {
 
     @MainActor
     private func openMemoryEditingFixture(claude: Bool) throws -> MemoryEditingFixture {
-        let fixture = try makeTestFolder(prefix: "TwineMemoryEditing")
+        let fixture = try makeTestFolder(prefix: "HandshakeMemoryEditing")
         let folder = fixture.appending(path: "folder")
         let codex = fixture.appending(path: "codex")
         let claudeHome = fixture.appending(path: "claude")
-        let root = claude ? claudeHome.appending(path: "projects/twine-test/memory") : codex.appending(path: "memories")
+        let root =
+            claude ? claudeHome.appending(path: "projects/handshake-test/memory") : codex.appending(path: "memories")
         for directory in [folder, root] {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         }
@@ -159,7 +160,7 @@ extension HandshakeUITests {
         app.launchEnvironment["CODEX_HOME"] = codex.path
         app.launchEnvironment["CODEX_SQLITE_HOME"] = codex.path
         app.launchEnvironment["CLAUDE_CONFIG_DIR"] = claudeHome.path
-        app.launchEnvironment["CLAUDE_CODE_PROJECT_DIR_NAME"] = "twine-test"
+        app.launchEnvironment["CLAUDE_CODE_PROJECT_DIR_NAME"] = "handshake-test"
         app.launch()
         if !app.buttons["memoryEntry-outline"].waitForExistence(timeout: 10) { sidebarToggle(in: app).click() }
         app.buttons["memoryEntry-outline"].click()

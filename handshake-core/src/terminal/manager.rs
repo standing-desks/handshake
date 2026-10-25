@@ -845,7 +845,7 @@ mod tests {
         manager
             .write_input(
                 terminal_id,
-                b"pwd\nprintf '__TWINE_ONE__\\n'\nprintf '__TWINE_TWO__\\n'\n",
+                b"pwd\nprintf '__HANDSHAKE_ONE__\\n'\nprintf '__HANDSHAKE_TWO__\\n'\n",
             )
             .expect("shell input should be written");
         manager
@@ -882,10 +882,10 @@ mod tests {
 
         let text = String::from_utf8_lossy(&output);
         let first = text
-            .find("__TWINE_ONE__")
+            .find("__HANDSHAKE_ONE__")
             .expect("first marker should appear");
         let second = text
-            .find("__TWINE_TWO__")
+            .find("__HANDSHAKE_TWO__")
             .expect("second marker should appear");
         assert!(first < second, "shell output markers should stay ordered");
         assert!(

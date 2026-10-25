@@ -517,7 +517,7 @@ mod tests {
         let app = Application::with_config(data.path(), Config::default()).unwrap();
         let id = start(&app, folder.path(), 1);
         let command = [
-            br"printf '\377\000\033[H__TWINE_HISTORY__\n'".as_slice(),
+            br"printf '\377\000\033[H__HANDSHAKE_HISTORY__\n'".as_slice(),
             b"\n",
         ]
         .concat();

@@ -4,7 +4,7 @@ import XCTest
 extension HandshakeUITests {
     @MainActor
     func testGitFileTreeShowsPrimaryCheckoutChangesAcrossRepositories() throws {
-        let folder = try makeTestFolder(prefix: "TwineGit")
+        let folder = try makeTestFolder(prefix: "HandshakeGit")
         let desktop = folder.appending(path: "desktop")
         let services = folder.appending(path: "services")
         let api = services.appending(path: "api")
@@ -56,7 +56,7 @@ extension HandshakeUITests {
 
     @MainActor
     func testGitFileTreeRefreshesConflictsAndUnavailableRepositories() throws {
-        let folder = try makeTestFolder(prefix: "TwineGitConflict")
+        let folder = try makeTestFolder(prefix: "HandshakeGitConflict")
         try makeGitRepository(folder)
         try runGit(folder, ["checkout", "-b", "other"])
         let readme = folder.appending(path: "README.txt")
@@ -159,10 +159,10 @@ extension HandshakeUITests {
 
     private func runGit(_ folder: URL, _ arguments: [String], expectedStatus: Int32 = 0) throws {
         let process = Process()
-        let executable = try XCTUnwrap(ProcessInfo.processInfo.environment["TWINE_TEST_GIT"])
+        let executable = try XCTUnwrap(ProcessInfo.processInfo.environment["HANDSHAKE_TEST_GIT"])
         process.executableURL = URL(filePath: executable)
         process.arguments =
-            ["-c", "user.name=Twine Test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false"]
+            ["-c", "user.name=Handshake Test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false"]
             + arguments
         process.currentDirectoryURL = folder
         process.standardOutput = FileHandle.nullDevice

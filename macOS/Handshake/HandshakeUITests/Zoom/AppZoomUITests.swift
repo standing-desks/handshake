@@ -4,7 +4,7 @@ import XCTest
 extension HandshakeUITests {
     @MainActor
     func testZoomReflowsTerminalAndScalesEditorPopoverAndSheet() throws {
-        let folder = try makeTestFolder(prefix: "TwineZoomUITests")
+        let folder = try makeTestFolder(prefix: "HandshakeZoomUITests")
         let file = folder.appending(path: "zoom.txt")
         try "first\nsecond\n".write(to: file, atomically: true, encoding: .utf8)
         let app = try makeApp(lastOpenFolder: folder)

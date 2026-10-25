@@ -6,7 +6,7 @@ updates:
       interval: weekly
   - package-ecosystem: swift
     directories:
-      - "/macOS/Twine"
+      - "/macOS/Handshake"
       - "/macOS/HandshakeSyntaxPackage"
     schedule:
       interval: weekly

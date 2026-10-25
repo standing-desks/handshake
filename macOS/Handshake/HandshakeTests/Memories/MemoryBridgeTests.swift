@@ -8,7 +8,7 @@ import Testing
 struct MemoryBridgeTests {
     @Test(arguments: [true, false])
     func markdownEditorUsesAutosaveSettingsAndDetectsHarnessChanges(autosave: Bool) async throws {
-        let fixture = FileManager.default.temporaryDirectory.appending(path: "TwineMemorySave-\(UUID())")
+        let fixture = FileManager.default.temporaryDirectory.appending(path: "HandshakeMemorySave-\(UUID())")
         defer { try? FileManager.default.removeItem(at: fixture) }
         let memory = fixture.appending(path: "home/.codex/memories/MEMORY.md")
         try FileManager.default.createDirectory(
@@ -42,7 +42,7 @@ struct MemoryBridgeTests {
     }
 
     @Test func realBridgeDiscoversAndReadsFileAndSQLiteExamplesWithoutStartingRuntime() async throws {
-        let fixture = FileManager.default.temporaryDirectory.appending(path: "TwineMemoryBridge-\(UUID())")
+        let fixture = FileManager.default.temporaryDirectory.appending(path: "HandshakeMemoryBridge-\(UUID())")
         defer { try? FileManager.default.removeItem(at: fixture) }
         let codex = fixture.appending(path: "home/.codex")
         let memory = codex.appending(path: "memories/memory_summary.md")

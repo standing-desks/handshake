@@ -4,7 +4,7 @@ import XCTest
 extension HandshakeUITests {
     @MainActor
     func testZoomBoundsKeepSplitDraggingAndSmallWindowsUsable() throws {
-        let folder = try makeTestFolder(prefix: "TwineZoomBoundaryUITests")
+        let folder = try makeTestFolder(prefix: "HandshakeZoomBoundaryUITests")
         let app = try makeApp(lastOpenFolder: folder)
         app.launchEnvironment["SHELL"] = "/bin/bash"
         app.launch()

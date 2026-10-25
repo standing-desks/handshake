@@ -3,7 +3,8 @@ import XCTest
 extension HandshakeUITests {
     @MainActor
     func testSessionsOwnTabsAndRestoreFreshShellsAfterRelaunch() throws {
-        let folder = FileManager.default.temporaryDirectory.appending(path: "TwineSessionUITests-\(UUID().uuidString)")
+        let folder = FileManager.default.temporaryDirectory.appending(
+            path: "HandshakeSessionUITests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
         let app = try makeApp(lastOpenFolder: folder)
@@ -32,7 +33,7 @@ extension HandshakeUITests {
         XCTAssertTrue(secondTab.waitForExistence(timeout: 5))
         app.buttons["workflowChoice-Terminal"].click()
         app.typeText("exec /bin/sh\r")
-        app.typeText("TWINE_SESSION_VALUE=second; printf '%s' second > second.txt\r")
+        app.typeText("HANDSHAKE_SESSION_VALUE=second; printf '%s' second > second.txt\r")
         waitForSessionFile(folder.appending(path: "second.txt"), containing: "second")
         let screenshot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
         screenshot.name = "Files and Sessions sidebar"
@@ -44,7 +45,7 @@ extension HandshakeUITests {
         XCTAssertEqual(app.buttons["workflowTab-2"].value as? String, "Selected")
         XCTAssertFalse(secondTab.exists)
         app.buttons["workflowTab-1"].click()
-        app.typeText("printf '%s' $TWINE_SESSION_VALUE > preserved.txt\r")
+        app.typeText("printf '%s' $HANDSHAKE_SESSION_VALUE > preserved.txt\r")
         waitForSessionFile(folder.appending(path: "preserved.txt"), containing: "original")
         secondSession.click()
         XCTAssertTrue(secondTab.waitForExistence(timeout: 5))
@@ -76,7 +77,9 @@ extension HandshakeUITests {
         resizeWindow(app.windows.firstMatch, to: CGSize(width: 900, height: 620))
         app.typeText("exec /bin/sh\r")
         app.typeText(
-            "TWINE_SESSION_VALUE=original; echo $$ > original.pid; printf '%s' $TWINE_SESSION_VALUE > initial.txt\r")
+            "HANDSHAKE_SESSION_VALUE=original; echo $$ > original.pid; "
+                + "printf '%s' $HANDSHAKE_SESSION_VALUE > initial.txt\r"
+        )
         waitForSessionFile(folder.appending(path: "initial.txt"), containing: "original")
     }
 
@@ -91,7 +94,7 @@ extension HandshakeUITests {
         XCTAssertFalse(app.buttons["workflowTab-1"].exists)
         XCTAssertTrue(app.staticTexts["restoredWorkflowNotice"].waitForExistence(timeout: 5))
         app.typeText("exec /bin/sh\r")
-        app.typeText("printf '%s' ${TWINE_SESSION_VALUE-fresh} > fresh.txt\r")
+        app.typeText("printf '%s' ${HANDSHAKE_SESSION_VALUE-fresh} > fresh.txt\r")
         waitForSessionFile(folder.appending(path: "fresh.txt"), containing: "fresh")
     }
 

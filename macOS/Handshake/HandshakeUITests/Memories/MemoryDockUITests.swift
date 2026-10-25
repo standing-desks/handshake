@@ -75,7 +75,7 @@ extension HandshakeUITests {
 
     @MainActor
     private func openMemoryDockFixture() throws -> XCUIApplication {
-        let fixture = try makeTestFolder(prefix: "TwineMemoryDockUI")
+        let fixture = try makeTestFolder(prefix: "HandshakeMemoryDockUI")
         let folder = fixture.appending(path: "folder")
         let codex = fixture.appending(path: "codex")
         let claude = fixture.appending(path: "claude")

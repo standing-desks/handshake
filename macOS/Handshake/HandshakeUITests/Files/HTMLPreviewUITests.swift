@@ -62,7 +62,7 @@ extension HandshakeUITests {
     }
 
     private func makeHTMLFolder() throws -> URL {
-        let base = FileManager.default.temporaryDirectory.appending(path: "TwineHTML-\(UUID().uuidString)")
+        let base = FileManager.default.temporaryDirectory.appending(path: "HandshakeHTML-\(UUID().uuidString)")
         let real = base.appending(path: "real")
         try FileManager.default.createDirectory(at: real.appending(path: "site"), withIntermediateDirectories: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: base) }

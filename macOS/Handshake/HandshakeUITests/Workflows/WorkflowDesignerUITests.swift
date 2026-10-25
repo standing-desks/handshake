@@ -44,10 +44,10 @@ extension HandshakeUITests {
 
     @MainActor
     private func makeWorkflowDeletionApp() throws -> (XCUIApplication, URL) {
-        let folder = try makeTestFolder(prefix: "TwineWorkflowDeletion")
+        let folder = try makeTestFolder(prefix: "HandshakeWorkflowDeletion")
         let app = try makeApp(lastOpenFolder: folder)
         let configRoot = try XCTUnwrap(app.launchEnvironment["XDG_CONFIG_HOME"])
-        let workflows = URL(filePath: configRoot).appending(path: "twine/workflows")
+        let workflows = URL(filePath: configRoot).appending(path: "handshake/workflows")
         try FileManager.default.createDirectory(at: workflows, withIntermediateDirectories: true)
         let file = workflows.appending(path: "delete_me.toml")
         try """
@@ -69,7 +69,7 @@ extension HandshakeUITests {
 
     @MainActor
     func testWorkflowDesignerKeyboardEntryValidationAndBuiltinCopy() throws {
-        let folder = FileManager.default.temporaryDirectory.appending(path: "TwineDesignerUI-\(UUID())")
+        let folder = FileManager.default.temporaryDirectory.appending(path: "HandshakeDesignerUI-\(UUID())")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
         let app = try makeApp(lastOpenFolder: folder)

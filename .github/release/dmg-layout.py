@@ -29,7 +29,7 @@ if verify:
         actual = Alias.from_bytes(options["backgroundImageAlias"])
         assert options["backgroundType"] == 2
         assert options["iconSize"] == 80.0
-        assert store["Twine.app"]["Iloc"] == (130, 134)
+        assert store["Handshake.app"]["Iloc"] == (130, 134)
         assert store["Applications"]["Iloc"] == (410, 134)
         assert text(actual.volume.name) == text(background.volume.name)
         assert actual.volume.creation_date == background.volume.creation_date
@@ -57,9 +57,9 @@ with DSStore.open(str(mount / ".DS_Store"), "w+") as store:
         "backgroundImageAlias": background.to_bytes(),
         # Finder image backgrounds need explicit RGB components. Keep the
         # approved charcoal canvas in both system appearances.
-        "backgroundColorRed": 41 / 255,
-        "backgroundColorGreen": 42 / 255,
-        "backgroundColorBlue": 43 / 255,
+        "backgroundColorRed": 32 / 255,
+        "backgroundColorGreen": 35 / 255,
+        "backgroundColorBlue": 38 / 255,
         "arrangeBy": "none",
         "iconSize": 80.0,
         "textSize": 13.0,
@@ -72,5 +72,5 @@ with DSStore.open(str(mount / ".DS_Store"), "w+") as store:
         "scrollPositionX": 0.0,
         "scrollPositionY": 0.0,
     }
-    store["Twine.app"]["Iloc"] = (130, 134)
+    store["Handshake.app"]["Iloc"] = (130, 134)
     store["Applications"]["Iloc"] = (410, 134)

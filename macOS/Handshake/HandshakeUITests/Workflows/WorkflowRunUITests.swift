@@ -153,7 +153,7 @@ extension HandshakeUITests {
 
     @MainActor
     func workflowRunApp(appearance: String? = nil) throws -> XCUIApplication {
-        let folder = FileManager.default.temporaryDirectory.appending(path: "TwineRunUI-\(UUID().uuidString)")
+        let folder = FileManager.default.temporaryDirectory.appending(path: "HandshakeRunUI-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
         let bin = folder.appending(path: "bin")

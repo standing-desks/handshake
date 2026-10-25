@@ -3,7 +3,7 @@ import XCTest
 extension HandshakeUITests {
     @MainActor
     func testClearedTraceOpensSavedInputAndOutputWithoutAScrollbackWarning() throws {
-        let folder = try makeTestFolder(prefix: "TwineHistoryUITests")
+        let folder = try makeTestFolder(prefix: "HandshakeHistoryUITests")
         let app = try makeApp(lastOpenFolder: folder)
         app.launchEnvironment["SHELL"] = "/bin/bash"
         app.launch()
@@ -38,7 +38,7 @@ extension HandshakeUITests {
 
     @MainActor
     func testTraceExitScrollsTheTerminalAndKeepsItMountedAfterResize() throws {
-        let folder = try makeTestFolder(prefix: "TwineHistoryUITests")
+        let folder = try makeTestFolder(prefix: "HandshakeHistoryUITests")
         let app = try makeApp(lastOpenFolder: folder)
         app.launchEnvironment["SHELL"] = "/bin/sh"
         app.launch()
@@ -64,7 +64,7 @@ extension HandshakeUITests {
 
     @MainActor
     func testTraceJumpBringsAHiddenBentoAgentIntoViewAndReturnsToItsLiveShell() throws {
-        let folder = try makeTestFolder(prefix: "TwineHistoryUITests")
+        let folder = try makeTestFolder(prefix: "HandshakeHistoryUITests")
         let app = try makeApp(lastOpenFolder: folder)
         app.launch()
         defer { app.terminate() }
@@ -89,7 +89,7 @@ extension HandshakeUITests {
         assertAgentHasKeyboard(3, subtabs: subtabs, in: app)
         XCTAssertEqual(app.buttons["workflowTab-2"].value as? String, "Selected")
         // Trace navigation selects the live agent, so input goes directly to its shell.
-        app.typeText("echo $TWINE_AGENT > returned-to-live\r")
+        app.typeText("echo $HANDSHAKE_AGENT > returned-to-live\r")
         waitForFile(folder.appending(path: "returned-to-live"), containing: "agent3", in: app)
         resizeWindow(app.windows.firstMatch, to: CGSize(width: 950, height: 720))
         XCTAssertFalse(app.textViews["terminalHistoryText"].exists)

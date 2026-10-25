@@ -62,7 +62,7 @@ struct SettingsEditorTests {
     func saveCallbackRunsAfterSavingAndKeepsTheBaselineOnReloadFailure(fails: Bool) async throws {
         let client = CoreClient(transport: SettingsFileTransport())
         let file = try await client.configFile()
-        let editor = FileEditorModel(path: file.path, folder: "/config/twine", isConfigFile: true)
+        let editor = FileEditorModel(path: file.path, folder: "/config/handshake", isConfigFile: true)
         editor.receive(file)
         editor.text = "terminal.font_size = 18\n"
         editor.requestSave()
@@ -82,7 +82,7 @@ struct SettingsEditorTests {
     @Test func aConflictedSaveDoesNotReloadSettings() async throws {
         let client = CoreClient(transport: SettingsFileTransport(conflicts: true))
         let file = try await client.configFile()
-        let editor = FileEditorModel(path: file.path, folder: "/config/twine", isConfigFile: true)
+        let editor = FileEditorModel(path: file.path, folder: "/config/handshake", isConfigFile: true)
         editor.receive(file)
         editor.text = "terminal.font_size = 18\n"
         editor.requestSave()
@@ -97,7 +97,7 @@ struct SettingsEditorTests {
         let transport = SettingsFileTransport()
         let client = CoreClient(transport: transport)
         let file = try await client.configFile()
-        let editor = FileEditorModel(path: file.path, folder: "/config/twine", isConfigFile: true)
+        let editor = FileEditorModel(path: file.path, folder: "/config/handshake", isConfigFile: true)
         editor.receive(file)
         editor.text = "terminal.font_size = 18\n"
         editor.requestSave()
@@ -106,7 +106,7 @@ struct SettingsEditorTests {
         #expect(!editor.isDirty)
         #expect(!editor.isSaving)
         #expect(editor.baseline?.text == "terminal.font_size = 18\n")
-        #expect(await transport.saved?.path == "/config/twine/config.toml")
+        #expect(await transport.saved?.path == "/config/handshake/config.toml")
         #expect(client.runState == .idle)
         #expect(client.snapshot == nil)
     }
@@ -125,7 +125,7 @@ private actor SettingsFileTransport {
 
     func configFile() -> FilePreview {
         FilePreview(
-            path: "/config/twine/config.toml", status: .text, text: "# Original\n", message: nil,
+            path: "/config/handshake/config.toml", status: .text, text: "# Original\n", message: nil,
             version: FileVersion(fingerprint: "one", utf8BOM: false))
     }
 

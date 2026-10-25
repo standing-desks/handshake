@@ -40,7 +40,7 @@ jobs:
             exit 1
           fi
           available="$(gh api "repos/$GH_REPO/actions/runs/$run_id/artifacts?per_page=100" \
-            | jq --arg name "Twine-ci-$sha" '[.artifacts[] | select(.name == $name and .expired == false)] | length')"
+            | jq --arg name "Handshake-ci-$sha" '[.artifacts[] | select(.name == $name and .expired == false)] | length')"
           if [[ "$available" == 0 ]]; then
             echo '::error::The CI build for this commit has expired; re-run CI on main for this commit, then re-run this job'
             exit 1
@@ -68,7 +68,7 @@ jobs:
       - name: Download main CI build
         uses: actions/download-artifact@v8
         with:
-          name: Twine-ci-${{ needs.guard.outputs.sha }}
+          name: Handshake-ci-${{ needs.guard.outputs.sha }}
           path: out/packaging/bundle
           run-id: ${{ needs.guard.outputs.build_run }}
           github-token: ${{ github.token }}
@@ -90,10 +90,10 @@ jobs:
           "$GITHUB_WORKSPACE/out/packaging/release"
       - name: Validate signed release DMG
         env:
-          TWINE_SIGNING_MODE: developer-id
+          HANDSHAKE_SIGNING_MODE: developer-id
           APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
           VERSION: ${{ needs.guard.outputs.version }}
-        run: make validate-dmg DMG="$GITHUB_WORKSPACE/out/packaging/release/Twine-$VERSION-macos-arm64.dmg" VERSION="$VERSION"
+        run: make validate-dmg DMG="$GITHUB_WORKSPACE/out/packaging/release/Handshake-$VERSION-macos-arm64.dmg" VERSION="$VERSION"
       - name: Upload notarization diagnostics
         if: always()
         uses: actions/upload-artifact@v7

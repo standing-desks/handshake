@@ -4,7 +4,7 @@ import XCTest
 extension HandshakeUITests {
     @MainActor
     func testAgentSubtabsRestoreEachWorkflowsSelectionAndCloseShells() throws {
-        let folder = try makeTestFolder(prefix: "TwineAgentUITests")
+        let folder = try makeTestFolder(prefix: "HandshakeAgentUITests")
         let app = try makeApp(lastOpenFolder: folder)
         app.launch()
         let draft = app.buttons["workflowTab-1"]
@@ -36,7 +36,7 @@ extension HandshakeUITests {
         waitUntilSelected(otherCoordinator, in: app)
         agentsTab.click()
         waitUntilSelected(subtabs[1], in: app)
-        app.typeText("{ echo $$; echo $TWINE_AGENT; } > remembered.txt\r")
+        app.typeText("{ echo $$; echo $HANDSHAKE_AGENT; } > remembered.txt\r")
         let remembered = folder.appending(path: "remembered.txt")
         waitForFile(remembered, containing: "agent1", in: app)
         let lines = try String(contentsOf: remembered, encoding: .utf8).split(separator: "\n")
@@ -61,7 +61,7 @@ extension HandshakeUITests {
 
     @MainActor
     func testAgentsKeepTheirTerminalAtTheMinimumWindowSizeInDarkAppearance() throws {
-        let folder = try makeTestFolder(prefix: "TwineAgentUITests")
+        let folder = try makeTestFolder(prefix: "HandshakeAgentUITests")
         let app = try makeApp(lastOpenFolder: folder)
         app.launchEnvironment["HANDSHAKE_TEST_APPEARANCE"] = "Dark"
         app.launch()

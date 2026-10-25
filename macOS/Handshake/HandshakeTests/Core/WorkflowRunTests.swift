@@ -28,7 +28,7 @@ struct WorkflowRunTests {
     }
 
     @Test func coreCatalogDecodesRolesAndLaunchBounds() async throws {
-        let directory = FileManager.default.temporaryDirectory.appending(path: "TwineRunTests-\(UUID().uuidString)")
+        let directory = FileManager.default.temporaryDirectory.appending(path: "HandshakeRunTests-\(UUID().uuidString)")
         let worker = CoreWorker(dataDirectory: directory)
         do {
             let snapshot = try await worker.open()

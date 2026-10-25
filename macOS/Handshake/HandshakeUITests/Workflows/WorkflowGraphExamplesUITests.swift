@@ -117,7 +117,7 @@ extension HandshakeUITests {
 
     @MainActor
     private func launchGraphDesigner() throws -> XCUIApplication {
-        let folder = try makeTestFolder(prefix: "TwineGraphEditor")
+        let folder = try makeTestFolder(prefix: "HandshakeGraphEditor")
         let app = try makeApp(lastOpenFolder: folder)
         app.launch()
         XCTAssertTrue(app.buttons["workflowCreateOwn"].waitForExistence(timeout: 10), app.debugDescription)

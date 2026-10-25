@@ -180,7 +180,7 @@ check-app: lint-app test-app ## Lint and unit-test the app
 .PHONY: ui-test
 ui-test: $(call needs,build-tests) ## Run UI tests (ONLY="testA testB", ALL=1 or SHARD=n/N; RETRIES=n)
 	@test -n "$(strip $(UI_TEST_ARGS))" || { echo 'usage: make ui-test [ONLY="testA testB" | ALL=1 | SHARD=n/N]' >&2; exit 2; }
-	TEST_RUNNER_TWINE_TEST_GIT="$$(xcrun --find git)" $(TEST_ENV) $(TEST_RUN) $(UI_TEST_ARGS) $(UI_RETRY_ARGS)
+	TEST_RUNNER_HANDSHAKE_TEST_GIT="$$(xcrun --find git)" $(TEST_ENV) $(TEST_RUN) $(UI_TEST_ARGS) $(UI_RETRY_ARGS)
 
 .PHONY: ui-test-visual
 ui-test-visual: ## Run the visual UI tests
@@ -261,13 +261,11 @@ regenerate-dmg-artwork: ## Regenerate the DMG background
 
 ##@ Documentation
 .PHONY: build-site
-build-site: $(call needs,docs-lib docs-app) ## Build the documentation website
+build-site: check-site $(call needs,docs-lib docs-app) ## Build the documentation website
 	rm -rf "$(SITE_DIR)"
 	mkdir -p "$(SITE_DIR)"
 	cp docs/index.html "$(SITE_DIR)/"
 	cp -R docs/assets docs/documentation "$(SITE_DIR)/"
-	cp macOS/Handshake/Handshake/Assets.xcassets/AppIcon.appiconset/twine-256.png "$(SITE_DIR)/assets/icon.png"
-	cp macOS/Handshake/Handshake/Assets.xcassets/AppIcon.appiconset/twine-32.png "$(SITE_DIR)/assets/favicon.png"
 	cp -R "$(LIB_DOC_DIR)/doc/." "$(SITE_DIR)/documentation/rust/"
 	cp -R "$(APP_DOC_DIR)/Build/Products/Debug/Handshake.doccarchive" "$(SITE_DIR)/documentation/swift"
 
@@ -282,16 +280,16 @@ docs-lib: ## Build the library API reference
 docs-app: $(call needs,deps-debug) ## Build the app API reference
 	$(XCODEBUILD_DEBUG) docbuild -derivedDataPath "$(APP_DOC_DIR)" \
 		OTHER_SWIFT_FLAGS='-symbol-graph-skip-synthesized-members' \
-		DOCC_HOSTING_BASE_PATH=twine/documentation/swift DOCC_TRANSFORM_FOR_STATIC_HOSTING=YES $(XCODE_BUILD_ARGS)
+		DOCC_HOSTING_BASE_PATH=handshake/documentation/swift DOCC_TRANSFORM_FOR_STATIC_HOSTING=YES $(XCODE_BUILD_ARGS)
 	# Validate Handshake's catalog strictly without treating dependency documentation warnings as errors.
 	mkdir -p "$(APP_DOC_DIR)/Build/Products/Debug"
 	xcrun docc convert macOS/Handshake/Handshake/Documentation.docc \
 		--additional-symbol-graph-dir "$(APP_DOC_DIR)/Build/Intermediates.noindex/Handshake.build/Debug/Handshake.build/symbol-graph" \
 		--output-dir "$(APP_DOC_DIR)/Build/Products/Debug/Handshake.doccarchive" \
 		--fallback-display-name Handshake --fallback-bundle-identifier com.twineproject.Twine \
-		--fallback-default-module-kind Application --hosting-base-path twine/documentation/swift \
+		--fallback-default-module-kind Application --hosting-base-path handshake/documentation/swift \
 		--transform-for-static-hosting --warnings-as-errors \
-		--source-service github --source-service-base-url https://github.com/standing-desks/twine/blob/main \
+		--source-service github --source-service-base-url https://github.com/standing-desks/handshake/blob/main \
 		--checkout-path "$(CURDIR)"
 
 .PHONY: check-site

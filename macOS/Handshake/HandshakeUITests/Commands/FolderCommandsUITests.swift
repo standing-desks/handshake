@@ -3,7 +3,7 @@ import XCTest
 extension HandshakeUITests {
     @MainActor
     func testFileMenuCanOpenWindowsAndFoldersAfterClosingLastWindow() throws {
-        let folder = try makeTestFolder(prefix: "Twine menu reopen")
+        let folder = try makeTestFolder(prefix: "Handshake menu reopen")
         let app = try makeApp()
         app.launch()
         let window = app.windows.firstMatch

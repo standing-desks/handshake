@@ -105,7 +105,7 @@ struct TerminalRoutingTests {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
 
         let client = CoreClient(
-            transport: CoreWorker(dataDirectory: directory.appending(component: ".twine-data"))
+            transport: CoreWorker(dataDirectory: directory.appending(component: ".handshake-data"))
         )
         client.start()
         var terminalID: UInt64?
@@ -123,7 +123,7 @@ struct TerminalRoutingTests {
             let startedTerminalID = try #require(terminalID)
             try await client.writeTerminalInput(
                 terminalID: startedTerminalID,
-                bytes: Data("pwd\nprintf '__TWINE_SWIFT__\\n'\nexit 9\n".utf8)
+                bytes: Data("pwd\nprintf '__HANDSHAKE_SWIFT__\\n'\nexit 9\n".utf8)
             )
             let (output, exit) = try await collectTerminalOutput(
                 from: client,
@@ -131,7 +131,7 @@ struct TerminalRoutingTests {
             )
             let text = String(data: output, encoding: .utf8) ?? ""
             #expect(text.contains(directory.path))
-            #expect(text.contains("__TWINE_SWIFT__"))
+            #expect(text.contains("__HANDSHAKE_SWIFT__"))
             #expect(exit.exitCode == 9)
 
             try await client.closeTerminal(terminalID: startedTerminalID)
@@ -168,7 +168,7 @@ struct TerminalRoutingTests {
                 terminal.feed(byteArray: Array(chunk.bytes)[...])
             } else {
                 let text = String(data: output, encoding: .utf8) ?? ""
-                if text.contains("__TWINE_SWIFT__") {
+                if text.contains("__HANDSHAKE_SWIFT__") {
                     if case .exited(let exit) = client.terminalStatus(for: terminalID) {
                         return (output, exit)
                     }
