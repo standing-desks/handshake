@@ -1,15 +1,37 @@
 version: 2
+
+# Stagger routine updates to reduce competition for macOS CI runners.
+# Security updates remain separate from these version-update groups and cooldowns.
 updates:
   - package-ecosystem: cargo
     directory: "/"
     schedule:
       interval: weekly
+      day: monday
+      time: "02:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 3
+    cooldown:
+      default-days: 7
+    groups:
+      # Minor updates to 0.x crates can be incompatible; review them individually.
+      rust-patches:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["patch"]
+
   - package-ecosystem: swift
     directories:
       - "/macOS/Handshake"
       - "/macOS/HandshakeSyntaxPackage"
     schedule:
       interval: weekly
+      day: tuesday
+      time: "02:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 2
+    cooldown:
+      default-days: 7
     ignore:
       # SwiftTreeSitter determines the compatible runtime minor version.
       - dependency-name: "github.com/tree-sitter/tree-sitter"
@@ -19,10 +41,40 @@ updates:
     groups:
       # Update each dependency's manifest requirement and app lockfile together.
       swift-dependencies:
+        applies-to: version-updates
         group-by: dependency-name
         patterns:
           - "*"
+
   - package-ecosystem: github-actions
-    directory: "/"
+    directories:
+      - "/"
+      - "/.github/actions/setup-build"
     schedule:
       interval: weekly
+      day: wednesday
+      time: "02:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 2
+    cooldown:
+      default-days: 7
+    groups:
+      actions-minor-and-patch:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: pip
+    directory: "/.github/release"
+    schedule:
+      interval: monthly
+      time: "02:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 2
+    cooldown:
+      default-days: 7
+    groups:
+      dmg-tools:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
