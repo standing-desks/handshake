@@ -3,6 +3,31 @@ import Foundation
 @testable import Twine
 
 actor DeferredMemoryTransport {
+    private var twineResult: Result<TwineMemorySnapshot, CoreFailure>?
+    private var twineActions: [TwineMemoryAction] = []
+    private var pendingTwine: [CheckedContinuation<TwineMemorySnapshot, any Error>] = []
+    private var defersTwine = false
+
+    func setTwineResult(_ result: Result<TwineMemorySnapshot, CoreFailure>) { twineResult = result }
+    func deferTwineRequests() { defersTwine = true }
+    func twineMemories(folder: String, action: TwineMemoryAction) async throws -> TwineMemorySnapshot {
+        twineActions.append(action)
+        if defersTwine { return try await withCheckedThrowingContinuation { pendingTwine.append($0) } }
+        guard let twineResult else { throw CoreFailure.unexpectedCommandResult }
+        return try twineResult.get()
+    }
+    func completeTwine(_ index: Int, result: Result<TwineMemorySnapshot, any Error>) {
+        pendingTwine[index].resume(with: result)
+    }
+    func receivedTwineActions() -> [TwineMemoryAction] { twineActions }
+    func waitForTwineActions(_ count: Int) async throws {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while twineActions.count < count {
+            guard ContinuousClock.now < deadline else { throw CoreFailure.failed("No Twine memory request arrived.") }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+    }
+
     private var catalogs: [CheckedContinuation<CoreMemoryCatalog, any Error>] = []
     private var saveResult: FileSaveResult?
     private var reads: [CheckedContinuation<CoreMemoryRead, any Error>] = []

@@ -103,6 +103,10 @@ impl Application {
         Ok(())
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "Resume keeps profile lease and terminal failure cleanup paired"
+    )]
     fn resume_single_agent(
         &self,
         saved: &Workflow,
@@ -132,14 +136,28 @@ impl Application {
         let reserved = self.terminals.reserve_terminal()?;
         let (mut arguments, hooks) =
             self.harness_arguments(harness, reserved, LaunchOptions::default(), "");
-        if let Err(error) = Self::append_agent_instructions(
-            harness,
-            "",
-            &mut arguments,
-            hooks.as_ref(),
-            &located,
-            folder,
-        ) {
+        let (memory_environment, memory_lease) =
+            match self.resume_memory_environment(harness, folder, &session) {
+                Ok(values) => values,
+                Err(error) => {
+                    let _ = self.terminals.cancel_reserved_terminal(reserved);
+                    return Err(crate::StoreError::TracePayload(error).into());
+                }
+            };
+        if let Err(error) =
+            Self::append_memory_settings(harness, &memory_environment, &mut arguments).and_then(
+                |()| {
+                    Self::append_agent_instructions(
+                        harness,
+                        "",
+                        &mut arguments,
+                        hooks.as_ref(),
+                        &located,
+                        folder,
+                    )
+                },
+            )
+        {
             let _ = self.terminals.cancel_reserved_terminal(reserved);
             return Err(crate::StoreError::TracePayload(error).into());
         }
@@ -151,9 +169,17 @@ impl Application {
             &located.program,
             &arguments,
             &located.path,
-            &crate::harness::launch::observed_environment(harness, hooks.as_ref()),
+            &crate::harness::launch::observed_environment(harness, hooks.as_ref())
+                .into_iter()
+                .chain(
+                    memory_environment
+                        .iter()
+                        .filter(|(key, _)| key != "TWINE_CLAUDE_MEMORY_DIRECTORY")
+                        .map(|(k, v)| (k.as_str(), v.as_str())),
+                )
+                .collect::<Vec<_>>(),
             RESTORED_SIZE,
-            Arc::new(self.exit_callback()),
+            Arc::new(self.memory_exit_callback(memory_lease)),
         )?;
         let mut workflow = saved.clone();
         workflow.restored = true;

@@ -71,6 +71,7 @@ nonisolated protocol CoreTransport: Sendable {
     func memoryCatalog(_ request: CoreMemoryRequest) async throws -> CoreMemoryCatalog
     func memoryRead(_ request: CoreMemoryRequest) async throws -> CoreMemoryRead
     func memorySave(_ request: CoreMemorySaveRequest) async throws -> FileSaveResult
+    func twineMemories(folder: String, action: TwineMemoryAction) async throws -> TwineMemorySnapshot
     func nativeMemoryImport(_ request: NativeMemoryImportRequest) async throws -> NativeMemoryImportSnapshot
     func sharedMemory(folder: String, action: SharedMemoryAction) async throws -> SharedMemorySnapshot
     func saveConfigFile(_ request: FileSaveRequest) async throws -> FileSaveResult
@@ -90,6 +91,10 @@ nonisolated protocol CoreTransport: Sendable {
 }
 
 extension CoreTransport {
+    func twineMemories(folder: String, action: TwineMemoryAction) async throws -> TwineMemorySnapshot {
+        throw CoreFailure.unexpectedCommandResult
+    }
+
     func nativeMemoryImport(_ request: NativeMemoryImportRequest) async throws -> NativeMemoryImportSnapshot {
         throw CoreFailure.unexpectedCommandResult
     }

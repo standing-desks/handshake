@@ -24,14 +24,14 @@ struct MemoryHeader: View {
                 .help(model.isExpanded ? "Collapse Memories" : "Open Memories")
             if let openNativeMemory {
                 Button(action: openNativeMemory) {
-                    Text("Import")
+                    Text("Twine")
                         .font(.system(size: 11, weight: .medium))
                         .padding(.horizontal, 4)
                         .frame(height: 26).contentShape(.rect)
                 }
                 .buttonStyle(.plain).accessibilityIdentifier("openNativeMemory")
-                .accessibilityLabel("Import memories into Codex")
-                .help("Import Claude memories into Codex")
+                .accessibilityLabel("Twine Memories")
+                .help("Automatic native memory sharing")
             }
             if model.isExpanded {
                 Button(action: model.refresh) {

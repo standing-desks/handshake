@@ -216,6 +216,8 @@ struct PreparedAgent {
     hooks: Option<crate::harness::steps::StepInbox>,
     /// Existing interactive agents receive the next assignment in their terminal.
     continuation: Option<String>,
+    memory_environment: Vec<(String, String)>,
+    memory_lease: Option<std::fs::File>,
 }
 
 impl Application {
@@ -504,6 +506,8 @@ impl Application {
                     arguments: Vec::new(),
                     hooks: None,
                     continuation: Some(prompt),
+                    memory_environment: Vec::new(),
+                    memory_lease: None,
                 });
                 continue;
             }
@@ -542,14 +546,41 @@ impl Application {
                             .remove(&AgentId(agent.agent_id));
                         inbox.command()
                     };
-                    if let Err(error) = Self::append_agent_instructions(
+                    let memory_environment =
+                        match processes.resumed_sessions.get(&AgentId(agent.agent_id)) {
+                            Some(session) => self.resume_memory_environment(
+                                agent.harness,
+                                &processes.folder,
+                                session,
+                            ),
+                            None => self.memory_environment(agent.harness, &processes.folder),
+                        };
+                    let (memory_environment, memory_lease) = match memory_environment {
+                        Ok(values) => values,
+                        Err(error) => {
+                            let _ = self.terminals.cancel_reserved_terminal(reserved);
+                            run.finish(
+                                RunStatus::Failed,
+                                &format!("Could not prepare native memory: {error}"),
+                            );
+                            break;
+                        }
+                    };
+                    if let Err(error) = Self::append_memory_settings(
                         agent.harness,
-                        &run.instructions(agent.agent_id, &command),
+                        &memory_environment,
                         &mut arguments,
-                        hooks.as_ref(),
-                        &processes.harnesses[&agent.harness],
-                        &processes.folder,
-                    ) {
+                    )
+                    .and_then(|()| {
+                        Self::append_agent_instructions(
+                            agent.harness,
+                            &run.instructions(agent.agent_id, &command),
+                            &mut arguments,
+                            hooks.as_ref(),
+                            &processes.harnesses[&agent.harness],
+                            &processes.folder,
+                        )
+                    }) {
                         let _ = self.terminals.cancel_reserved_terminal(reserved);
                         run.finish(
                             RunStatus::Failed,
@@ -575,6 +606,8 @@ impl Application {
                         arguments,
                         hooks,
                         continuation: None,
+                        memory_environment,
+                        memory_lease,
                     });
                 }
                 Err(error) => {
@@ -640,6 +673,8 @@ impl Application {
             arguments,
             hooks,
             continuation,
+            memory_environment,
+            memory_lease,
         } in prepared
         {
             if run.status != RunStatus::Running {
@@ -660,9 +695,17 @@ impl Application {
                     &located.program,
                     &arguments,
                     &located.path,
-                    &crate::harness::launch::observed_environment(agent.harness, hooks.as_ref()),
+                    &crate::harness::launch::observed_environment(agent.harness, hooks.as_ref())
+                        .into_iter()
+                        .chain(
+                            memory_environment
+                                .iter()
+                                .filter(|(key, _)| key != "TWINE_CLAUDE_MEMORY_DIRECTORY")
+                                .map(|(k, v)| (k.as_str(), v.as_str())),
+                        )
+                        .collect::<Vec<_>>(),
                     processes.size,
-                    Arc::new(self.exit_callback()),
+                    Arc::new(self.memory_exit_callback(memory_lease)),
                 )
             };
             match launched {

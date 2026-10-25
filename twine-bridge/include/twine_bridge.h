@@ -51,6 +51,7 @@ TwineStatus twine_memory_read(const uint8_t *bytes, size_t length, TwineBuffer *
 TwineStatus twine_shared_memory(const uint8_t *bytes, size_t length, TwineBuffer *out_result);
 // Native memory: {folder, action:"status"|"import"|"removeImported"} -> {snapshot,error}.
 // Status is read-only. Both mutations use Codex's native importer with distinct intent.
+TwineStatus twine_twine_memories(const uint8_t *bytes, size_t length, TwineBuffer *out_result);
 TwineStatus twine_native_memory_import(const uint8_t *bytes, size_t length, TwineBuffer *out_result);
 // Explicit Markdown save: {source: <memory request>, text, expectedVersion, overwrite}.
 // Returns saved/conflict/failed JSON. Input bound and pointer rules match save_file;

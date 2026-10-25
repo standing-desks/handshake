@@ -201,6 +201,21 @@ impl Application {
     }
 
     /// Records a terminal's process exit in application state.
+    pub(super) fn memory_exit_callback(
+        &self,
+        lease: Option<std::fs::File>,
+    ) -> impl Fn(TerminalId, Result<TerminalExit, String>, TerminalObservation) + Send + Sync + 'static
+    {
+        let callback = self.exit_callback();
+        let lease = std::sync::Mutex::new(lease);
+        move |id, result, observation| {
+            lease
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .take();
+            callback(id, result, observation);
+        }
+    }
     pub(super) fn exit_callback(
         &self,
     ) -> impl Fn(TerminalId, Result<TerminalExit, String>, TerminalObservation) + Send + Sync + 'static

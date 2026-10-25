@@ -1,1 +1,2 @@
-allowed-duplicate-crates = ["bitflags", "syn", "thiserror", "thiserror-impl"]
+# jsonschema/ahash and UUID use different supported getrandom generations.
+allowed-duplicate-crates = ["bitflags", "getrandom", "r-efi", "syn", "thiserror", "thiserror-impl"]

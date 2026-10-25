@@ -3,6 +3,20 @@ import TwineCore
 
 /// Memory scans run independently so snapshots never hold up terminal I/O.
 actor MemoryWorker {
+    func twineMemories(_ request: TwineMemoryRequest) throws -> TwineMemorySnapshot {
+        try Task.checkCancellation()
+        let data = try JSONEncoder().encode(request)
+        var response = TwineBuffer()
+        let status = data.withUnsafeBytes { bytes in
+            twine_twine_memories(bytes.bindMemory(to: UInt8.self).baseAddress, bytes.count, &response)
+        }
+        try checkMemoryStatus(status)
+        let result = try JSONDecoder().decode(TwineMemoryResponse.self, from: consumeMemory(&response))
+        if let error = result.error { throw CoreFailure.failed(error) }
+        guard let snapshot = result.snapshot else { throw CoreFailure.empty }
+        return snapshot
+    }
+
     func nativeMemoryImport(_ request: NativeMemoryImportRequest) throws -> NativeMemoryImportSnapshot {
         try Task.checkCancellation()
         let data = try JSONEncoder().encode(request)

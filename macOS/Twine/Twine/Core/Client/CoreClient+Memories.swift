@@ -1,6 +1,10 @@
 import Foundation
 
 extension CoreClient {
+    func twineMemories(folder: String, action: TwineMemoryAction) async throws -> TwineMemorySnapshot {
+        try await transport.twineMemories(folder: folder, action: action)
+    }
+
     func nativeMemoryImport(_ request: NativeMemoryImportRequest) async throws -> NativeMemoryImportSnapshot {
         try await transport.nativeMemoryImport(request)
     }

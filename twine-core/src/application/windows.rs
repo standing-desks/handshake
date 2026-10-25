@@ -84,6 +84,7 @@ impl Application {
                 windows: 0,
             })
             .windows += 1;
+        application.attach_memories(data_directory);
         application.window_storage = Some(WindowStorageLease { path });
         Ok(application)
     }

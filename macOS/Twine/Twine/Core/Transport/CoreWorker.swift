@@ -24,6 +24,10 @@ actor CoreWorker: CoreTransport {
         }
     }
 
+    func twineMemories(folder: String, action: TwineMemoryAction) async throws -> TwineMemorySnapshot {
+        try await memoryWorker.twineMemories(.init(dataDirectory: dataDirectory.path, folder: folder, action: action))
+    }
+
     func nativeMemoryImport(_ request: NativeMemoryImportRequest) async throws -> NativeMemoryImportSnapshot {
         try await nativeImportWorker.nativeMemoryImport(request)
     }

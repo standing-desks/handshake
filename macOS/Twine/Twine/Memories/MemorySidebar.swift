@@ -28,7 +28,7 @@ struct MemorySidebar: View {
             if model.nativeImport.snapshot?.status == "imported" { model.refresh() }
         }
         .sheet(isPresented: $showsNativeMemory) {
-            NativeMemoryImportSheet(model: model.nativeImport, folder: folder).appZoom()
+            TwineMemorySheet(model: model.twineMemory, folder: folder).appZoom()
         }
 
     }

@@ -78,7 +78,7 @@ UI_DEFAULT_TESTS := testFirstLaunchShowsStartPage \
 	testHTMLSyntaxHighlightingPreservesSourceEditingAndCSSDetection \
 	testMarkdownPreviewSourceSaveReloadAndLocalLinks \
 	testMemoryDockReadRefreshAndLeaveSourcesUnchanged \
-	testNativeMemoryEmptyStateAndReopen \
+	testTwineMemoriesAutomaticallyShareBothDirectionsAndSurviveRelaunch \
 	testMemoryDockClaudeScopesNarrowNavigationAndHiddenTerminal \
 	testMemoryDockOtherWorkspacesRememberNavigationAcrossRelaunch \
 	testMemoryDockArrowNavigationKeepsFocusAfterRendering \
