@@ -3,7 +3,7 @@ import Foundation
 /// A unique path under the temporary directory. Whatever a test creates there is deleted with the
 /// path.
 final class TemporaryPath {
-    let url = URL.temporaryDirectory.appending(path: "TwineTests-\(UUID().uuidString)")
+    let url = URL.temporaryDirectory.appending(path: "HandshakeTests-\(UUID().uuidString)")
 
     var path: String { url.path(percentEncoded: false) }
 

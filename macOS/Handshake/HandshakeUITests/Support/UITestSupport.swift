@@ -12,7 +12,7 @@ func staticTextValue(_ element: XCUIElement) -> String {
 extension HandshakeUITests {
     @MainActor
     func makeTestApplication() -> XCUIApplication {
-        ProcessInfo.processInfo.environment["TWINE_UI_TEST_APP_PATH"].map {
+        ProcessInfo.processInfo.environment["HANDSHAKE_UI_TEST_APP_PATH"].map {
             XCUIApplication(url: URL(filePath: $0))
         } ?? XCUIApplication()
     }
@@ -121,7 +121,7 @@ extension HandshakeUITests {
             subtab.click()
             waitUntilSelected(subtab, in: app)
             app.typeText("exec /bin/sh\r")
-            app.typeText("TWINE_AGENT=agent\(index); echo $$ > agent\(index).pid\r")
+            app.typeText("HANDSHAKE_AGENT=agent\(index); echo $$ > agent\(index).pid\r")
             processIDs.append(try writtenProcessID(in: folder.appending(path: "agent\(index).pid"), app: app))
         }
         XCTAssertEqual(Set(processIDs).count, subtabs.count, "Each agent needs its own shell")

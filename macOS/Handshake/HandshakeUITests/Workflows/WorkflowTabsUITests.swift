@@ -12,7 +12,7 @@ extension HandshakeUITests {
         XCTAssertGreaterThanOrEqual(app.buttons["newWorkflow"].frame.minX, first.frame.maxX)
         XCTAssertLessThan(app.buttons["newWorkflow"].frame.minX - first.frame.maxX, 18)
         app.typeText("exec /bin/sh\r")
-        app.typeText("TWINE_VALUE=first; echo $$ > first.pid\r")
+        app.typeText("HANDSHAKE_VALUE=first; echo $$ > first.pid\r")
         let firstPID = try workflowPID(folder.appending(path: "first.pid"))
         defer { killIfAlive(firstPID) }
 
@@ -20,7 +20,7 @@ extension HandshakeUITests {
         let second = app.buttons["workflowTab-2"]
         XCTAssertTrue(second.waitForExistence(timeout: 10), app.debugDescription)
         app.typeText("exec /bin/sh\r")
-        app.typeText("TWINE_VALUE=second; echo $$ > second.pid\r")
+        app.typeText("HANDSHAKE_VALUE=second; echo $$ > second.pid\r")
         let focusScreenshot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
         focusScreenshot.name = "Second workflow after typing"
         focusScreenshot.lifetime = .keepAlways
@@ -30,7 +30,7 @@ extension HandshakeUITests {
         XCTAssertNotEqual(firstPID, secondPID)
 
         first.click()
-        app.typeText("{ echo $$; echo $TWINE_VALUE; } > switched.txt\r")
+        app.typeText("{ echo $$; echo $HANDSHAKE_VALUE; } > switched.txt\r")
         let switchedFile = folder.appending(path: "switched.txt")
         waitForWorkflowFile(switchedFile, containing: "first")
         let switched = try String(contentsOf: switchedFile, encoding: .utf8)
@@ -106,7 +106,8 @@ extension HandshakeUITests {
     }
 
     private func workflowFolder() throws -> URL {
-        let folder = FileManager.default.temporaryDirectory.appending(path: "TwineWorkflowUITests-\(UUID().uuidString)")
+        let folder = FileManager.default.temporaryDirectory.appending(
+            path: "HandshakeWorkflowUITests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
         return folder

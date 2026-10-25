@@ -4,11 +4,11 @@ import XCTest
 extension HandshakeUITests {
     @MainActor
     func testMemoryDockClaudeScopesNarrowNavigationAndHiddenTerminal() throws {
-        let fixture = try makeTestFolder(prefix: "TwineClaudeMemoryUI")
+        let fixture = try makeTestFolder(prefix: "HandshakeClaudeMemoryUI")
         let folder = fixture.appending(path: "folder")
         let codex = fixture.appending(path: "codex")
         let claude = fixture.appending(path: "claude")
-        let autoMemory = claude.appending(path: "projects/twine-test/memory")
+        let autoMemory = claude.appending(path: "projects/handshake-test/memory")
         for directory in [folder, codex.appending(path: "memories"), autoMemory] {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         }
@@ -24,7 +24,7 @@ extension HandshakeUITests {
         app.launchEnvironment["CODEX_HOME"] = codex.path
         app.launchEnvironment["CODEX_SQLITE_HOME"] = codex.path
         app.launchEnvironment["CLAUDE_CONFIG_DIR"] = claude.path
-        app.launchEnvironment["CLAUDE_CODE_PROJECT_DIR_NAME"] = "twine-test"
+        app.launchEnvironment["CLAUDE_CODE_PROJECT_DIR_NAME"] = "handshake-test"
         app.launchEnvironment["SHELL"] = "/bin/bash"
         app.launch()
         defer { app.terminate() }
@@ -105,7 +105,7 @@ extension HandshakeUITests {
 
     @MainActor
     func testMemoryDockReadRefreshAndLeaveSourcesUnchanged() throws {
-        let fixture = FileManager.default.temporaryDirectory.appending(path: "TwineMemoryUI-\(UUID())")
+        let fixture = FileManager.default.temporaryDirectory.appending(path: "HandshakeMemoryUI-\(UUID())")
         let folder = fixture.appending(path: "folder")
         let codex = fixture.appending(path: "codex")
         let memory = codex.appending(path: "memories/MEMORY.md")

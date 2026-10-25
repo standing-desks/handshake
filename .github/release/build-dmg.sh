@@ -25,11 +25,11 @@ trap cleanup EXIT
 
 folder="$staging/contents"
 mkdir "$folder"
-ditto "$app" "$folder/Twine.app"
+ditto "$app" "$folder/Handshake.app"
 ln -s /Applications "$folder/Applications"
 cp .github/release/installer-background.tiff "$folder/.background.tiff"
 writable="$staging/installer.dmg"
-hdiutil create -quiet -volname 'Twine — Drag to Applications' -srcfolder "$folder" -fs HFS+ -format UDRW "$writable"
+hdiutil create -quiet -volname 'Handshake — Drag to Applications' -srcfolder "$folder" -fs HFS+ -format UDRW "$writable"
 mkdir "$mountpoint"
 hdiutil attach -quiet -nobrowse -owners off -mountpoint "$mountpoint" "$writable"
 mounted=true

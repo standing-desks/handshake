@@ -47,7 +47,7 @@ struct FileGitTests {
         let process = Process()
         process.executableURL = URL(filePath: "/usr/bin/git")
         process.arguments =
-            ["-c", "user.name=Twine Test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false"]
+            ["-c", "user.name=Handshake Test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false"]
             + arguments
         process.currentDirectoryURL = folder
         process.standardOutput = FileHandle.nullDevice

@@ -4,7 +4,7 @@ import XCTest
 extension HandshakeUITests {
     @MainActor
     func testTerminalSplitsResizeKeepTheirNeighborAndRestoreOutput() throws {
-        let folder = try makeTestFolder(prefix: "TwineSplitUITests")
+        let folder = try makeTestFolder(prefix: "HandshakeSplitUITests")
         let app = try makeApp(lastOpenFolder: folder)
         app.launchEnvironment["SHELL"] = "/bin/bash"
         app.launch()
@@ -50,7 +50,7 @@ extension HandshakeUITests {
     }
     @MainActor
     func testClipboardImagePastesIntoTheFocusedSplitAndActivityStaysUnified() throws {
-        let folder = try makeTestFolder(prefix: "TwineImagePasteUITests")
+        let folder = try makeTestFolder(prefix: "HandshakeImagePasteUITests")
         let app = try makeApp(lastOpenFolder: folder)
         app.launchEnvironment["SHELL"] = "/bin/bash"
         app.launch()

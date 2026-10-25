@@ -369,7 +369,7 @@ mod tests {
         );
         app.write_terminal_input(
             workflow.terminal_id,
-            b"TWINE_SESSION_VALUE=old; echo $$ > before.pid\n",
+            b"HANDSHAKE_SESSION_VALUE=old; echo $$ > before.pid\n",
         )
         .unwrap();
         let before = wait_for_file(&folder.path().join("before.pid"));
@@ -417,7 +417,7 @@ mod tests {
         assert_eq!(state.workflows[0].kind, WorkflowKind::Draft);
         app.write_terminal_input(
             state.workflows[0].terminal_id,
-            b"printf '%s:%s\\n' $$ \"${TWINE_SESSION_VALUE-fresh}\" > after.txt\n",
+            b"printf '%s:%s\\n' $$ \"${HANDSHAKE_SESSION_VALUE-fresh}\" > after.txt\n",
         )
         .unwrap();
         let after = wait_for_file(&folder.path().join("after.txt"));

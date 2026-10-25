@@ -3,7 +3,7 @@ import XCTest
 extension HandshakeUITests {
     @MainActor
     func testMarkdownPreviewSourceSaveReloadAndLocalLinks() throws {
-        let folder = FileManager.default.temporaryDirectory.appending(path: "TwineMarkdown-\(UUID().uuidString)")
+        let folder = FileManager.default.temporaryDirectory.appending(path: "HandshakeMarkdown-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
         let file = folder.appending(path: "README.MD")

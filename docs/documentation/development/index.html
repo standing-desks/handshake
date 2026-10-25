@@ -48,6 +48,7 @@ a C interface for the front end.</p>
 <li>Install Xcode 27.0 and point the developer tools at it: <code>sudo xcode-select -s /Applications/Xcode.app/Contents/Developer</code>. The SwiftTerm build plugin and SwiftLint both require Xcode rather than the Command Line Tools.</li>
 <li>Install Xcode's Metal Toolchain if it is missing: <code>xcodebuild -downloadComponent MetalToolchain</code>.</li>
 <li>To build the library, install the latest stable Rust with <code>rustup</code>, which reads the version from <code>rust-toolchain.toml</code>.</li>
+<li>Website download/copy checks use Node.js; install it before <code>make check-site</code> or <code>make build-site</code>.</li>
 <li>Build once from the repository root: <code>make debug</code>.</li>
 <li>Open <code>macOS/Handshake/Handshake.xcodeproj</code>, select the <code>Handshake</code> scheme, and build. Trust the SwiftTerm build plugin when Xcode prompts. Xcode consumes the prebuilt <code>HandshakeCore.xcframework</code> and does not invoke Cargo.</li>
 </ul>
@@ -223,7 +224,7 @@ release app. <code>make validate-dmg DMG=path</code> mounts an existing DMG read
 and validates its format, contents, Finder layout, artwork, app versions,
 architectures, signature, and entitlements. It requires <code>APPLE_TEAM_ID</code>
 and checks Developer ID signing, stapled notarization tickets, and Gatekeeper
-acceptance. Use <code>TWINE_SIGNING_MODE=adhoc</code> for local images without
+acceptance. Use <code>HANDSHAKE_SIGNING_MODE=adhoc</code> for local images without
 Developer ID signing or notarization. Add <code>VERSION=MAJOR.MINOR.PATCH</code>
 to require a specific app version.</p>
 <p>Main CI builds and validates a DMG from the actual release app.

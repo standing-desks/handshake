@@ -3,7 +3,7 @@ import XCTest
 extension HandshakeUITests {
     @MainActor
     func testSwiftSyntaxHighlightingPreservesUnicodeCRLFEditingAndUndo() throws {
-        let folder = try makeTestFolder(prefix: "TwineSyntaxUITests")
+        let folder = try makeTestFolder(prefix: "HandshakeSyntaxUITests")
         let file = folder.appending(path: "Greeting.swift")
         let source = swiftSyntaxFixture
         try Data(source.utf8).write(to: file)
@@ -49,12 +49,12 @@ extension HandshakeUITests {
 
     @MainActor
     func testSyntaxLanguageOverridesStayWithTheirFileTabs() throws {
-        let folder = try makeTestFolder(prefix: "TwineSyntaxUITests")
+        let folder = try makeTestFolder(prefix: "HandshakeSyntaxUITests")
         let json = folder.appending(path: "settings.json")
         let unknown = folder.appending(path: "source.custom")
         let jsonSource = """
             {
-              "name": "Twine",
+              "name": "Handshake",
               "enabled": true,
               "count": 42,
               "missing": null
@@ -103,7 +103,7 @@ extension HandshakeUITests {
 
     @MainActor
     func testHTMLSyntaxHighlightingPreservesSourceEditingAndCSSDetection() throws {
-        let folder = try makeTestFolder(prefix: "TwineSyntaxUITests")
+        let folder = try makeTestFolder(prefix: "HandshakeSyntaxUITests")
         let html = folder.appending(path: "index.html")
         let css = folder.appending(path: "styles.css")
         let source = htmlSyntaxFixture
@@ -114,7 +114,7 @@ extension HandshakeUITests {
         defer { app.terminate() }
         XCTAssertTrue(fileRow(html, in: app).waitForExistence(timeout: 3))
         fileRow(html, in: app).click()
-        XCTAssertTrue(app.staticTexts["Hello Twine"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Hello Handshake"].waitForExistence(timeout: 5))
         app.radioButtons["Source"].click()
         let text = app.textViews["fileText"]
         XCTAssertTrue(text.waitForExistence(timeout: 3))
@@ -140,7 +140,7 @@ extension HandshakeUITests {
     @MainActor
     private func editHTMLSourceAndVerifyPreview(_ source: String, file: URL, in app: XCUIApplication) throws {
         let text = app.textViews["fileText"]
-        let originalLine = "  <h1 class=\"greeting\" data-count=\"42\">Hello Twine</h1>"
+        let originalLine = "  <h1 class=\"greeting\" data-count=\"42\">Hello Handshake</h1>"
         let editedLine = "  <h1 class=\"greeting edited\" data-count=\"7\">Hello HTML</h1>"
         let edited = source.replacingOccurrences(of: originalLine, with: editedLine)
         selectSyntaxLine(9, in: app)
@@ -190,12 +190,12 @@ extension HandshakeUITests {
         <!DOCTYPE html>
         <html lang="en">
         <head>
-          <title>Twine syntax</title>
+          <title>Handshake syntax</title>
           <link rel="stylesheet" href="styles.css">
         </head>
         <body>
           <!-- Unicode remains untouched: 🌲 café -->
-          <h1 class="greeting" data-count="42">Hello Twine</h1>
+          <h1 class="greeting" data-count="42">Hello Handshake</h1>
           <p>Native source editing &amp; preview.</p>
         </body>
         </html>

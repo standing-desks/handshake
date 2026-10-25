@@ -166,7 +166,7 @@ struct MultiAgentWorkflowTests {
     private func openFolder() async throws -> (CoreClient, TemporaryPath) {
         let directory = TemporaryPath()
         try FileManager.default.createDirectory(at: directory.url, withIntermediateDirectories: true)
-        let client = CoreClient(transport: CoreWorker(dataDirectory: directory.url.appending(path: ".twine")))
+        let client = CoreClient(transport: CoreWorker(dataDirectory: directory.url.appending(path: ".handshake")))
         client.start()
         do {
             try await client.waitUntilRunning()

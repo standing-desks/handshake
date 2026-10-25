@@ -4,10 +4,10 @@ import XCTest
 extension HandshakeUITests {
     @MainActor
     func testSavingSettingsReflowsExistingTerminalsInAllFolderWindows() throws {
-        let first = try makeTestFolder(prefix: "Twine live settings first")
-        let second = try makeTestFolder(prefix: "Twine live settings second")
-        let configHome = try makeTestFolder(prefix: "Twine live settings config")
-        let file = configHome.appending(path: "twine/config.toml")
+        let first = try makeTestFolder(prefix: "Handshake live settings first")
+        let second = try makeTestFolder(prefix: "Handshake live settings second")
+        let configHome = try makeTestFolder(prefix: "Handshake live settings config")
+        let file = configHome.appending(path: "handshake/config.toml")
         try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
         try "terminal.font_size = 13\n".write(to: file, atomically: true, encoding: .utf8)
         let app = try makeApp(lastOpenFolder: first)
@@ -68,14 +68,14 @@ extension HandshakeUITests {
 
     @MainActor
     func testFolderWindowsKeepShellsAndCommandsIndependent() throws {
-        let first = try makeTestFolder(prefix: "Twine first folder")
-        let second = try makeTestFolder(prefix: "Twine second folder")
+        let first = try makeTestFolder(prefix: "Handshake first folder")
+        let second = try makeTestFolder(prefix: "Handshake second folder")
         let app = try makeApp(lastOpenFolder: first)
         app.launch()
         let firstWindow = folderWindow(first, in: app)
         XCTAssertTrue(firstWindow.waitForExistence(timeout: 10), app.debugDescription)
         app.typeText("exec /bin/sh\r")
-        app.typeText("TWINE_WINDOW=first; echo $$ > shell.pid\r")
+        app.typeText("HANDSHAKE_WINDOW=first; echo $$ > shell.pid\r")
         let firstPID = try writtenProcessID(in: first.appending(path: "shell.pid"), app: app)
         defer { endProcessIfRunning(firstPID) }
 
@@ -84,16 +84,16 @@ extension HandshakeUITests {
         XCTAssertTrue(secondWindow.waitForExistence(timeout: 10), app.debugDescription)
         XCTAssertEqual(app.windows.count, 2)
         app.typeText("exec /bin/sh\r")
-        app.typeText("TWINE_WINDOW=second; echo $$ > shell.pid\r")
+        app.typeText("HANDSHAKE_WINDOW=second; echo $$ > shell.pid\r")
         let secondPID = try writtenProcessID(in: second.appending(path: "shell.pid"), app: app)
         defer { endProcessIfRunning(secondPID) }
         XCTAssertNotEqual(firstPID, secondPID)
-        app.typeText("printf '%s' $TWINE_WINDOW > second.txt\r")
+        app.typeText("printf '%s' $HANDSHAKE_WINDOW > second.txt\r")
         waitForFile(second.appending(path: "second.txt"), containing: "second", in: app)
         XCTAssertFalse(FileManager.default.fileExists(atPath: first.appending(path: "second.txt").path))
 
         focusFolderWindow(firstWindow, in: app)
-        app.typeText("printf '%s' $TWINE_WINDOW > first.txt\r")
+        app.typeText("printf '%s' $HANDSHAKE_WINDOW > first.txt\r")
         waitForFile(first.appending(path: "first.txt"), containing: "first", in: app)
         app.typeKey("t", modifierFlags: .command)
         XCTAssertTrue(firstWindow.buttons["workflowChoice-Terminal"].waitForExistence(timeout: 10))
@@ -115,8 +115,8 @@ extension HandshakeUITests {
 
     @MainActor
     func testOpeningAnOpenFolderFocusesItsWindowIncludingSymlinks() throws {
-        let folder = try makeTestFolder(prefix: "Twine duplicate folder")
-        let links = try makeTestFolder(prefix: "Twine links")
+        let folder = try makeTestFolder(prefix: "Handshake duplicate folder")
+        let links = try makeTestFolder(prefix: "Handshake links")
         let link = links.appending(path: "alias")
         try FileManager.default.createSymbolicLink(at: link, withDestinationURL: folder)
         let app = try makeApp(lastOpenFolder: folder)
@@ -140,8 +140,8 @@ extension HandshakeUITests {
 
     @MainActor
     func testRelaunchRestoresAllFolderWindowsAndLeavesClosedFoldersClosed() throws {
-        let first = try makeTestFolder(prefix: "Twine restore first")
-        let second = try makeTestFolder(prefix: "Twine restore second")
+        let first = try makeTestFolder(prefix: "Handshake restore first")
+        let second = try makeTestFolder(prefix: "Handshake restore second")
         let app = try makeApp(lastOpenFolder: first)
         app.launch()
         XCTAssertTrue(folderWindow(first, in: app).waitForExistence(timeout: 10))
@@ -177,9 +177,9 @@ extension HandshakeUITests {
 
     @MainActor
     func testClosingAnUnavailableRestoredFolderKeepsItClosedOnRelaunch() throws {
-        let missing = try makeTestFolder(prefix: "Twine restore missing")
-        let available = try makeTestFolder(prefix: "Twine restore available")
-        let additional = try makeTestFolder(prefix: "Twine open from missing")
+        let missing = try makeTestFolder(prefix: "Handshake restore missing")
+        let available = try makeTestFolder(prefix: "Handshake restore available")
+        let additional = try makeTestFolder(prefix: "Handshake open from missing")
         let app = try makeApp(lastOpenFolder: missing)
         app.launch()
         XCTAssertTrue(folderWindow(missing, in: app).waitForExistence(timeout: 10))

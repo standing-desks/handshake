@@ -4,7 +4,7 @@ import XCTest
 extension HandshakeUITests {
     @MainActor
     func testBentoPanesKeepEachShellAndMoveTheKeyboardBetweenThem() throws {
-        let folder = try makeTestFolder(prefix: "TwineBentoUITests")
+        let folder = try makeTestFolder(prefix: "HandshakeBentoUITests")
         let app = try makeApp(lastOpenFolder: folder)
         app.launch()
         XCTAssertTrue(app.buttons["workflowTab-1"].waitForExistence(timeout: 10), app.debugDescription)
@@ -46,7 +46,7 @@ extension HandshakeUITests {
 
     @MainActor
     func testBentoLayoutPersistsAcrossRelaunchAndSmallWindowsShowFewerPanes() throws {
-        let folder = try makeTestFolder(prefix: "TwineBentoUITests")
+        let folder = try makeTestFolder(prefix: "HandshakeBentoUITests")
         let app = try makeApp(lastOpenFolder: folder)
         app.launchEnvironment["HANDSHAKE_TEST_APPEARANCE"] = "Dark"
         app.launch()
@@ -177,7 +177,7 @@ extension HandshakeUITests {
     @MainActor
     private func checkKeyboardReaches(agent index: Int, of shells: BentoShells, app: XCUIApplication) throws {
         let file = shells.folder.appending(path: "keyboard-\(UUID().uuidString).txt")
-        app.typeText("{ echo $$; echo $TWINE_AGENT; } > \(file.lastPathComponent)\r")
+        app.typeText("{ echo $$; echo $HANDSHAKE_AGENT; } > \(file.lastPathComponent)\r")
         waitForFile(file, containing: "agent\(index)", in: app)
         let lines = try String(contentsOf: file, encoding: .utf8).split(separator: "\n")
         XCTAssertEqual(lines.first, String(shells.processIDs[index])[...], "A different shell has the keyboard")
@@ -212,7 +212,7 @@ extension HandshakeUITests {
     }
 }
 
-/// Each agent's shell, which `startShells` tagged with `TWINE_AGENT=agent<index>`.
+/// Each agent's shell, which `startShells` tagged with `HANDSHAKE_AGENT=agent<index>`.
 private struct BentoShells {
     let processIDs: [pid_t]
     let folder: URL

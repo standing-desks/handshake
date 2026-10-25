@@ -4,7 +4,7 @@ import XCTest
 extension HandshakeUITests {
     @MainActor
     func testActivityTracksShareStartOrderAndFocusSevenSteps() throws {
-        let folder = try makeTestFolder(prefix: "TwineSequenceUITests")
+        let folder = try makeTestFolder(prefix: "HandshakeSequenceUITests")
         let app = try makeApp(lastOpenFolder: folder)
         app.launchEnvironment["SHELL"] = "/bin/sh"
         app.launch()

@@ -8,7 +8,7 @@ extension HandshakeUITests {
 
     @MainActor
     private func checkFullScreenSidebar(appearance: String) throws {
-        let folder = try makeTestFolder(prefix: "TwineSidebar")
+        let folder = try makeTestFolder(prefix: "HandshakeSidebar")
         let app = try makeApp(lastOpenFolder: folder)
         app.launchEnvironment["HANDSHAKE_TEST_APPEARANCE"] = appearance
         app.launch()
@@ -215,7 +215,7 @@ extension HandshakeUITests {
 
     private func createFolder() throws -> URL {
         let folder = FileManager.default.temporaryDirectory.appending(
-            path: "Twine folder with a long name for checking sidebar truncation \(UUID().uuidString)"
+            path: "Handshake folder with a long name for checking sidebar truncation \(UUID().uuidString)"
         )
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: folder) }

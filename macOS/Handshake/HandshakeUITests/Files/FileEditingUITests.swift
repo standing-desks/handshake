@@ -242,15 +242,15 @@ extension HandshakeUITests {
 
     @MainActor
     private func openEditableFile(editorSettings: String? = nil) throws -> (XCUIApplication, URL) {
-        let folder = FileManager.default.temporaryDirectory.appending(path: "TwineEdits-\(UUID().uuidString)")
+        let folder = FileManager.default.temporaryDirectory.appending(path: "HandshakeEdits-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
         let file = folder.appending(path: "edit.txt")
         try "original".write(to: file, atomically: true, encoding: .utf8)
         let app = try makeApp(lastOpenFolder: folder)
         if let editorSettings {
-            let configHome = try makeTestFolder(prefix: "TwineAutosaveConfig")
-            let configFile = configHome.appending(path: "twine/config.toml")
+            let configHome = try makeTestFolder(prefix: "HandshakeAutosaveConfig")
+            let configFile = configHome.appending(path: "handshake/config.toml")
             try FileManager.default.createDirectory(
                 at: configFile.deletingLastPathComponent(), withIntermediateDirectories: true)
             try editorSettings.write(to: configFile, atomically: true, encoding: .utf8)

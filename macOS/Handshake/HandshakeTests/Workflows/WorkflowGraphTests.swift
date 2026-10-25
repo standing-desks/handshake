@@ -159,7 +159,7 @@ struct WorkflowGraphTests {
     }
 
     private func catalog() async throws -> [CoreWorkflowType] {
-        let directory = FileManager.default.temporaryDirectory.appending(path: "TwineGraphTests-\(UUID())")
+        let directory = FileManager.default.temporaryDirectory.appending(path: "HandshakeGraphTests-\(UUID())")
         let worker = CoreWorker(dataDirectory: directory)
         do {
             let snapshot = try await worker.open()

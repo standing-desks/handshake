@@ -3,7 +3,7 @@ import XCTest
 extension HandshakeUITests {
     @MainActor
     func testTerminalRunsLibraryInjectionAndDebugger() throws {
-        let folder = try makeTestFolder(prefix: "TwineRuntime")
+        let folder = try makeTestFolder(prefix: "HandshakeRuntime")
         try writeRuntimeFixtures(in: folder)
         try runtimeScript().write(to: folder.appending(path: "runtime.sh"), atomically: true, encoding: .utf8)
         let app = try makeApp(lastOpenFolder: folder)
@@ -22,7 +22,7 @@ extension HandshakeUITests {
         ] {
             XCTAssertTrue(output.contains(marker), output)
         }
-        if ProcessInfo.processInfo.environment["TWINE_TEST_NODE"] != nil {
+        if ProcessInfo.processInfo.environment["HANDSHAKE_TEST_NODE"] != nil {
             XCTAssertTrue(output.contains("CHILD_JIT_OK"), output)
         }
         let attachment = XCTAttachment(string: output)
@@ -34,20 +34,20 @@ extension HandshakeUITests {
 
     private func writeRuntimeFixtures(in folder: URL) throws {
         try """
-        int twine_runtime_answer(void) { return 42; }
+        int handshake_runtime_answer(void) { return 42; }
         """.write(to: folder.appending(path: "library.c"), atomically: true, encoding: .utf8)
         try """
         #include <dlfcn.h>
         #include <stdio.h>
         #include <stdlib.h>
         int main(void) {
-            if (getenv("TWINE_REQUIRE_INJECTION")) {
-                if (!dlsym(RTLD_DEFAULT, "twine_runtime_answer")) return 3;
+            if (getenv("HANDSHAKE_REQUIRE_INJECTION")) {
+                if (!dlsym(RTLD_DEFAULT, "handshake_runtime_answer")) return 3;
                 puts("CHILD_INJECTION_OK");
             }
             void *library = dlopen("./library.dylib", RTLD_NOW);
             if (!library) { puts(dlerror()); return 1; }
-            int (*answer)(void) = dlsym(library, "twine_runtime_answer");
+            int (*answer)(void) = dlsym(library, "handshake_runtime_answer");
             if (!answer || answer() != 42) return 2;
             puts("CHILD_LIBRARY_OK");
             return 0;
@@ -68,15 +68,15 @@ extension HandshakeUITests {
             xcrun clang -dynamiclib library.c -o library.dylib
             xcrun clang -g -O0 program.c -o program
             set +e
-            TWINE_REQUIRE_INJECTION=1 ./program
+            HANDSHAKE_REQUIRE_INJECTION=1 ./program
             rejected=$?
             set -e
             [ "$rejected" -eq 3 ]
-            TWINE_REQUIRE_INJECTION=1 DYLD_INSERT_LIBRARIES="$PWD/library.dylib" ./program
+            HANDSHAKE_REQUIRE_INJECTION=1 DYLD_INSERT_LIBRARIES="$PWD/library.dylib" ./program
             xcrun lldb --batch -o 'breakpoint set --name main' -o run -o continue ./program
             echo DEBUGGER_OK
             """
-        if let node = ProcessInfo.processInfo.environment["TWINE_TEST_NODE"] {
+        if let node = ProcessInfo.processInfo.environment["HANDSHAKE_TEST_NODE"] {
             let quotedNode = "'" + node.replacingOccurrences(of: "'", with: "'\\''") + "'"
             script += "\n\(quotedNode) jit.js"
         }

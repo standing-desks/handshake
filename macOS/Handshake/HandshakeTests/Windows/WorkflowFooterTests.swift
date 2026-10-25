@@ -47,7 +47,7 @@ struct WorkflowFooterTests {
         #expect(try message("failed", "Couldn't reserve a terminal") == "Couldn't reserve a terminal")
         for (status, text) in [
             ("completed", "Workflow completed"), ("cancelled", "Workflow cancelled"),
-            ("interrupted", "Twine stopped while the workflow was running."),
+            ("interrupted", "Handshake stopped while the workflow was running."),
         ] {
             #expect(try message(status, text) == nil, "The status already says it")
         }

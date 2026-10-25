@@ -3,7 +3,7 @@ import XCTest
 extension HandshakeUITests {
     @MainActor
     func testSettingsPopupLoadsSavesAndProtectsUnsavedChanges() throws {
-        let configHome = try makeTestFolder(prefix: "TwineSettingsUITests")
+        let configHome = try makeTestFolder(prefix: "HandshakeSettingsUITests")
         let file = configHome.appending(path: "handshake/config.toml")
         try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
         let original = "# My settings\n[terminal.colors]\nblue = '#123456'\nbrblue = '#abcdef'\n"

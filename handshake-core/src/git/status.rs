@@ -281,7 +281,7 @@ pub(crate) mod tests {
         let output = Command::new("git")
             .args([
                 "-c",
-                "user.name=Twine Test",
+                "user.name=Handshake Test",
                 "-c",
                 "user.email=test@example.invalid",
                 "-c",

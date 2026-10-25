@@ -10,13 +10,13 @@ set -euo pipefail
 : "${APPLE_NOTARIZATION_PASSWORD:?Apple app-specific password is required}"
 [[ $# -gt 0 ]] || { echo 'usage: with-signing.sh COMMAND [ARGUMENTS...]' >&2; exit 1; }
 umask 077
-credentials_root="${TWINE_SIGNING_DIRECTORY:-$PWD/out/packaging/credentials}"
+credentials_root="${HANDSHAKE_SIGNING_DIRECTORY:-${TWINE_SIGNING_DIRECTORY:-$PWD/out/packaging/credentials}}"
 mkdir -p "$credentials_root"
-credentials="$(mktemp -d "$credentials_root/twine-signing.XXXXXX")"
-export TWINE_SIGNING_KEYCHAIN="$credentials/signing.keychain-db"
+credentials="$(mktemp -d "$credentials_root/handshake-signing.XXXXXX")"
+export HANDSHAKE_SIGNING_KEYCHAIN="$credentials/signing.keychain-db"
 cleanup() {
-    if [[ -f "$TWINE_SIGNING_KEYCHAIN" ]]; then
-        security delete-keychain "$TWINE_SIGNING_KEYCHAIN" || echo 'warning: could not delete signing keychain' >&2
+    if [[ -f "$HANDSHAKE_SIGNING_KEYCHAIN" ]]; then
+        security delete-keychain "$HANDSHAKE_SIGNING_KEYCHAIN" || echo 'warning: could not delete signing keychain' >&2
     fi
     rm -rf "$credentials"
 }
@@ -25,16 +25,16 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 keychain_password="$(openssl rand -hex 32)"
-security create-keychain -p "$keychain_password" "$TWINE_SIGNING_KEYCHAIN"
-security set-keychain-settings -lut 21600 "$TWINE_SIGNING_KEYCHAIN"
-security unlock-keychain -p "$keychain_password" "$TWINE_SIGNING_KEYCHAIN"
+security create-keychain -p "$keychain_password" "$HANDSHAKE_SIGNING_KEYCHAIN"
+security set-keychain-settings -lut 21600 "$HANDSHAKE_SIGNING_KEYCHAIN"
+security unlock-keychain -p "$keychain_password" "$HANDSHAKE_SIGNING_KEYCHAIN"
 printf '%s' "$APPLE_CERTIFICATE_P12_BASE64" | base64 --decode > "$credentials/certificate.p12"
 security import "$credentials/certificate.p12" -P "$APPLE_CERTIFICATE_PASSWORD" \
-    -k "$TWINE_SIGNING_KEYCHAIN" -T /usr/bin/codesign -T /usr/bin/security
-security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$TWINE_SIGNING_KEYCHAIN" >/dev/null
+    -k "$HANDSHAKE_SIGNING_KEYCHAIN" -T /usr/bin/codesign -T /usr/bin/security
+security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$HANDSHAKE_SIGNING_KEYCHAIN" >/dev/null
 rm "$credentials/certificate.p12"
-export TWINE_SIGNING_MODE=developer-id TWINE_NOTARY_PROFILE=twine-release
-xcrun notarytool store-credentials "$TWINE_NOTARY_PROFILE" --keychain "$TWINE_SIGNING_KEYCHAIN" \
+export HANDSHAKE_SIGNING_MODE=developer-id HANDSHAKE_NOTARY_PROFILE=handshake-release
+xcrun notarytool store-credentials "$HANDSHAKE_NOTARY_PROFILE" --keychain "$HANDSHAKE_SIGNING_KEYCHAIN" \
     --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_NOTARIZATION_PASSWORD"
 # The packaging command only needs the identity, team, and keychain profile.
 unset APPLE_CERTIFICATE_P12_BASE64 APPLE_CERTIFICATE_PASSWORD APPLE_NOTARIZATION_PASSWORD APPLE_ID keychain_password

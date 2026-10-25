@@ -4,7 +4,7 @@ import XCTest
 extension HandshakeUITests {
     @MainActor
     func testHTMLPreviewFillsViewportAtEveryZoomLevel() throws {
-        let folder = try makeTestFolder(prefix: "TwineHTMLViewportUITests")
+        let folder = try makeTestFolder(prefix: "HandshakeHTMLViewportUITests")
         let file = folder.appending(path: "viewport.html")
         try """
         <!doctype html><html><head><style>
@@ -103,7 +103,7 @@ extension HandshakeUITests {
 
     @MainActor
     func testZoomedWebPreviewsKeepLocalLinksInteractive() throws {
-        let folder = try makeTestFolder(prefix: "TwineZoomPreviewUITests")
+        let folder = try makeTestFolder(prefix: "HandshakeZoomPreviewUITests")
         let html = folder.appending(path: "index.html")
         let markdown = folder.appending(path: "index.md")
         try "<h1>HTML zoom</h1><a href='next.md'>Next page</a>".write(to: html, atomically: true, encoding: .utf8)

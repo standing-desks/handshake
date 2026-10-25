@@ -154,7 +154,8 @@ extension HandshakeUITests {
     }
 
     private func traceFolder() throws -> URL {
-        let folder = FileManager.default.temporaryDirectory.appending(path: "TwineTraceUITests-\(UUID().uuidString)")
+        let folder = FileManager.default.temporaryDirectory.appending(
+            path: "HandshakeTraceUITests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
         return folder

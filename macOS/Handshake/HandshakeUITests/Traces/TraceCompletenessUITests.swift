@@ -4,7 +4,7 @@ import XCTest
 extension HandshakeUITests {
     @MainActor
     func testLegacyTraceEventsKeepLoadedPagesWhenThePanelRefreshes() throws {
-        let folder = try makeTestFolder(prefix: "TwineTraceCompletenessUITests")
+        let folder = try makeTestFolder(prefix: "HandshakeTraceCompletenessUITests")
         let app = try makeApp(lastOpenFolder: folder)
         app.launchEnvironment["SHELL"] = "/bin/sh"
         app.launch()

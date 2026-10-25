@@ -4,7 +4,7 @@ import XCTest
 extension HandshakeUITests {
     @MainActor
     func testFileTreeLoadsLazilyAndViewerTracksDiskChanges() throws {
-        let folder = FileManager.default.temporaryDirectory.appending(path: "TwineFiles-\(UUID().uuidString)")
+        let folder = FileManager.default.temporaryDirectory.appending(path: "HandshakeFiles-\(UUID().uuidString)")
         let nested = folder.appending(path: "nested")
         let empty = folder.appending(path: "empty")
         try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)

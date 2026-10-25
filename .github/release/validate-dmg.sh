@@ -8,12 +8,12 @@ expected_version="${2:-}"
 [[ -f "$image" ]] || fail "DMG not found: $image"
 # shellcheck source=.github/release/signing.sh
 source "$(dirname "$0")/signing.sh"
-case "${TWINE_SIGNING_MODE:-developer-id}" in
+case "${HANDSHAKE_SIGNING_MODE:-${TWINE_SIGNING_MODE:-developer-id}}" in
     developer-id)
         [[ "${APPLE_TEAM_ID:-}" =~ ^[A-Z0-9]{10}$ ]] || fail 'APPLE_TEAM_ID must be a 10-character team ID'
         ;;
     adhoc) ;;
-    *) fail 'TWINE_SIGNING_MODE must be developer-id or adhoc' ;;
+    *) fail 'HANDSHAKE_SIGNING_MODE must be developer-id or adhoc' ;;
 esac
 dmg_python="$PWD/out/packaging/tools/bin/python3"
 [[ -x "$dmg_python" ]] || fail 'run make dmg-tools first'
@@ -37,27 +37,29 @@ mkdir "$mountpoint"
 hdiutil attach -quiet -readonly -nobrowse -mountpoint "$mountpoint" "$image"
 mounted=true
 visible_items="$(find "$mountpoint" -mindepth 1 -maxdepth 1 ! -name '.*' -exec basename {} \; | sort)"
-[[ "$visible_items" == $'Applications\nTwine.app' ]] || fail 'expected only Twine.app and Applications in the installer window'
+[[ "$visible_items" == $'Applications\nHandshake.app' ]] || fail 'expected only Handshake.app and Applications in the installer window'
 [[ -L "$mountpoint/Applications" && "$(readlink "$mountpoint/Applications")" == /Applications ]] || fail 'incorrect Applications shortcut'
 "$dmg_python" .github/release/dmg-layout.py --verify "$mountpoint"
 cmp .github/release/installer-background.tiff "$mountpoint/.background.tiff" || fail 'incorrect installer artwork'
-app="$mountpoint/Twine.app"
+app="$mountpoint/Handshake.app"
 [[ -d "$app" && ! -L "$app" ]] || fail 'expected an app bundle inside the DMG'
 cmp LICENSE "$app/Contents/Resources/LICENSE" || fail 'incorrect app license'
+[[ -s "$app/Contents/Resources/AppIcon.icns" && -s "$app/Contents/Resources/Assets.car" ]] \
+    || fail 'missing compiled app icon assets'
 plist="$app/Contents/Info.plist"
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist")" == com.twineproject.Twine ]] || fail 'incorrect app identifier'
-[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$plist")" == Twine ]] || fail 'incorrect app executable'
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$plist")" == Handshake ]] || fail 'incorrect app executable'
 version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")"
 [[ "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || fail 'expected a MAJOR.MINOR.PATCH app version'
 [[ -z "$expected_version" || "$version" == "$expected_version" ]] || fail "expected app version $expected_version, found $version"
 build_number="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$plist")"
 [[ "$build_number" =~ ^[1-9][0-9]*$ ]] || fail 'expected a positive integer build number'
-[[ "$(/usr/libexec/PlistBuddy -c 'Print :TwineBuildVersion' "$plist")" == "$version" ]] || fail 'incorrect release build version'
-architectures="$(xcrun lipo -archs "$app/Contents/MacOS/Twine" | xargs)"
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :HandshakeBuildVersion' "$plist")" == "$version" ]] || fail 'incorrect release build version'
+architectures="$(xcrun lipo -archs "$app/Contents/MacOS/Handshake" | xargs)"
 [[ "$architectures" == arm64 ]] || fail 'expected an arm64 app binary'
 verify_developer_id "$app" executable
 codesign --display --entitlements - --xml "$app" 2>/dev/null > "$staging/entitlements.plist"
-python3 - "$staging/entitlements.plist" macOS/Twine/Twine/Twine.entitlements <<'PY'
+python3 - "$staging/entitlements.plist" macOS/Handshake/Handshake/Handshake.entitlements <<'PY'
 import plistlib, sys
 
 with open(sys.argv[1], "rb") as source:
@@ -67,7 +69,7 @@ with open(sys.argv[2], "rb") as source:
 if actual != expected:
     raise SystemExit("error: app entitlements differ from the release entitlements")
 PY
-if [[ "${TWINE_SIGNING_MODE:-developer-id}" == developer-id ]]; then
+if [[ "${HANDSHAKE_SIGNING_MODE:-${TWINE_SIGNING_MODE:-developer-id}}" == developer-id ]]; then
     verify_developer_id "$image" container
     xcrun stapler validate "$app"
     xcrun stapler validate "$image"

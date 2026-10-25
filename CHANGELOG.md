@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0]
+
+### Changed
+
+- Rename Twine to Handshake across the app, terminal integration, documentation,
+  website, installer, and reusable Rust and C libraries.
+- Migrate existing app data, configuration, themes, and workflows to Handshake
+  while retaining the original files and honoring existing Handshake destinations.
+- Preserve the app's bundle identifier and preferences, and accept legacy Twine
+  environment overrides when their Handshake replacements are not supplied.
+- Package Handshake downloads and prepare both Homebrew taps for the new cask.
+
 ## [0.3.3] - 2026-10-17
 
 ### Added

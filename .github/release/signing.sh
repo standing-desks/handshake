@@ -2,28 +2,28 @@
 # Sourced by the release bundler, DMG validator, and signing tests.
 
 signing_check() {
-    case "${TWINE_SIGNING_MODE:-developer-id}" in
+    case "${HANDSHAKE_SIGNING_MODE:-${TWINE_SIGNING_MODE:-developer-id}}" in
         developer-id)
             [[ -n "${APPLE_SIGNING_IDENTITY:-}" && "$APPLE_SIGNING_IDENTITY" != - ]] \
                 || fail 'APPLE_SIGNING_IDENTITY must name a Developer ID Application identity'
             [[ "${APPLE_TEAM_ID:-}" =~ ^[A-Z0-9]{10}$ ]] || fail 'APPLE_TEAM_ID must be a 10-character team ID'
-            [[ -n "${TWINE_NOTARY_PROFILE:-}" ]] || fail 'TWINE_NOTARY_PROFILE is required for notarization'
+            [[ -n "${HANDSHAKE_NOTARY_PROFILE:-${TWINE_NOTARY_PROFILE:-}}" ]] || fail 'HANDSHAKE_NOTARY_PROFILE is required for notarization'
             ;;
         adhoc) ;;
-        *) fail 'TWINE_SIGNING_MODE must be developer-id or adhoc' ;;
+        *) fail 'HANDSHAKE_SIGNING_MODE must be developer-id or adhoc' ;;
     esac
 }
 
 sign_code() {
     local path="$1" kind="$2" entitlements="${3:-}"
     local args=(--force --sign -)
-    if [[ "${TWINE_SIGNING_MODE:-developer-id}" == developer-id ]]; then
+    if [[ "${HANDSHAKE_SIGNING_MODE:-${TWINE_SIGNING_MODE:-developer-id}}" == developer-id ]]; then
         args=(--force --sign "$APPLE_SIGNING_IDENTITY" --timestamp)
         if [[ "$kind" == executable ]]; then args+=(--options runtime); fi
-        if [[ -n "${TWINE_SIGNING_KEYCHAIN:-}" ]]; then args+=(--keychain "$TWINE_SIGNING_KEYCHAIN"); fi
+        if [[ -n "${HANDSHAKE_SIGNING_KEYCHAIN:-${TWINE_SIGNING_KEYCHAIN:-}}" ]]; then args+=(--keychain "${HANDSHAKE_SIGNING_KEYCHAIN:-${TWINE_SIGNING_KEYCHAIN:-}}"); fi
     fi
     if [[ -n "$entitlements" ]]; then
-        if [[ "${TWINE_SIGNING_MODE:-developer-id}" == adhoc ]]; then args+=(--options runtime); fi
+        if [[ "${HANDSHAKE_SIGNING_MODE:-${TWINE_SIGNING_MODE:-developer-id}}" == adhoc ]]; then args+=(--options runtime); fi
         args+=(--entitlements "$entitlements")
     fi
     codesign "${args[@]}" "$path" || fail "could not sign: $path"
@@ -32,7 +32,7 @@ sign_code() {
 verify_developer_id() {
     local path="$1" kind="$2" details
     codesign --verify --deep --strict "$path" || fail "invalid signature: $path"
-    [[ "${TWINE_SIGNING_MODE:-developer-id}" == developer-id ]] || return 0
+    [[ "${HANDSHAKE_SIGNING_MODE:-${TWINE_SIGNING_MODE:-developer-id}}" == developer-id ]] || return 0
     details="$(codesign --display --verbose=4 "$path" 2>&1)" || fail "could not inspect signature: $path"
     grep -q '^Authority=Developer ID Application:' <<< "$details" || fail "missing Developer ID Application signature: $path"
     grep -qx "TeamIdentifier=$APPLE_TEAM_ID" <<< "$details" || fail "incorrect signing team: $path"
@@ -62,7 +62,7 @@ sign_app() {
     done < <(find "$app" -type f -print0)
     while IFS= read -r -d '' path; do
         if [[ "$path" == "$app" ]]; then
-            sign_code "$path" executable macOS/Twine/Twine/Twine.entitlements
+            sign_code "$path" executable macOS/Handshake/Handshake/Handshake.entitlements
         else
             sign_code "$path" executable
         fi
@@ -72,10 +72,10 @@ sign_app() {
 
 notarize() {
     local archive="$1" staple_path="$2" status=0 submission_id result
-    [[ "${TWINE_SIGNING_MODE:-developer-id}" == developer-id ]] || return 0
-    local args=(--keychain-profile "$TWINE_NOTARY_PROFILE")
-    if [[ -n "${TWINE_SIGNING_KEYCHAIN:-}" ]]; then args+=(--keychain "$TWINE_SIGNING_KEYCHAIN"); fi
-    local log_dir="${TWINE_NOTARY_LOG_DIR:-$PWD/out/packaging/notarization}"
+    [[ "${HANDSHAKE_SIGNING_MODE:-${TWINE_SIGNING_MODE:-developer-id}}" == developer-id ]] || return 0
+    local args=(--keychain-profile "${HANDSHAKE_NOTARY_PROFILE:-${TWINE_NOTARY_PROFILE:-}}")
+    if [[ -n "${HANDSHAKE_SIGNING_KEYCHAIN:-${TWINE_SIGNING_KEYCHAIN:-}}" ]]; then args+=(--keychain "${HANDSHAKE_SIGNING_KEYCHAIN:-${TWINE_SIGNING_KEYCHAIN:-}}"); fi
+    local log_dir="${HANDSHAKE_NOTARY_LOG_DIR:-${TWINE_NOTARY_LOG_DIR:-$PWD/out/packaging/notarization}}"
     mkdir -p "$log_dir"
     result="$log_dir/$(basename "$archive").submission.json"
     xcrun notarytool submit "$archive" "${args[@]}" --wait --timeout 45m --output-format json > "$result" || status=$?

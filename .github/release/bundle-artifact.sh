@@ -38,7 +38,7 @@ case "${1:-}" in
             /MARKETING_VERSION =/ {version=$3; sub(/;$/, "", version)}
             /PRODUCT_BUNDLE_IDENTIFIER = com.twineproject.Twine;/ {app=1}
             /};/ {if(app) print version; app=0}
-        ' macOS/Twine/Twine.xcodeproj/project.pbxproj | sort -u)"
+        ' macOS/Handshake/Handshake.xcodeproj/project.pbxproj | sort -u)"
         [[ "$app_versions" == "$version" ]] || fail "tag version $version differs from app version $app_versions"
         core_version="$(awk '
             /^\[workspace.package\]$/ {package=1; next}
@@ -56,18 +56,18 @@ case "${1:-}" in
         build="${2:?build directory required}"
         bundle="${3:?bundle directory required}"
         framework=out/frameworks/release/HandshakeCore.xcframework/macos-arm64
-        arm64_only "$build/Twine.app/Contents/MacOS/Twine"
+        arm64_only "$build/Handshake.app/Contents/MacOS/Handshake"
         arm64_only "$framework/libhandshake_bridge.a"
         mkdir -p "$bundle" out/packaging
         staging="$(mktemp -d "$PWD/out/packaging/bundle-stage.XXXXXX")"
         trap 'rm -rf "$staging"' EXIT
-        ditto "$build/Twine.app" "$staging/Twine.app"
+        ditto "$build/Handshake.app" "$staging/Handshake.app"
         build_version="${BUILD_VERSION:-ci-$(git rev-parse HEAD)}"
         [[ "$build_version" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || fail 'invalid build version'
-        /usr/libexec/PlistBuddy -c "Set :TwineBuildVersion $build_version" "$staging/Twine.app/Contents/Info.plist" 2>/dev/null || \
-            /usr/libexec/PlistBuddy -c "Add :TwineBuildVersion string $build_version" "$staging/Twine.app/Contents/Info.plist"
-        ditto -c -k --sequesterRsrc --keepParent "$staging/Twine.app" "$bundle/Twine.app.zip"
-        cp "$framework/libhandshake_bridge.a" "$bundle/libtwinecore.a"
+        /usr/libexec/PlistBuddy -c "Set :HandshakeBuildVersion $build_version" "$staging/Handshake.app/Contents/Info.plist" 2>/dev/null || \
+            /usr/libexec/PlistBuddy -c "Add :HandshakeBuildVersion string $build_version" "$staging/Handshake.app/Contents/Info.plist"
+        ditto -c -k --sequesterRsrc --keepParent "$staging/Handshake.app" "$bundle/Handshake.app.zip"
+        cp "$framework/libhandshake_bridge.a" "$bundle/libhandshakecore.a"
         cp "$framework/Headers/handshake_bridge.h" "$bundle/handshake_bridge.h"
         git rev-parse HEAD > "$bundle/commit.txt"
         ;;
@@ -83,39 +83,39 @@ case "${1:-}" in
         [[ -z "$(ls -A "$output")" ]] || fail 'output directory must be empty'
         staging="$(mktemp -d "$PWD/out/packaging/release-stage.XXXXXX")"
         trap 'rm -rf "$staging"' EXIT
-        ditto -x -k "$bundle/Twine.app.zip" "$staging"
-        app="$staging/Twine.app"
+        ditto -x -k "$bundle/Handshake.app.zip" "$staging"
+        app="$staging/Handshake.app"
         plist="$app/Contents/Info.plist"
         app_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")"
         version_check "$app_version"
         [[ "$app_version" == "$version" ]] || fail 'built app version differs from tag'
-        arm64_only "$app/Contents/MacOS/Twine"
+        arm64_only "$app/Contents/MacOS/Handshake"
         build_number="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$plist")"
         [[ "$build_number" =~ ^[1-9][0-9]*$ ]] || fail 'expected a positive integer build number'
-        /usr/libexec/PlistBuddy -c "Set :TwineBuildVersion $version" "$plist"
+        /usr/libexec/PlistBuddy -c "Set :HandshakeBuildVersion $version" "$plist"
         # Keep the license with the installed app, without adding an installer-window item.
         mkdir -p "$app/Contents/Resources"
         cp LICENSE "$app/Contents/Resources/LICENSE"
         sign_app "$app"
-        if [[ "${TWINE_SIGNING_MODE:-developer-id}" == developer-id ]]; then
-            ditto -c -k --sequesterRsrc --keepParent "$app" "$staging/Twine.app.zip"
-            notarize "$staging/Twine.app.zip" "$app"
+        if [[ "${HANDSHAKE_SIGNING_MODE:-${TWINE_SIGNING_MODE:-developer-id}}" == developer-id ]]; then
+            ditto -c -k --sequesterRsrc --keepParent "$app" "$staging/Handshake.app.zip"
+            notarize "$staging/Handshake.app.zip" "$app"
         fi
         [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$plist")" == "$build_number" ]] || fail 'incorrect bundle build number'
-        library="$staging/libtwinecore-$version-macos-arm64"
+        library="$staging/libhandshakecore-$version-macos-arm64"
         mkdir -p "$library/include"
-        cp "$bundle/libtwinecore.a" "$library/libtwinecore.a"
+        cp "$bundle/libhandshakecore.a" "$library/libhandshakecore.a"
         cp "$bundle/handshake_bridge.h" "$library/include/handshake_bridge.h"
-        arm64_only "$library/libtwinecore.a"
+        arm64_only "$library/libhandshakecore.a"
         test -s "$library/include/handshake_bridge.h"
         sed -e "s/@VERSION@/$version/g" -e "s/@RELEASE_TAG@/$release_tag/g" \
             .github/release/library-README.txt > "$library/README.txt"
         cp LICENSE "$library/LICENSE"
-        tar -czf "$output/libtwinecore-$version-macos-arm64.tar.gz" -C "$staging" "$(basename "$library")"
-        git archive --format=tar --prefix="twine-$version/" HEAD | gzip -n > "$output/twine-$version-source.tar.gz"
-        image="$output/Twine-$version-macos-arm64.dmg"
+        tar -czf "$output/libhandshakecore-$version-macos-arm64.tar.gz" -C "$staging" "$(basename "$library")"
+        git archive --format=tar --prefix="handshake-$version/" HEAD | gzip -n > "$output/handshake-$version-source.tar.gz"
+        image="$output/Handshake-$version-macos-arm64.dmg"
         bash "$(dirname "$0")/build-dmg.sh" "$app" "$image"
-        if [[ "${TWINE_SIGNING_MODE:-developer-id}" == developer-id ]]; then
+        if [[ "${HANDSHAKE_SIGNING_MODE:-${TWINE_SIGNING_MODE:-developer-id}}" == developer-id ]]; then
             sign_code "$image" container
             verify_developer_id "$image" container
             notarize "$image" "$image"

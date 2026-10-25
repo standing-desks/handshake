@@ -1,6 +1,6 @@
-libtwinecore @VERSION@ (macOS 26+, Apple Silicon)
+libhandshakecore @VERSION@ (macOS 26+, Apple Silicon)
 
-Include include/handshake_bridge.h and link libtwinecore.a.
+Include include/handshake_bridge.h and link libhandshakecore.a.
 The exported API uses the handshake_ prefix.
 
 Configure your linker for macOS system libraries: -liconv and the
@@ -16,5 +16,5 @@ The JSON protocol is experimental. Its command and response definitions
 are in handshake-bridge/src/protocol in the matching source archive. Pin a
 matching library/header release.
 
-Source and license: https://github.com/standing-desks/twine
-Release notes: https://github.com/standing-desks/twine/releases/tag/@RELEASE_TAG@
+Source and license: https://github.com/standing-desks/handshake
+Release notes: https://github.com/standing-desks/handshake/releases/tag/@RELEASE_TAG@

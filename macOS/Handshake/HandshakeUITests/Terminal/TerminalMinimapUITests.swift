@@ -4,7 +4,7 @@ extension HandshakeUITests {
     @MainActor
     func testShortOutputMinimapInBothAppearances() throws {
         for appearance in ["Dark", "Light"] {
-            let folder = try makeTestFolder(prefix: "TwineShortMinimapUITests")
+            let folder = try makeTestFolder(prefix: "HandshakeShortMinimapUITests")
             let app = try makeApp(lastOpenFolder: folder)
             app.launchEnvironment["SHELL"] = "/bin/bash"
             app.launchEnvironment["HANDSHAKE_TEST_APPEARANCE"] = appearance
@@ -15,7 +15,7 @@ extension HandshakeUITests {
             app.typeText(
                 "printf '\\033[2J\\033[H'; printf '%s\\n' 'Explored the folder' '  List complete' '' "
                     + "'Searched the web' '' 'Seattle forecast: mostly sunny, with a high near 63 degrees.' '' "
-                    + "'Completion submitted to Twine.' 'Review approved.'; echo ready > minimap-ready\r")
+                    + "'Completion submitted to Handshake.' 'Review approved.'; echo ready > minimap-ready\r")
             waitForFile(folder.appending(path: "minimap-ready"), containing: "ready", in: app)
             let map = app.descendants(matching: .any).matching(identifier: "terminalMinimap").firstMatch
             XCTAssertTrue(map.waitForExistence(timeout: 10), app.debugDescription)
@@ -27,7 +27,7 @@ extension HandshakeUITests {
 
     @MainActor
     func testCompactMinimapScrollsAndSelectsItsActivityStep() throws {
-        let folder = try makeTestFolder(prefix: "TwineMinimapUITests")
+        let folder = try makeTestFolder(prefix: "HandshakeMinimapUITests")
         let app = try makeApp(lastOpenFolder: folder)
         app.launchEnvironment["SHELL"] = "/bin/bash"
         app.launch()

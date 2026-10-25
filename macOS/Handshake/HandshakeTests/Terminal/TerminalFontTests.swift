@@ -6,7 +6,7 @@ import Testing
 
 @MainActor
 struct TerminalFontTests {
-    @Test(arguments: ["TwineMissingFontForTest", "Helvetica", "Arial"], [6.0, 17.5, 72.0])
+    @Test(arguments: ["HandshakeMissingFontForTest", "Helvetica", "Arial"], [6.0, 17.5, 72.0])
     func unavailableAndUnequalWidthFamiliesUseSystemMonospace(family: String, size: Double) {
         let font = TerminalFont.resolve(.init(fontFamily: family, fontSize: size))
         #expect(font == NSFont.monospacedSystemFont(ofSize: size, weight: .regular))

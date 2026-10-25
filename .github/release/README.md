@@ -19,7 +19,7 @@ To change the artwork and regenerate its committed TIFF:
 make regenerate-dmg-artwork
 make check-bundle
 make build-dmg APP=out/packaging/Handshake.app DMG=out/packaging/Handshake.dmg
-TWINE_SIGNING_MODE=adhoc make validate-dmg DMG=out/packaging/Handshake.dmg
+HANDSHAKE_SIGNING_MODE=adhoc make validate-dmg DMG=out/packaging/Handshake.dmg
 ```
 
 `APP` must point to an already signed release app with its release version and
@@ -63,8 +63,14 @@ Main CI creates an ad hoc signed DMG from the actual release app and
 validates it. The release workflow validates the signed and notarized DMG before
 uploading the release downloads. Validation defaults to Developer ID verification
 and requires `APPLE_TEAM_ID`; it also checks stapled notarization tickets and
-Gatekeeper acceptance. `TWINE_SIGNING_MODE=adhoc` checks the app signature without
+Gatekeeper acceptance. `HANDSHAKE_SIGNING_MODE=adhoc` checks the app signature without
 requiring Developer ID signing, notarization, or Gatekeeper acceptance.
 Bundles, staging, credentials, notarization diagnostics, installers, and archives
 live in `out/packaging/`; `make clean` removes them. Release assets contain the DMG,
 C ABI library archive, source archive, and checksums; no symbols archive is generated.
+
+Local packaging inputs use `HANDSHAKE_SIGNING_MODE`, `HANDSHAKE_SIGNING_DIRECTORY`,
+`HANDSHAKE_SIGNING_KEYCHAIN`, `HANDSHAKE_NOTARY_PROFILE`, and
+`HANDSHAKE_NOTARY_LOG_DIR`. Each accepts the corresponding `TWINE_` name as a
+legacy fallback when the new value is unset or empty. The credential wrapper
+creates its own temporary keychain and notary profile for its child command.
