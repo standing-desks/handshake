@@ -1,17 +1,20 @@
-# Twine
+# Handshake
 
-Twine consists of its macOS front end and the reusable `twine-core` application library. SwiftUI and AppKit present the UI; `twine-core` owns application behavior and saved state. The terminal is the primary interaction surface.
+Handshake consists of its macOS front end and the reusable `handshake-core` application library. SwiftUI and AppKit present the UI; `handshake-core` owns application behavior and saved state. The terminal is the primary interaction surface.
 
 Use the terms defined in [CONTEXT.md](CONTEXT.md) when naming folder, session, workflow, role, harness, agent, or trace concepts in code or UI.
+
+For identity, interface design, and compatibility changes, follow the [brand and compatibility rules](CONTRIBUTING.md#brand-and-interface-design).
 
 ## Architecture
 
 - Put any new Rust crates at the workspace root when they need a separate package.
+- The target component names are `handshake-core`, `handshake-bridge`, `HandshakeCore` (Swift core package), and `HandshakeSyntax` (Swift syntax package). Filesystem paths below retain their current names until the directories are renamed.
 - Keep the Swift–Rust boundary explicit: commands go in, and state changes, trace events, and terminal bytes come out.
 - Keep the three layers independent:
-  - `twine-core` exposes a plain Rust API with no knowledge of FFI or UI. Every core feature is testable in Rust without the app.
-  - `twine-bridge` is an adapter between the library API and the C ABI, not a separate product. It holds no domain logic or state.
-  - Swift talks to `twine-core` only through `CoreClient`.
+  - `handshake-core` exposes a plain Rust API with no knowledge of FFI or UI. Every core feature is testable in Rust without the app.
+  - `handshake-bridge` is an adapter between the library API and the C ABI, not a separate product. It holds no domain logic or state.
+  - Swift talks to `handshake-core` only through `CoreClient`.
 - Domain state (folders, sessions, workflows, traces, transcripts, config) lives in core. Presentation state (selected tabs, pane layouts, form prefills) lives in Swift.
 - Model workflow types as ways to coordinate agents. The workflow graph is not a general DAG executor.
 

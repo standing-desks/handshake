@@ -1,17 +1,19 @@
-# Twine
+# Handshake
 
-Twine organizes coding work in a folder into sessions, each made of workflows where agents collaborate.
+Handshake organizes coding work in a folder into sessions, each made of workflows where agents collaborate.
+
+The target component names are `handshake-core` and `handshake-bridge` for the Rust library and C ABI adapter, and `HandshakeCore` and `HandshakeSyntax` for the Swift core and syntax packages. Filesystem paths retain their current names until the directories are renamed.
 
 ## Language
 
-**Twine front end**:
+**Handshake front end**:
 The macOS app where users work with folders, sessions, and workflows.
 
-**twine-core**:
-Twine's reusable application library, which manages coding work and saved state.
+**handshake-core**:
+Handshake's reusable application library, which manages coding work and saved state.
 
 **Folder**:
-The directory the user opens and works in. Twine shows its files and the sessions worked on in it.
+The directory the user opens and works in. Handshake shows its files and the sessions worked on in it.
 _Avoid_: Workspace, project
 
 **Session**:
@@ -34,20 +36,20 @@ A workflow-wide setting for follow-ups after completion or the review limit. Off
 A responsibility within a workflow type, such as implementer, reviewer, coordinator, or worker. A role is independent of the harness that fills it.
 
 **Harness**:
-An external agent tool that Twine can launch, such as Codex, Claude Code, or pi. A harness can fill different roles in different workflows.
+An external agent tool that Handshake can launch, such as Codex, Claude Code, or pi. A harness can fill different roles in different workflows.
 
 **Agent**:
 One harness process filling one role in a workflow. Each agent is a subtab of its workflow. A Terminal workflow runs a plain shell and has no agents.
 _Avoid_: Agent session
 
 **Trace span**:
-A bounded unit of work shown as a step in the Traces panel. Steps share one start-order sequence across agent tracks; spacing does not represent elapsed time. In multi-agent workflows, a span covers an agent's assignment in a stage or review round, from its incoming handoff (or initial stage entry) to its explicit completion or stop. In a single-agent workflow with harness hooks, each prompt starts a span that ends when the agent finishes responding. In Terminal workflows, Twine's shell integration records one span per command, from its output start to its exit status; shells without integration retain a process-lifetime span. Process lifecycle changes remain trace events.
+A bounded unit of work shown as a step in the Traces panel. Steps share one start-order sequence across agent tracks; spacing does not represent elapsed time. In multi-agent workflows, a span covers an agent's assignment in a stage or review round, from its incoming handoff (or initial stage entry) to its explicit completion or stop. In a single-agent workflow with harness hooks, each prompt starts a span that ends when the agent finishes responding. In Terminal workflows, Handshake's shell integration records one span per command, from its output start to its exit status; shells without integration retain a process-lifetime span. Process lifecycle changes remain trace events.
 
 **Trace activity**:
 A native tool call, subagent lifetime, LLM call, or emitted lifecycle note within a trace span. Observer events and the exact linked native conversation supply stable identities, optional start/end observations, public summaries, usage, and verified parent relationships. The In Depth timeline uses observed elapsed time; Overview keeps the span's start-order position. Child activity and historical imports never complete or advance the parent workflow. Resumed subagents extend the same observed lifetime when a harness does not expose separate invocation identities. Compact previews live in SQLite; full details use content-addressed files with independent retention and per-step pinning. Paging limits reads without discarding recorded details.
 
 **Trace event**:
-A timestamped record of activity that Twine observes or performs during a workflow. Trace events can be associated with a span.
+A timestamped record of activity that Handshake observes or performs during a workflow. Trace events can be associated with a span.
 
 **Terminal transcript**:
 The bytes exchanged with an agent's or shell's terminal. It is distinct from structured trace events.
