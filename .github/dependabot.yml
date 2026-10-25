@@ -7,7 +7,7 @@ updates:
   - package-ecosystem: swift
     directories:
       - "/macOS/Twine"
-      - "/macOS/TwineSyntaxPackage"
+      - "/macOS/HandshakeSyntaxPackage"
     schedule:
       interval: weekly
     ignore:

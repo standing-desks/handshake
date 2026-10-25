@@ -9,7 +9,7 @@ For identity, interface design, and compatibility changes, follow the [brand and
 ## Architecture
 
 - Put any new Rust crates at the workspace root when they need a separate package.
-- The target component names are `handshake-core`, `handshake-bridge`, `HandshakeCore` (Swift core package), and `HandshakeSyntax` (Swift syntax package). Filesystem paths below retain their current names until the directories are renamed.
+- The component names are `handshake-core`, `handshake-bridge`, `HandshakeCore` (Swift core package), and `HandshakeSyntax` (Swift syntax package).
 - Keep the Swift–Rust boundary explicit: commands go in, and state changes, trace events, and terminal bytes come out.
 - Keep the three layers independent:
   - `handshake-core` exposes a plain Rust API with no knowledge of FFI or UI. Every core feature is testable in Rust without the app.
@@ -21,8 +21,8 @@ For identity, interface design, and compatibility changes, follow the [brand and
 ## Component instructions
 
 - Run builds, formatting, linting, and tests through the root `Makefile`. `make` lists the targets.
-- For application library work in `twine-core/`, read [twine-core/AGENTS.md](twine-core/AGENTS.md).
-- For C ABI work in `twine-bridge/`, read [twine-bridge/AGENTS.md](twine-bridge/AGENTS.md).
+- For application library work in `handshake-core/`, read [handshake-core/AGENTS.md](handshake-core/AGENTS.md).
+- For C ABI work in `handshake-bridge/`, read [handshake-bridge/AGENTS.md](handshake-bridge/AGENTS.md).
 - For Swift app work in `macOS/`, read [macOS/AGENTS.md](macOS/AGENTS.md).
 - For changes spanning components, follow each component's file, and run `make fmt` and `make check` in place of the per-component targets. Give any new component its own `AGENTS.md` when it needs distinct instructions.
 

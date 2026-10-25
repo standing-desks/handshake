@@ -1,0 +1,150 @@
+import XCTest
+
+extension HandshakeUITests {
+    @MainActor
+    func testSessionsOwnTabsAndRestoreFreshShellsAfterRelaunch() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "TwineSessionUITests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
+        let app = try makeApp(lastOpenFolder: folder)
+        app.launch()
+        XCTAssertTrue(app.buttons["workflowTab-1"].waitForExistence(timeout: 10), app.debugDescription)
+        startSessionShell(app: app, folder: folder)
+        if !app.scrollViews["fileTree"].exists {
+            sidebarToggle(in: app).click()
+        }
+        XCTAssertTrue(app.scrollViews["fileTree"].waitForExistence(timeout: 5))
+        let firstSession = app.buttons["sessionRow-1"]
+        verifySessionControls(firstSession: firstSession, app: app)
+
+        app.buttons["newWorkflow"].click()
+        XCTAssertTrue(app.buttons["workflowTab-2"].waitForExistence(timeout: 5))
+        app.buttons["newSession"].click()
+        let secondSession = app.buttons["sessionRow-2"]
+        XCTAssertTrue(secondSession.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.textFields["sessionName"].exists)
+        sessionAction("Rename Session", session: secondSession, app: app)
+        saveSessionName("Second", app: app)
+        XCTAssertTrue(app.staticTexts["No Open Tabs"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["workflowTab-1"].exists)
+        app.buttons["newWorkflow"].click()
+        let secondTab = app.buttons["workflowTab-3"]
+        XCTAssertTrue(secondTab.waitForExistence(timeout: 5))
+        app.buttons["workflowChoice-Terminal"].click()
+        app.typeText("exec /bin/sh\r")
+        app.typeText("TWINE_SESSION_VALUE=second; printf '%s' second > second.txt\r")
+        waitForSessionFile(folder.appending(path: "second.txt"), containing: "second")
+        let screenshot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        screenshot.name = "Files and Sessions sidebar"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+
+        firstSession.click()
+        XCTAssertTrue(app.buttons["workflowTab-2"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.buttons["workflowTab-2"].value as? String, "Selected")
+        XCTAssertFalse(secondTab.exists)
+        app.buttons["workflowTab-1"].click()
+        app.typeText("printf '%s' $TWINE_SESSION_VALUE > preserved.txt\r")
+        waitForSessionFile(folder.appending(path: "preserved.txt"), containing: "original")
+        secondSession.click()
+        XCTAssertTrue(secondTab.waitForExistence(timeout: 5))
+        relaunchSession(app: app, folder: folder)
+        XCTAssertTrue(secondSession.waitForExistence(timeout: 5))
+        XCTAssertEqual(secondSession.value as? String, "Selected")
+        deleteSessions(app: app)
+        app.terminate()
+    }
+
+    @MainActor
+    private func verifySessionControls(firstSession: XCUIElement, app: XCUIApplication) {
+        XCTAssertTrue(firstSession.exists)
+        app.buttons["sidebarSection-sessions"].click()
+        XCTAssertTrue(firstSession.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.scrollViews["fileTree"].exists)
+        app.buttons["sidebarSection-sessions"].click()
+        XCTAssertTrue(firstSession.waitForExistence(timeout: 5))
+        firstSession.hover()
+        app.menuButtons["sessionActions-1"].click()
+        app.menuItems["Rename Session"].click()
+        saveSessionName("First", app: app)
+        let renamed = expectation(for: NSPredicate { _, _ in firstSession.label == "First" }, evaluatedWith: nil)
+        wait(for: [renamed], timeout: 5)
+    }
+
+    @MainActor
+    private func startSessionShell(app: XCUIApplication, folder: URL) {
+        resizeWindow(app.windows.firstMatch, to: CGSize(width: 900, height: 620))
+        app.typeText("exec /bin/sh\r")
+        app.typeText(
+            "TWINE_SESSION_VALUE=original; echo $$ > original.pid; printf '%s' $TWINE_SESSION_VALUE > initial.txt\r")
+        waitForSessionFile(folder.appending(path: "initial.txt"), containing: "original")
+    }
+
+    @MainActor
+    private func relaunchSession(app: XCUIApplication, folder: URL) {
+        app.menuBars.menuBarItems["Twine"].click()
+        app.menuItems["Quit Twine"].click()
+        XCTAssertTrue(app.wait(for: .notRunning, timeout: 10))
+
+        app.launch()
+        XCTAssertTrue(app.buttons["workflowTab-3"].waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertFalse(app.buttons["workflowTab-1"].exists)
+        XCTAssertTrue(app.staticTexts["restoredWorkflowNotice"].waitForExistence(timeout: 5))
+        app.typeText("exec /bin/sh\r")
+        app.typeText("printf '%s' ${TWINE_SESSION_VALUE-fresh} > fresh.txt\r")
+        waitForSessionFile(folder.appending(path: "fresh.txt"), containing: "fresh")
+    }
+
+    @MainActor
+    private func deleteSessions(app: XCUIApplication) {
+        sessionAction("Delete Session", session: app.buttons["sessionRow-2"], app: app)
+        confirmDeleteSession(app: app)
+        XCTAssertTrue(app.buttons["sessionRow-2"].waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["workflowTab-1"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["workflowTab-2"].exists)
+        sessionAction("Delete Session", session: app.buttons["sessionRow-1"], app: app)
+        confirmDeleteSession(app: app)
+        XCTAssertTrue(app.buttons["sessionRow-1"].waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["No Open Tabs"].waitForExistence(timeout: 5))
+        app.menuBars.menuBarItems["Twine"].click()
+        app.menuItems["Quit Twine"].click()
+        XCTAssertTrue(app.wait(for: .notRunning, timeout: 10))
+        app.launch()
+        XCTAssertTrue(app.buttons["newWorkflow"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["workflowTab-4"].exists)
+        XCTAssertTrue(app.staticTexts["No Open Tabs"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
+    private func confirmDeleteSession(app: XCUIApplication) {
+        let delete = app.sheets.buttons["Delete"].firstMatch
+        XCTAssertTrue(delete.waitForExistence(timeout: 5))
+        delete.click()
+    }
+
+    @MainActor
+    private func sessionAction(_ title: String, session: XCUIElement, app: XCUIApplication) {
+        session.rightClick()
+        app.menuItems[title].click()
+    }
+
+    @MainActor
+    private func saveSessionName(_ name: String, app: XCUIApplication) {
+        let field = app.textFields["sessionName"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5), app.debugDescription)
+        field.click()
+        field.typeKey("a", modifierFlags: .command)
+        field.typeText(name)
+        XCTAssertFalse(app.buttons["saveSession"].exists)
+        app.typeKey("s", modifierFlags: .command)
+    }
+
+    @MainActor
+    private func waitForSessionFile(_ file: URL, containing text: String) {
+        let written = expectation(
+            for: NSPredicate { _, _ in
+                (try? String(contentsOf: file, encoding: .utf8)) == text
+            }, evaluatedWith: nil)
+        wait(for: [written], timeout: 10)
+    }
+}
