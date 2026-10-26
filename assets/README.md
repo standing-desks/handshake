@@ -61,7 +61,7 @@ directly by the Xcode app target for Release. Debug selects
 imported in Icon Composer 27.1; the saved schema supplies the appearance and
 placement settings.
 
-The default background is solid sRGB `#F4F1EB`; dark is `#202326`. Mono uses
+The default and dark backgrounds are both solid sRGB `#202326`. Mono uses
 Icon Composer's automatic monochrome treatment of the same artwork. Layers
 are unmasked; Liquid Glass effects are applied by the system.
 
