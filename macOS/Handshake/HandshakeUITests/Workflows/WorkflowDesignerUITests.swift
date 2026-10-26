@@ -7,8 +7,9 @@ extension HandshakeUITests {
         app.launch()
         defer { app.terminate() }
         let tile = app.buttons["workflowChoice-custom-4001-1"]
-        XCTAssertTrue(tile.waitForExistence(timeout: 10), app.debugDescription)
-        resizeWindow(app.windows.firstMatch, to: CGSize(width: 1100, height: 850))
+        XCTAssertTrue(app.scrollViews["newTabChoices"].waitForExistence(timeout: 10), app.debugDescription)
+        // Exercise lazy saved tiles below the initial viewport, as on the smaller CI display.
+        resizeWindow(app.windows.firstMatch, to: CGSize(width: 820, height: 573))
         let delete = app.buttons["workflowDelete-custom-4001-1"]
         let confirmation = app.sheets.firstMatch
         app.buttons["workflowChoice-Adversarial"].hover()
@@ -16,6 +17,7 @@ extension HandshakeUITests {
         XCTAssertFalse(app.buttons["workflowDelete-adversarial"].exists)
         app.buttons["workflowChoice-Adversarial"].rightClick()
         XCTAssertFalse(app.menuItems["Delete Workflow…"].exists)
+        revealWorkflowChoice(tile, in: app)
         tile.hover()
         XCTAssertTrue(delete.waitForExistence(timeout: 5))
         delete.click()

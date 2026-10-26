@@ -21,8 +21,6 @@ struct NewTabChoices: View {
     @Binding var selectedType: CoreWorkflowType?
     /// Set while a picked harness starts, so keys typed meanwhile can't turn the draft into a shell.
     @Binding var startingHarness: CoreHarness?
-    /// The harness whose unlisted model is being typed, for Single agent's "Other model…".
-    @State private var customModelHarness: CoreHarness?
     /// Incremented on each appearance so the catalog retries failed harnesses whenever the card reappears.
     @State private var appearanceID = 0
     /// Single agent's last YOLO setting, kept for the next start.
@@ -129,20 +127,6 @@ struct NewTabChoices: View {
         } message: {
             Text(deletionFailure ?? "")
         }
-        .sheet(item: $customModelHarness) { harness in
-            VStack(alignment: .leading, spacing: 0) {
-                Text("\(harness.displayName) model").font(.headline).padding([.top, .horizontal], 12)
-                CustomModelForm(
-                    action: "Start",
-                    efforts: harnessCatalog.entry(for: harness, folder: client.snapshot?.folders.openFolder).models?
-                        .efforts ?? []
-                ) { model, effort in
-                    customModelHarness = nil
-                    start(.init(harness: harness, model: model, effort: effort, yolo: singleAgentYolo))
-                }
-            }
-            .appZoom()
-        }
     }
 
     private var choices: some View {
@@ -210,38 +194,39 @@ struct NewTabChoices: View {
         ForEach(WorkflowChoice.allCases) { choice in
             if choice.opensMenu {
                 Menu {
-                    Toggle("YOLO Mode", isOn: $singleAgentYolo)
-                        .help("Skip the agent's permission prompts. pi doesn't ask for permission.")
-                        .accessibilityIdentifier("singleAgentYolo")
-                    Divider()
                     let available = harnessCatalog.availableHarnesses(
                         folder: client.snapshot?.folders.openFolder)
                     if available.isEmpty {
                         Text("No agents available")
                     } else {
                         ForEach(available) { harness in
-                            Menu(harness.displayName) {
-                                SingleAgentHarnessMenu(
-                                    harness: harness,
-                                    entry: harnessCatalog.entry(
-                                        for: harness,
-                                        folder: client.snapshot?.folders.openFolder),
-                                    yolo: singleAgentYolo,
-                                    start: start,
-                                    chooseCustomModel: { customModelHarness = harness })
+                            Button(harness.displayName) {
+                                let supportsYolo =
+                                    harnessCatalog.entry(
+                                        for: harness, folder: client.snapshot?.folders.openFolder
+                                    ).models?.supportsYolo ?? (harness != .piAgent && harness != .opencode)
+                                start(.init(harness: harness, yolo: singleAgentYolo && supportsYolo))
                             }
                             .accessibilityIdentifier("harness-\(harness.rawValue)")
                         }
                     }
                 } label: {
                     ChoiceTile(choice: choice)
+                        .accessibilityElement(children: .combine)
                 }
-                .disabled(startingHarness != nil)
                 .menuStyle(.button)
                 .menuIndicator(.hidden)
                 .buttonStyle(.plain)
                 .help(choice.detail)
                 .accessibilityIdentifier("workflowChoice-\(choice.rawValue)")
+                .overlay(alignment: .bottomLeading) {
+                    Toggle("YOLO mode", isOn: $singleAgentYolo)
+                        .toggleStyle(.checkbox)
+                        .controlSize(.small)
+                        .padding(NewTabLayout.choicePadding)
+                        .accessibilityIdentifier("singleAgentYolo")
+                }
+                .disabled(startingHarness != nil || !isSelected)
             } else {
                 Button {
                     choose(choice)

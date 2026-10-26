@@ -115,6 +115,44 @@ extension HandshakeUITests {
         if processIsRunning(processID) { _ = kill(processID, SIGKILL) }
     }
 
+    /// Reveals a choice inside both scroll viewports, including tiles a lazy grid hasn't created yet.
+    @MainActor
+    func revealWorkflowChoice(_ tile: XCUIElement, in app: XCUIApplication) {
+        let choices = app.scrollViews["newTabChoices"]
+        XCTAssertTrue(choices.waitForExistence(timeout: 10), app.debugDescription)
+        let viewport = app.scrollViews["workspaceViewport"]
+        for _ in 0..<8 {
+            let visible = choices.frame.intersection(viewport.frame)
+            if tile.exists, visible.contains(CGPoint(x: tile.frame.midX, y: tile.frame.midY)) { break }
+            let delta: CGFloat = tile.exists && tile.frame.midY < visible.minY ? 60 : -60
+            choices.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1))
+                .scroll(byDeltaX: 0, deltaY: delta)
+        }
+        XCTAssertTrue(tile.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(tile.isHittable, app.debugDescription)
+    }
+
+    /// Starts `harness` directly with its own model and effort defaults.
+    @MainActor
+    func chooseHarness(_ harness: String, displayName: String? = nil, in app: XCUIApplication) {
+        let tile = app.descendants(matching: .any).matching(identifier: "workflowChoice-Single agent").firstMatch
+        revealWorkflowChoice(tile, in: app)
+        // The harness list loads asynchronously; retry opening the menu until the harness appears.
+        var found = false
+        for _ in 0..<10 {
+            tile.click()
+            let item = app.menuItems[displayName ?? harness]
+            guard item.waitForExistence(timeout: 2) else {
+                app.typeKey(.escape, modifierFlags: [])
+                continue
+            }
+            item.click()
+            found = true
+            break
+        }
+        XCTAssertTrue(found, "Harness \(harness) did not appear in the Single agent menu:\n\(app.debugDescription)")
+    }
+
     /// Opens a workflow whose agents run shells, from the debug-only File menu.
     @MainActor
     func openTestWorkflow(agents: Int, in app: XCUIApplication) {
