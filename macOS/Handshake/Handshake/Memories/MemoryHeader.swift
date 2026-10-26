@@ -3,10 +3,10 @@ import SwiftUI
 struct MemoryHeader: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Bindable var model: MemoryModel
-    var openNativeMemory: (() -> Void)?
+    var sharing: MemorySharingControls?
 
     var body: some View {
-        HStack {
+        HStack(spacing: 6) {
             Button {
                 withAnimation(reduceMotion ? nil : Motion.sectionToggle) { model.isExpanded.toggle() }
             } label: {
@@ -22,18 +22,9 @@ struct MemoryHeader: View {
             }.buttonStyle(.plain).accessibilityIdentifier("memoryEntry-outline")
                 .accessibilityValue(model.isExpanded ? "Expanded" : "Collapsed")
                 .help(model.isExpanded ? "Collapse Memories" : "Open Memories")
-            if let openNativeMemory {
-                Button(action: openNativeMemory) {
-                    Text("Handshake")
-                        .font(.system(size: 11, weight: .medium))
-                        .padding(.horizontal, 4)
-                        .frame(height: 26).contentShape(.rect)
-                }
-                .buttonStyle(.plain).accessibilityIdentifier("openNativeMemory")
-                .accessibilityLabel("Handshake Memories")
-                .help("Automatic native memory sharing")
-            }
-            if model.isExpanded {
+            if let sharing {
+                sharing
+            } else if model.isExpanded {
                 Button(action: model.refresh) {
                     Image(systemName: "arrow.clockwise")
                         .font(.system(size: 11, weight: .semibold))

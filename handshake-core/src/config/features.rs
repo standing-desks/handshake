@@ -45,7 +45,7 @@ impl FeatureFlag {
             Self::CrossAgentMemoryConsolidation => FeatureFlagState {
                 id: self,
                 title: "Cross-agent memory consolidation",
-                description: "Automatically share and consolidate project memories between Codex and Claude Code.",
+                description: "Automatically share and consolidate project memories between supported agents.",
                 enabled: flags.cross_agent_memory_consolidation,
             },
         }

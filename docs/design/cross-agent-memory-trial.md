@@ -44,7 +44,8 @@ file. A failed apply remains retryable, and concurrent external edits are preser
 
 ## Try the small workspace
 
-The rebuilt app is **Handshake 0.4.0**, installed at `~/Applications/Handshake.app`.
+The trial app is installed at `~/Applications/Handshake.app`; the current source
+version is **Handshake 0.4.1**.
 Use `~/workspaces/twine-memory-small/Open in Handshake.command`, or open the app
 normally. The small workspace keeps its existing folder path and memory UUID.
 Its application state is carried from the earlier isolated trial into
@@ -52,8 +53,11 @@ Its application state is carried from the earlier isolated trial into
 retained. The existing three native memory views and generated Codex startup
 memory remain in their original managed profiles.
 
-Open **Handshake** beside **Memories** for project policy, status and native paths.
-Sharing is automatic; **Sync now** is optional. Start a fresh Codex or Claude
+Use the **Share** switch and adjacent gear to the right of **Memories**. The
+selected compact group remains available when the section is collapsed. The gear
+opens a native **Memory settings** popover with status, collapsible project memory
+previews and storage profiles. **Check now** is optional; **Refresh sources** keeps
+the ordinary memory browser’s existing rescan action available. Start a fresh Codex or Claude
 conversation and ask an ordinary project question. Existing conversations can
 retain earlier startup context; Codex's first native memory pass and quota guard
 can delay startup availability in a new project.
@@ -62,6 +66,54 @@ The retired large playground, obsolete trial state stores and 1,019 injected
 Claude memory files remain removed. Earlier Twine application bundles are removed
 after the rebuilt app is verified. Unrelated projects and ordinary conversation
 history are retained.
+
+## Compact sharing controls (2026-10-26)
+
+The selected design is option 5 in
+[memory-sharing-minimal-options.html](memory-sharing-minimal-options.html): a
+labeled system switch and SF Symbols gear, grouped on the right of the existing
+Memories header. They replace the separate Handshake text button. Disclosure,
+sharing policy and settings have separate controls and accessibility names.
+The app-wide feature flag still hides the group when disabled.
+
+The main control uses agent-neutral copy. Settings render agent names and native
+paths from a profile collection. The current transport's `claudePath` and
+`codexPath` are mapped at one presentation boundary; the two existing adapters,
+AMIS contract, storage, quota controls and delivery behavior are unchanged. This
+prepares the layout for additional profiles without claiming additional adapter
+support today.
+
+The native popover replaces the large modal sheet. Project-memory and storage
+lists are collapsed initially, repeated Markdown headings are omitted only from
+previews, and native loading/scheduling details live under storage. Pausing in the
+header retains the project's saved memories. There is one project sharing toggle.
+
+Apple references: [Toggles](https://developer.apple.com/design/human-interface-guidelines/toggles),
+[Popovers](https://developer.apple.com/design/human-interface-guidelines/popovers),
+and [Layout](https://developer.apple.com/design/human-interface-guidelines/layout).
+These guide system controls, clear labeling, transient presentation and grouped
+related actions; this is not a claim of Apple certification.
+
+## Header-control validation (2026-10-26)
+
+- `make fmt` and `make check` passed for the library and app; the final app check
+  passes 394 tests. Library coverage remains 588 core and 49 bridge tests.
+- Eight isolated desktop UX cases pass: feature flag gating/persistence, native
+  bidirectional updates and relaunch, active-profile deferral, pause/resume, storage
+  access and Escape at 200% zoom, ordinary memory-browser refresh, visible failed
+  policy saves, and independent header controls with persisted project policy.
+- The selected HTML comparison passes 180 option/state/appearance/viewport
+  combinations. Swift and Rust reviews completed with findings addressed.
+- Native UX testing caught popover height compression and unreliable disclosure
+  interaction under zoom. The popover now reports its bounded intrinsic height,
+  uses the app’s accessible full-row disclosure buttons, and handles Escape only
+  for the popover and its owning window. Failed actions appear at the top.
+- These checks make zero native model calls. The earlier two-fact recall evidence
+  is retained; no additional native recall questions were sent for this UI change.
+
+![Selected compact native controls](images/memory-sharing-controls.png)
+
+Logs and original screenshots: `out/validation/memory-controls/`.
 
 ## Native integration
 

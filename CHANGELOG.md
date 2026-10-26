@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Replace the memory-sharing sheet entry with a compact Share switch and settings gear
+  in the Memories header. Keep agent labels and native-profile layouts open to additional
+  supported agents while preserving the current adapters and AMIS behavior.
+
 ### Added
 
 - Add a Feature flags section in Settings, starting with app-wide cross-agent memory consolidation.

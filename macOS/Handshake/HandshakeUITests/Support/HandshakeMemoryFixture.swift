@@ -68,9 +68,13 @@ extension HandshakeUITests {
 
     @MainActor
     func waitForHandshakeText(_ value: String, identifier: String, in app: XCUIApplication) {
-        let element = app.staticTexts[identifier]
+        let element = app.descendants(matching: .any).matching(identifier: identifier).firstMatch
         let matches = XCTNSPredicateExpectation(
-            predicate: NSPredicate { _, _ in element.exists && staticTextValue(element) == value }, object: nil)
+            predicate: NSPredicate { _, _ in
+                guard element.exists else { return false }
+                let text = element.elementType == .staticText ? staticTextValue(element) : element.label
+                return text == value
+            }, object: nil)
         XCTAssertEqual(XCTWaiter.wait(for: [matches], timeout: 30), .completed, app.debugDescription)
     }
 }

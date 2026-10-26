@@ -41,6 +41,9 @@ needs = $(if $(PREBUILT),,$(1))
 # Add a test here to re-enable it in local and CI default runs.
 UI_DEFAULT_TESTS := testFirstLaunchShowsStartPage \
 	testFeatureFlagControlsMemorySharingImmediatelyAndPersists \
+	testMemoryHeaderSharingControlsRemainIndependentAndPersist \
+	testMemoryHeaderOpensSettingsWhenPolicySaveFails \
+	testHandshakeMemoriesRemainUsableAtMaximumZoom \
 	testGitFileTreeShowsPrimaryCheckoutChangesAcrossRepositories \
 	testGitFileTreeRefreshesConflictsAndUnavailableRepositories \
 	testFileMenuCanOpenWindowsAndFoldersAfterClosingLastWindow \
