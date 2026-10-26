@@ -65,6 +65,7 @@ UI_DEFAULT_TESTS := testFirstLaunchShowsStartPage \
 	testQuitStopsShellAndDescendant \
 	testTerminalRunsLibraryInjectionAndDebugger \
 	testSingleAgentStartsInteractivelyTakesInputAndCancels \
+	testSingleAgentUsesHarnessDefaultsAndRemembersYoloMode \
 	testClaudeMinimapDotsSelectTheirTraceAndScrollToThePrompt \
 	testTimelineInspectorShowsNestedCallsFiltersAndSurvivesRelaunch \
 	testNativeHistoryShowsModelSummaryFullDetailsAndStoragePinAfterRelaunch \

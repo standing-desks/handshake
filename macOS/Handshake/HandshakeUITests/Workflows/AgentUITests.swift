@@ -306,33 +306,6 @@ extension HandshakeUITests {
         app.terminate()
     }
 
-    /// Starts `harness` with its default model from the Single agent tile's menu.
-    @MainActor
-    private func chooseHarness(_ harness: String, displayName: String? = nil, in app: XCUIApplication) {
-        let tile = element("workflowChoice-Single agent", in: app)
-        XCTAssertTrue(tile.waitForExistence(timeout: 10), app.debugDescription)
-        // The harness list loads asynchronously; retry opening the menu until the harness appears.
-        var found = false
-        for _ in 0..<10 {
-            tile.click()
-            let item = app.menuItems[displayName ?? harness]
-            guard item.waitForExistence(timeout: 2) else {
-                app.typeKey(.escape, modifierFlags: [])
-                continue
-            }
-            item.click()
-            found = true
-            break
-        }
-        XCTAssertTrue(found, "Harness \(harness) did not appear in the Single agent menu:\n\(app.debugDescription)")
-        guard found else { return }
-        // Stub harnesses list no models or effort levels, so the default model starts it directly.
-        // SwiftUI doesn't carry identifiers into nested submenus, so find it by title in the harness's.
-        let defaultModel = app.menuItems["harness-\(harness)"].menuItems["Default model"]
-        XCTAssertTrue(defaultModel.waitForExistence(timeout: 10), app.debugDescription)
-        defaultModel.click()
-    }
-
     /// Menus and text fields report different element types, so match on the identifier alone.
     @MainActor
     private func element(_ identifier: String, in app: XCUIApplication) -> XCUIElement {

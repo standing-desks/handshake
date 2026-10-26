@@ -19,7 +19,7 @@ extension HandshakeUITests {
         )
         waitForFile(folder.appending(path: "bin/claude"), containing: "inspector-events", in: app)
         app.buttons["newWorkflow"].click()
-        chooseInspectorHarness("claudeCode", displayName: "Claude Code", in: app)
+        chooseInspectorHarness(displayName: "Claude Code", in: app)
         resizeWindow(app.windows.firstMatch, to: CGSize(width: 1100, height: 900))
         waitForFile(folder.appending(path: "inspector-ready"), containing: "ready", in: app)
         app.buttons["tracesHeader"].click()
@@ -149,7 +149,7 @@ extension HandshakeUITests {
             }, evaluatedWith: nil)
         wait(for: [installed], timeout: 10)
         app.buttons["newWorkflow"].click()
-        chooseInspectorHarness("claudeCode", displayName: "Claude Code", in: app)
+        chooseInspectorHarness(displayName: "Claude Code", in: app)
         resizeWindow(app.windows.firstMatch, to: CGSize(width: 1100, height: 900))
         waitForFile(folder.appending(path: "inspector-ready"), containing: "ready", in: app)
         let header = app.buttons["tracesHeader"]
@@ -281,14 +281,11 @@ extension HandshakeUITests {
     }
 
     @MainActor
-    private func chooseInspectorHarness(_ harness: String, displayName: String, in app: XCUIApplication) {
+    private func chooseInspectorHarness(displayName: String, in app: XCUIApplication) {
         let tile = inspectorElement("workflowChoice-Single agent", in: app)
         XCTAssertTrue(tile.waitForExistence(timeout: 10), app.debugDescription)
         tile.click()
         app.menuItems[displayName].click()
-        let model = app.menuItems["harness-\(harness)"].menuItems["Default model"]
-        XCTAssertTrue(model.waitForExistence(timeout: 5), app.debugDescription)
-        model.click()
     }
 
 }

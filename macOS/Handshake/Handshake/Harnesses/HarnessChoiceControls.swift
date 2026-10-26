@@ -224,62 +224,6 @@ struct HarnessChoiceRow: View {
     }
 }
 
-/// One harness's items in the Single agent menu: a submenu per model, whose effort levels start it.
-struct SingleAgentHarnessMenu: View {
-    let harness: CoreHarness
-    let entry: HarnessModelCatalog.Entry
-    let yolo: Bool
-    let start: (HarnessChoice) -> Void
-    let chooseCustomModel: () -> Void
-
-    var body: some View {
-        startItem("Default model", model: nil)
-        switch entry {
-        case .loading:
-            Text("Loading models…")
-        case .failed(let message):
-            Text(message)
-        case .listed(let listed):
-            Divider()
-            ForEach(listed.groups) { group in
-                if let title = group.title {
-                    Menu(title) {
-                        ForEach(group.models) { startItem($0.name, model: $0) }
-                    }
-                } else {
-                    ForEach(group.models) { startItem($0.name, model: $0) }
-                }
-            }
-            if listed.models.allowsCustom {
-                Divider()
-                Button("Other model…", action: chooseCustomModel)
-            }
-        }
-    }
-
-    /// Starts the harness with `model`, or offers its effort levels first when it has them.
-    @ViewBuilder private func startItem(_ title: String, model: CoreHarnessModel?) -> some View {
-        let efforts = entry.listed?.efforts(for: model) ?? []
-        let choice = HarnessChoice(
-            harness: harness, model: model?.id, yolo: yolo && entry.models?.supportsYolo != false)
-        if efforts.isEmpty {
-            Button(title) { start(choice) }
-        } else {
-            Menu(title) {
-                Button("Default effort") { start(choice) }
-                Divider()
-                ForEach(efforts, id: \.self) { effort in
-                    Button(effort.capitalized) {
-                        var choice = choice
-                        choice.effort = effort
-                        start(choice)
-                    }
-                }
-            }
-        }
-    }
-}
-
 /// Asks for a model name the harness didn't list, such as a specific dated model ID, and its effort
 /// level when `efforts` offers any.
 struct CustomModelForm: View {
