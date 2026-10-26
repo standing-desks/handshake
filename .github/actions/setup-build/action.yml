@@ -60,5 +60,5 @@ runs:
         key: >-
           swift-packages-v2-xcode27-${{ runner.arch }}-${{
           hashFiles('macOS/**/Package.resolved', 'macOS/**/Package.swift',
-          'macOS/Twine/Twine.xcodeproj/project.pbxproj') }}
+          'macOS/Handshake/Handshake.xcodeproj/project.pbxproj') }}
         restore-keys: swift-packages-v2-xcode27-${{ runner.arch }}-

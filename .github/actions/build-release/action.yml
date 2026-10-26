@@ -22,9 +22,9 @@ runs:
       id: create-artifacts
       shell: bash
       env:
-        TWINE_SIGNING_MODE: adhoc
+        HANDSHAKE_SIGNING_MODE: adhoc
       run: |
-        version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' out/release/Build/Products/Release/Twine.app/Contents/Info.plist)"
+        version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' out/release/Build/Products/Release/Handshake.app/Contents/Info.plist)"
         bash .github/release/bundle-artifact.sh package "$version" \
           "$GITHUB_WORKSPACE/out/packaging/bundle" \
           "$GITHUB_WORKSPACE/out/packaging/validation"
@@ -32,6 +32,6 @@ runs:
     - name: Validate DMG
       shell: bash
       env:
-        TWINE_SIGNING_MODE: adhoc
+        HANDSHAKE_SIGNING_MODE: adhoc
         VERSION: ${{ steps.create-artifacts.outputs.version }}
-      run: make validate-dmg DMG="$GITHUB_WORKSPACE/out/packaging/validation/Twine-$VERSION-macos-arm64.dmg" VERSION="$VERSION"
+      run: make validate-dmg DMG="$GITHUB_WORKSPACE/out/packaging/validation/Handshake-$VERSION-macos-arm64.dmg" VERSION="$VERSION"

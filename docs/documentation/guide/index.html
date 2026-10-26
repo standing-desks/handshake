@@ -3,18 +3,18 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#f7f8f2">
-    <title>User guide — Twine</title>
-    <meta name="description" content="Learn how to set up Twine, run your first workflow, and work with your coding agents.">
-    <link rel="canonical" href="https://standing-desks.github.io/twine/documentation/guide/">
+    <meta name="theme-color" content="#F4F1EB">
+    <title>User guide — Handshake</title>
+    <meta name="description" content="Learn how to set up Handshake, run your first workflow, and work with your coding agents.">
+    <link rel="canonical" href="https://standing-desks.github.io/handshake/documentation/guide/">
     <link rel="icon" type="image/png" href="../../assets/favicon.png">
     <link rel="stylesheet" href="../../assets/styles.css">
   </head>
   <body class="docs-page" id="top">
     <a class="skip-link" href="#main">Skip to content</a>
     <header class="header wrap">
-      <a class="brand" href="../../" aria-label="Twine home"><img src="../../assets/icon.png" width="40" height="40" alt=""><span>twine<span class="brand-period">.</span></span></a>
-      <nav aria-label="Main navigation"><a href="../../#workflows">Workflows</a><a href="../">Docs</a><a class="nav-github" href="https://github.com/standing-desks/twine">GitHub <span aria-hidden="true">↗</span></a></nav>
+      <a class="brand" href="../../" aria-label="Handshake home"><img src="../../assets/handshake-transparent.svg" width="48" height="48" alt=""><span>Handshake</span></a>
+      <nav aria-label="Main navigation"><a href="../../#workflows">Workflows</a><a href="../">Docs</a><a class="nav-github" href="https://github.com/standing-desks/handshake">GitHub <span aria-hidden="true">↗</span></a></nav>
     </header>
     <div class="docs-layout wrap">
       <aside class="docs-sidebar">
@@ -22,6 +22,7 @@
         <nav aria-label="On this page"><p class="eyebrow">On this page</p><div class="toc">
 <ul>
 <li><a href="#install">Install</a></li>
+<li><a href="#upgrade-from-twine">Upgrade from Twine</a></li>
 <li><a href="#run-your-first-workflow">Run your first workflow</a></li>
 <li><a href="#folder-windows">Folder windows</a></li>
 <li><a href="#files">Files</a></li>
@@ -33,35 +34,69 @@
 </ul>
 </div>
 </nav>
-        <a class="docs-source" href="https://github.com/standing-desks/twine/blob/main/docs/documentation/guide/index.html">View on GitHub <span aria-hidden="true">↗</span></a>
+        <a class="docs-source" href="https://github.com/standing-desks/handshake/blob/main/docs/documentation/guide/index.html">View on GitHub <span aria-hidden="true">↗</span></a>
       </aside>
       <main id="main" class="docs-content">
         <p class="eyebrow">User guide</p>
         <h1 id="user-guide">User guide<a class="headerlink" href="#user-guide" title="Permanent link">#</a></h1>
-<p>Learn how to install Twine, run your first workflow, and work with coding agents
+<p>Learn how to install Handshake, run your first workflow, and work with coding agents
 in your folders.</p>
 <h2 id="install">Install<a class="headerlink" href="#install" title="Permanent link">#</a></h2>
-<p>Twine requires <strong>macOS 26+</strong> on Apple Silicon.</p>
+<p>Handshake requires <strong>macOS 26+</strong> on Apple Silicon.</p>
 <p>Install it with <a href="https://brew.sh">Homebrew</a>:</p>
-<pre class="highlight"><code class="language-sh">brew install --cask standing-desks/tap/twine-ade
+<pre class="highlight"><code class="language-sh">brew install --cask standing-desks/tap/handshake
 </code></pre>
-<p>Then open Twine from Applications.</p>
+<p>Then open Handshake from Applications.</p>
 <p>To install manually instead, download the <code>.dmg</code> from
-<a href="https://github.com/standing-desks/twine/releases/latest">the latest release</a>, open it,
-and drag <strong>Twine</strong> onto the <strong>Applications</strong> folder in the disk image.
-Wait for the copy to finish, eject the Twine disk image in Finder, and open Twine from Applications.</p>
+<a href="https://github.com/standing-desks/handshake/releases/latest">the latest release</a>, open it,
+and drag <strong>Handshake</strong> onto the <strong>Applications</strong> folder in the disk image.
+Wait for the copy to finish, eject the Handshake disk image in Finder, and open Handshake from Applications.</p>
 <p>Releases are Developer ID signed and notarized. The license is included inside the
 installed app bundle.</p>
-<p>To update a Homebrew install, quit Twine and run <code>brew update &amp;&amp; brew upgrade --cask standing-desks/tap/twine-ade</code>.
-To update a manual install, quit Twine, open the new DMG, and drag Twine into Applications,
+<p>To update a Homebrew install, quit Handshake and run <code>brew update &amp;&amp; brew upgrade --cask standing-desks/tap/handshake</code>.
+To update a manual install, quit Handshake, open the new DMG, and drag Handshake into Applications,
 choosing <strong>Replace</strong> when Finder asks. Your saved work and settings are retained.</p>
+<h2 id="upgrade-from-twine">Upgrade from Twine</h2>
+<p>Quit both apps before upgrading. New installs use <code>brew install --cask standing-desks/tap/handshake</code>.
+Existing <code>twineproject/tap</code> users can stay on that tap. After the tap rename migration is available,
+run:</p>
+<pre><code>brew trust --cask standing-desks/tap/handshake
+brew update
+brew upgrade --cask standing-desks/tap/handshake</code></pre>
+<p>Homebrew 6 and newer require explicit trust for the renamed cask; trust in the old name does not follow the rename.
+Omit the trust command on older Homebrew versions that do not provide it.
+See <a href="https://docs.brew.sh/Tap-Trust">Homebrew's tap trust guidance</a>.
+For the compatibility tap, use <code>twineproject/tap/handshake</code> in both the trust and upgrade commands.
+The historical <code>twine-app</code> and <code>twine-ade</code> casks map to <code>handshake</code>.</p>
+<p>For manual replacement, copy <strong>Handshake.app</strong> from the DMG into Applications,
+replace an existing Handshake copy, and move the old <strong>Twine.app</strong> to Trash.
+Normal app removal or <code>brew uninstall --cask handshake</code> preserves saved data;
+avoid <code>--zap</code> when keeping it.</p>
+<p>The first production launch adopts <code>~/Library/Application Support/Twine/</code> into
+<code>~/Library/Application Support/Handshake/</code>, including sessions, transcripts, trace details,
+attachments, and workflow layouts. It adopts <code>$XDG_CONFIG_HOME/twine/</code> into the sibling
+<code>handshake/</code> config root (default <code>~/.config/</code>), with imports, workflows, and themes.
+An existing Handshake root wins without being overwritten. Existing preference domains preserve
+launch choices, models, and zoom. Debug, preview, and test data stay isolated.</p>
+<p>The legacy roots remain available for recovery. Quit both apps, move the new Handshake root aside,
+and either use the old app with its retained Twine data or relaunch Handshake to retry migration.
+Changes in copied roots are not mirrored back to the legacy root. Symlink-managed config roots and
+linked files keep sharing their original targets, so edits are visible through both names. Keep a
+separate backup of those targets to roll back their contents. Quit the old app if migration reports
+that its data is in use.</p>
+<p><code>HANDSHAKE_DATA_DIRECTORY</code>, <code>HANDSHAKE_CONFIG_PATH</code>,
+<code>HANDSHAKE_PREFERENCES_SUITE</code>, and <code>HANDSHAKE_HARNESS_PATH</code> take precedence over
+their corresponding <code>TWINE_*</code> inputs. Explicit data/config overrides skip default-root
+migration. Config paths must be absolute; an invalid present new value does not use the legacy fallback.
+Old <code>twine_light</code>/<code>twine_dark</code> selections, imports, and customized theme files still
+resolve, with the existing Silica compatibility behavior preserved.</p>
 <h2 id="run-your-first-workflow">Run your first workflow<a class="headerlink" href="#run-your-first-workflow" title="Permanent link">#</a></h2>
 <ol>
-<li>Open Twine and choose <strong>Open Folder… (⌘O)</strong> to select the folder you want to work in.</li>
+<li>Open Handshake and choose <strong>Open Folder… (⌘O)</strong> to select the folder you want to work in.</li>
 <li>Create a session to keep the workflows for your task together.</li>
 <li>Add a workflow in a new tab (⌘T). Choose <strong>Terminal</strong> for a shell, or <strong>Single agent</strong>
    to work with a coding agent. For an agent workflow, install and authenticate its
-   harness separately, then select it in Twine's launch form.</li>
+   harness separately, then select it in Handshake's launch form.</li>
 <li>Start the workflow and enter your command or task in its terminal.</li>
 </ol>
 <p>You can return to the session later to review its output or continue working.
@@ -81,7 +116,7 @@ to scale the interface from 50% to 200%. Zoom applies to every window, including
 editors, previews, and dialogs, and is remembered between launches.</p>
 <h2 id="files">Files<a class="headerlink" href="#files" title="Permanent link">#</a></h2>
 <p>The sidebar starts open. Toggle it with the toolbar button or <strong>⌃⌘S</strong> to browse the folder or make more room for terminals. Expanding a directory loads only its children;
-empty directories remain visible. Twine refreshes expanded directories and the selected file
+empty directories remain visible. Handshake refreshes expanded directories and the selected file
 when they change, including changes made by shells and agents.</p>
 <p>Files also shows Git status for each repository’s primary checkout, including repositories
 inside a non-Git folder. Repository roots use the same folder icon and change dot as other directories.
@@ -99,7 +134,7 @@ redo, and <strong>⌘L</strong> to go to a line. Edits save automatically after 
 in background tabs. You can keep typing during saves or press <strong>⌘S</strong> to save immediately,
 even with autosave disabled or a longer delay. Configure autosave in Settings.
 Unsaved changes show “Edited” in the header. Settings still require an explicit Save.
-Before saving, Twine checks whether the file on disk has changed. If it has, choose <strong>Reload</strong> to discard
+Before saving, Handshake checks whether the file on disk has changed. If it has, choose <strong>Reload</strong> to discard
 your edits or <strong>Overwrite</strong> to save them; <strong>Cancel</strong> keeps the edits without changing the file.
 Autosave pauses after a conflict or save failure. Use <strong>File → Save</strong> or <strong>⌘S</strong> to retry;
 successful saving or reloading resumes autosave.
@@ -131,10 +166,10 @@ Search filenames and paths, filter by harness or kind, and use the refresh arrow
 The reader's info button shows the full path, provenance, type, and modification date.</p>
 <p>Markdown opens rendered, with headings, lists, tables, and links. Switch to
 <strong>Markdown</strong> to inspect the original text, including any frontmatter.
-Choose <strong>Edit</strong> to open a local Markdown file in Twine's editor.
+Choose <strong>Edit</strong> to open a local Markdown file in Handshake's editor.
 Memory edits follow the same autosave setting and delay as other file edits.
 Use <strong>File → Save</strong> or <strong>⌘S</strong> to save immediately, or to save manually when autosave is disabled.
-If the harness changes the file, Twine offers Reload or Overwrite before replacing it.
+If the harness changes the file, Handshake offers Reload or Overwrite before replacing it.
 Unsaved edits remain in their file tab when you return to Memories.</p>
 <p>SQLite records, settings summaries, and other non-Markdown sources remain read-only.
 The viewer includes generated memory, instructions, rules, agent memory, skills, and extension
@@ -201,11 +236,11 @@ opens the editor in the same tab. Changes to a built-in save as a user workflow.
 Adversarial connects an Implementer to a Reviewer. The Reviewer can approve the result or send feedback.
 Coordinator connects a Planner to Worker 1 and Worker 2. Both workers receive the plan and work on their
 named parts. Their results go to a Coordinator, which waits for both and checks the combined work.
-The default files are included in <code>Twine.app/Contents/Resources/workflows</code>.</p>
+The default files are included in <code>Handshake.app/Contents/Resources/workflows</code>.</p>
 <p>Start a graph, then enter the task in the first agent's terminal.
 Use <strong>Results</strong> to read all final outputs, select a result, or compare times.</p>
-<p>Twine saves user types as versioned TOML files in <code>$XDG_CONFIG_HOME/twine/workflows</code>.
-The default path is <code>~/.config/twine/workflows</code>. Copy a <code>.toml</code> file to this directory to
+<p>Handshake saves user types as versioned TOML files in <code>$XDG_CONFIG_HOME/handshake/workflows</code>.
+The default path is <code>~/.config/handshake/workflows</code>. Copy a <code>.toml</code> file to this directory to
 share or import a type. You can rename the file and keep it in version control. Keep its <code>id</code>
 when you move or share it. Use Create your own or edit a built-in to create a separate identity.
 The chooser refreshes after file changes. Invalid files are skipped. A save conflict preserves
@@ -238,15 +273,15 @@ its recorded output.</p>
 OpenCode show workflow activity but do not record individual prompts or tool calls, so
 <strong>In Depth</strong> has no detailed activity for them.
 If detailed tracing is unavailable, you can still use the agent's terminal and
-review its saved output. Twine leaves your harness configuration files unchanged.</p>
+review its saved output. Handshake leaves your harness configuration files unchanged.</p>
 <h2 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">#</a></h2>
-<p>Twine reads <code>$XDG_CONFIG_HOME/twine/config.toml</code> at startup, falling back to
-<code>~/.config/twine/config.toml</code> when <code>XDG_CONFIG_HOME</code> is unset, empty, or relative. It creates a
-small starter config and <code>themes/twine_dark.toml</code> and <code>themes/twine_light.toml</code> beside it
+<p>Handshake reads <code>$XDG_CONFIG_HOME/handshake/config.toml</code> at startup, falling back to
+<code>~/.config/handshake/config.toml</code> when <code>XDG_CONFIG_HOME</code> is unset, empty, or relative. It creates a
+small starter config and <code>themes/handshake_dark.toml</code> and <code>themes/handshake_light.toml</code> beside it
 on first launch. Existing files are never overwritten. When upgrading from Silica, customized default
-palettes are copied into the new default files once; untouched palettes adopt the Twine colors.
+palettes are copied into the new default files once; untouched palettes adopt the Handshake colors.
 Silica remains available through <code>themes/silica_dark.toml</code> and <code>themes/silica_light.toml</code> imports.</p>
-<p>Choose <strong>Twine → Settings…</strong> or press <strong>⌘,</strong> to edit the config file in a
+<p>Choose <strong>Handshake → Settings…</strong> or press <strong>⌘,</strong> to edit the config file in a
 popup attached to the current window. Save with <strong>⌘S</strong> or <strong>File → Save</strong>. Valid settings
 apply immediately to every open folder; invalid settings keep the previous file and active settings.
 Unsaved edits are protected when
@@ -268,20 +303,20 @@ to save manually, or change <code>editor.autosave_delay_ms</code> to a positive 
 and session forms use explicit saving through <strong>File → Save</strong> or <strong>⌘S</strong>; session names
 also accept Return.</p>
 <p>Terminal settings apply to live shell and agent terminals, including Bento panes, and terminal
-history. When <code>font_family</code> is omitted or empty, Twine uses its private bundled Hack Nerd Font
-at 13 points by default, including bold and italic faces. The bundled font is available only inside Twine;
+history. When <code>font_family</code> is omitted or empty, Handshake uses its private bundled Hack Nerd Font
+at 13 points by default, including bold and italic faces. The bundled font is available only inside Handshake;
 it is not installed into Font Book or exposed as a selectable family. To choose a custom font, install it
 in macOS and set its family name (for example, <code>font_family = "JetBrains Mono"</code>). Custom names
 resolve only to installed fonts, including a separately installed copy of Hack Nerd Font.
-Twine checks that <code>i</code> and <code>w</code> have equal character widths, allowing Nerd
+Handshake checks that <code>i</code> and <code>w</code> have equal character widths, allowing Nerd
 Fonts whose icons are wider. An unavailable font or one that fails this check falls back to
 system monospace with a warning. <code>font_size</code> defaults to 13 points and accepts sizes from 6
 through 72, including fractional sizes such as 13.5. <code>appearance.color_scheme</code> selects
 system, light, or dark appearance for all app windows.</p>
 <p>Select a different palette for each appearance with an optional <code>[theme]</code> table:</p>
 <pre class="highlight"><code class="language-toml">[theme]
-light = "twine_light"
-dark = "twine_dark"</code></pre>
+light = "handshake_light"
+dark = "handshake_dark"</code></pre>
 <p>Names omit the <code>.toml</code> extension and resolve to <code>themes/&lt;name&gt;.toml</code>
 beside the main config file. Either key can be omitted to keep its default. Spaces in filenames are
 supported; use a filename basename rather than a path. For example, choose
@@ -294,7 +329,7 @@ are left alone. The starter config includes only appearance, font, and theme cho
 for additional options.</p>
 <p>A top-level <code>import</code> loads one or more complete TOML configuration files. Put it before any
 table headers in <code>config.toml</code>:</p>
-<pre class="highlight"><code class="language-toml">import = ["themes/twine_dark.toml", "fonts.toml"]
+<pre class="highlight"><code class="language-toml">import = ["themes/handshake_dark.toml", "fonts.toml"]
 
 [terminal]
 font_size = 14.0
@@ -305,7 +340,7 @@ background = "#101820"
 foreground = "#e5e1cf"
 cursor = "#8fbe5c"
 selection = "#34495e"</code></pre>
-<p>A single file can also use <code>import = "themes/twine_dark.toml"</code>. Files merge in the order listed:
+<p>A single file can also use <code>import = "themes/handshake_dark.toml"</code>. Files merge in the order listed:
 later imports override earlier imports, then the importing file overrides them all. Tables merge
 recursively, so overriding <code>terminal.font_size</code> preserves an imported <code>terminal.font_family</code>.
 Individual terminal colors merge by name. Global imported colors override the selected palettes in both
@@ -315,7 +350,7 @@ Imported files can have their own top-level imports. Cycles are rejected, includ
 symlinks; each import tree is limited to 64 levels and 256 documents. Invalid imported settings cause
 the complete config to fall back to defaults even if a later file overrides that setting. Diagnostics
 identify the original file, line, and key. Missing imported files are reported and never created.</p>
-<p>Terminal colors normally come from <code>themes/twine_dark.toml</code> in dark mode and <code>themes/twine_light.toml</code>
+<p>Terminal colors normally come from <code>themes/handshake_dark.toml</code> in dark mode and <code>themes/handshake_light.toml</code>
 in light mode, unless a <code>[theme]</code> selector chooses another file. Those files use the same config tables, so they can also be imported directly. A full
 palette import applies the same colors in both appearances. Partial imports and local overrides
 replace only supplied colors; omitted colors retain the corresponding default theme values.</p>
@@ -345,7 +380,7 @@ brwhite = "#ffffff"</code></pre>
 <code>yellow</code>, <code>blue</code>, <code>magenta</code>, <code>cyan</code>, and <code>white</code>.
 Bright variants use the <code>br</code> prefix: <code>brblack</code> through <code>brwhite</code>.
 Legacy <code>ansi</code> arrays remain readable; named colors override their corresponding slots. The same tables and keys work in
-<code>config.toml</code> and all imported files. Saving settings in Twine updates shell and
+<code>config.toml</code> and all imported files. Saving settings in Handshake updates shell and
 agent terminals, Bento panes, saved output, and minimaps.</p>
 <p>Omitted settings use defaults. Invalid TOML, invalid values, or file errors (including theme files)
 use the complete defaults; unknown keys are ignored with a warning. Diagnostics include the file, line, and
@@ -359,7 +394,7 @@ Up to four panes share the same Bento styling and draggable dividers as agent wo
 pane, and closing the tab closes its panes. Pane layouts survive reopening. The Traces panel combines
 all panes in a tab into one set of tracks, and selecting an event focuses its owning pane.</p>
 <p>Paste a clipboard screenshot with <strong>⌘V</strong>, or drop images and files onto any terminal or agent
-pane. Clipboard images become private PNG files in the temporary directory; Twine inserts their
+pane. Clipboard images become private PNG files under the app data directory’s <code>attachments/</code> folder; Handshake inserts their
 quoted paths so the shell or harness can read them. File drops use their original paths.
 How much output remains in live scrollback depends on the harness's terminal display mode.</p>
 <h2 id="terminal-transcripts">Terminal transcripts<a class="headerlink" href="#terminal-transcripts" title="Permanent link">#</a></h2>
@@ -374,31 +409,31 @@ position. Points are placed by terminal row;
 the Traces panel spaces steps by start order. Loading <strong>Older traces</strong> adds those steps to the
 map when their output is still available. Output without an available anchor remains
 scrollable without a guessed point. Historical output also has its own minimap.</p>
-<p>Twine saves terminal output under <code>~/Library/Application Support/Twine/transcripts/</code>.
+<p>Handshake saves terminal output under <code>~/Library/Application Support/Handshake/transcripts/</code>.
 Terminal IDs remain unique across launches. Closing a terminal preserves output already accepted
 for recording. Reopening a folder restores recorded output and scrollback. Shells append a fresh
 prompt. Single agents resume their exact recorded harness session, retaining earlier output.
 Codex and Claude Code use session IDs; pi and OMP use session files. Antigravity and OpenCode
 support exact-ID resume but don't expose launch observers, so use <strong>Resume Session…</strong> to supply
 the conversation/session ID once. The same action is available for older tabs without a captured
-session. Twine never guesses the latest conversation. Cancelled or failed agents remain stopped.
+session. Handshake never guesses the latest conversation. Cancelled or failed agents remain stopped.
 <strong>Saved output</strong> opens earlier invocations, including an idle shell with no trace step.
 Live views and ANSI replay retain up to 100,000 rows in memory; the raw transcript limits below
 apply independently. New workflows appear in Traces once their terminals are active.</p>
 <p>Saved output is capped at <strong>64 MiB per terminal</strong> and <strong>512 MiB across all terminals</strong>.
 Older output expires when storage or metadata limits are reached. Expired output
-remains unavailable after reopening Twine.</p>
+remains unavailable after reopening Handshake.</p>
 <p>Click an anchored event in trace details to select its workflow and agent and scroll the mounted
 terminal to that point. <strong>Return to live</strong> scrolls back to the latest output. If a point belongs
-to an earlier invocation or has left scrollback, Twine opens a read-only snapshot of the saved
+to an earlier invocation or has left scrollback, Handshake opens a read-only snapshot of the saved
 output instead. A restored workflow's <strong>Saved output</strong> menu opens earlier invocations. Saved output replays cursor movement and recorded terminal sizes;
 resizing the window only changes its viewport. It displays text without terminal colors or
 images. Events without an anchor keep their details without a jump action.</p>
 <p>Saved output needs the earlier terminal output and its recorded sizes to display correctly.
-If either has expired, Twine shows <strong>Output no longer available</strong>.</p>
-        <p class="docs-end"><a href="#top">Back to top ↑</a><a href="https://github.com/standing-desks/twine/issues">Questions or feedback? ↗</a></p>
+If either has expired, Handshake shows <strong>Output no longer available</strong>.</p>
+        <p class="docs-end"><a href="#top">Back to top ↑</a><a href="https://github.com/standing-desks/handshake/issues">Questions or feedback? ↗</a></p>
       </main>
     </div>
-    <footer class="footer wrap"><div><a class="brand footer-brand" href="../../"><span>twine<span class="brand-period">.</span></span></a><p>A native macOS workspace for coordinating coding agents.</p></div><nav aria-label="Footer navigation"><a href="../">Documentation</a><a href="https://github.com/standing-desks/twine/releases/latest">Releases</a><a href="https://github.com/standing-desks/twine/blob/main/LICENSE">MIT License</a></nav></footer>
+    <footer class="footer wrap"><div><a class="brand footer-brand" href="../../"><span>Handshake</span></a><p>A native macOS workspace for coordinating coding agents.</p></div><nav aria-label="Footer navigation"><a href="../">Documentation</a><a href="https://github.com/standing-desks/handshake/releases/latest">Releases</a><a href="https://github.com/standing-desks/handshake/blob/main/LICENSE">MIT License</a></nav></footer>
   </body>
 </html>

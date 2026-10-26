@@ -9,14 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Try folder-scoped shared memory between Codex and Claude Code. Enable automatic sharing from
-  Memories, add or import a durable note, inspect its source, and withdraw it from future delivery.
-  New agents receive the shared catalog; changed inbox notes are held for review.
+- Share project memory automatically between Codex and Claude Code using a local AMIS 0.4 library,
+  native memory delivery, receiver-owned policy, provenance and recoverable publication receipts.
+- Inspect sharing status, pause or resume the project policy, and view native profile locations.
+
+### Fixed
+
+- Show active-session deferral as waiting, and keep storage details usable at 200% zoom.
+
+## [0.4.0]
 
 ### Changed
 
-- Remove the shared-memory prototype's 128-note and 16 KiB note ceilings. Scan the complete inbox,
-  search memory titles and sources in the app, and load selected note bodies on demand.
+- Rename Twine to Handshake across the app, terminal integration, documentation,
+  website, installer, and reusable Rust and C libraries.
+- Migrate existing app data, configuration, themes, and workflows to Handshake
+  while retaining the original files and honoring existing Handshake destinations.
+- Preserve the app's bundle identifier and preferences, and accept legacy Twine
+  environment overrides when their Handshake replacements are not supplied.
+- Package Handshake downloads and prepare both Homebrew taps for the new cask.
+
 
 ## [0.3.3] - 2026-10-17
 

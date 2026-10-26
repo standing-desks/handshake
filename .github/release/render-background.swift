@@ -9,6 +9,8 @@ guard let image = NSImage(contentsOf: source) else {
   fatalError("Cannot read installer-background.svg")
 }
 let size = image.size
+let previews = folder.appendingPathComponent("previews", isDirectory: true)
+try FileManager.default.createDirectory(at: previews, withIntermediateDirectories: true)
 var representations: [NSBitmapImageRep] = []
 for scale in [1, 2] {
   guard
@@ -36,6 +38,10 @@ for scale in [1, 2] {
     operation: .copy, fraction: 1)
   NSGraphicsContext.restoreGraphicsState()
   representations.append(bitmap)
+  guard let png = bitmap.representation(using: .png, properties: [:]) else {
+    fatalError("Cannot encode background preview")
+  }
+  try png.write(to: previews.appendingPathComponent("background-\(scale)x.png"))
 }
 guard
   let data = NSBitmapImageRep.tiffRepresentationOfImageReps(

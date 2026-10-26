@@ -1,5 +1,5 @@
 [workspace]
-members = ["twine-core", "twine-bridge"]
+members = ["handshake-core", "handshake-bridge"]
 resolver = "3"
 
 [profile.release]
@@ -10,7 +10,7 @@ debug = false
 strip = "debuginfo"
 
 [workspace.package]
-version = "0.3.3"
+version = "0.4.0"
 edition = "2024"
 publish = false
 

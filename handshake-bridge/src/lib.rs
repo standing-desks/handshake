@@ -1,0 +1,2198 @@
+//! C ABI adapter for the Handshake core.
+
+mod client;
+mod error;
+mod ffi;
+mod logging;
+mod memories;
+mod migration;
+mod native_memory;
+mod protocol;
+mod shared_memory;
+#[cfg(test)]
+mod test_support;
+
+use std::path::Path;
+
+use error::BridgeError;
+use ffi::{HandshakeBuffer, HandshakeStatus, HandshakeTerminalChunk, catch_status};
+use handshake_core::TerminalSize;
+
+pub use client::HandshakeClient;
+
+const MAX_COMMAND_BYTES: usize = 1024 * 1024;
+// JSON may escape each text byte as six bytes; allow the full 2 MiB editor limit plus paths.
+const MAX_FILE_SAVE_BYTES: usize = 6 * 2 * 1024 * 1024 + 16 * 1024;
+const MAX_EVENT_BATCH: usize = 256;
+/// The longest path macOS accepts (`PATH_MAX`).
+const MAX_PATH_BYTES: usize = 1024;
+const MAX_TERMINAL_INPUT_BYTES: usize = 64 * 1024;
+
+#[unsafe(no_mangle)]
+/// Opens the user config file without an application runtime or open folder.
+///
+/// # Safety
+/// Output must be aligned writable storage without an unreleased allocation. Null is rejected.
+pub unsafe extern "C" fn handshake_config_file(out_file: *mut HandshakeBuffer) -> HandshakeStatus {
+    catch_status(|| {
+        // SAFETY: The caller supplies writable output storage; the helper checks null.
+        unsafe { ffi::initialize_buffer(out_file) }?;
+        let file = handshake_core::config::read_user_file()?;
+        let response = serde_json::to_vec(&protocol::files::encode_preview(&file))?;
+        // SAFETY: Output was validated before allocating the response.
+        unsafe { ffi::write_buffer(out_file, HandshakeBuffer::from_vec(response)) }
+    })
+}
+
+#[unsafe(no_mangle)]
+/// Saves only the user config file, returning saved, conflict, or failed JSON.
+///
+/// # Safety
+/// Uses the input and output contracts of `handshake_client_save_file`, without a client pointer.
+pub unsafe extern "C" fn handshake_config_save_file(
+    request_bytes: *const u8,
+    request_length: usize,
+    out_result: *mut HandshakeBuffer,
+) -> HandshakeStatus {
+    catch_status(|| {
+        // SAFETY: The caller supplies writable output storage; the helper checks null.
+        unsafe { ffi::initialize_buffer(out_result) }?;
+        // SAFETY: Input meets the bounded readable-byte contract, checked by the helper.
+        let response = unsafe {
+            ffi::with_input_bytes(
+                request_bytes,
+                request_length,
+                MAX_FILE_SAVE_BYTES,
+                |bytes| {
+                    let text = std::str::from_utf8(bytes).map_err(|_| BridgeError::InvalidUtf8)?;
+                    let request: protocol::files::SaveRequest =
+                        serde_json::from_str(text).map_err(|_| BridgeError::MalformedCommand)?;
+                    Ok(protocol::files::encode_save(
+                        handshake_core::config::save_user_file(&request.into()),
+                    )?)
+                },
+            )
+        }?;
+        // SAFETY: Output was validated before allocating the response.
+        unsafe { ffi::write_buffer(out_result, HandshakeBuffer::from_vec(response)) }
+    })
+}
+
+#[unsafe(no_mangle)]
+/// Polls lazy file listings and versioned text previews.
+///
+/// # Safety
+/// Uses the same pointer, length, and ownership contract as `handshake_client_send_command`.
+pub unsafe extern "C" fn handshake_client_poll_files(
+    client: *mut HandshakeClient,
+    request_bytes: *const u8,
+    request_length: usize,
+    out_snapshot: *mut HandshakeBuffer,
+) -> HandshakeStatus {
+    catch_status(|| {
+        // SAFETY: The caller supplies writable, aligned output storage without a live allocation.
+        unsafe { ffi::initialize_buffer(out_snapshot) }?;
+        // SAFETY: The caller guarantees readable input and a live client for this call.
+        let response = unsafe {
+            ffi::with_input_bytes(request_bytes, request_length, MAX_COMMAND_BYTES, |bytes| {
+                ffi::with_client(client, |client| client.poll_files(bytes))
+            })
+        }?;
+        // SAFETY: Output was validated before allocating the response.
+        unsafe { ffi::write_buffer(out_snapshot, HandshakeBuffer::from_vec(response)) }
+    })
+}
+
+/// An exclusively owned model listing. Destroying it stops the harness if it's still running.
+pub struct HandshakeModelsRequest(handshake_core::ModelListRequest);
+
+#[unsafe(no_mangle)]
+/// Starts listing a harness's models and effort levels on a core thread, so the client stays free.
+///
+/// # Safety
+/// Uses the same pointer and length contract as `handshake_client_send_command` for the request.
+/// Non-null output must be aligned writable storage without an unreleased request.
+pub unsafe extern "C" fn handshake_client_request_harness_models(
+    client: *mut HandshakeClient,
+    request_bytes: *const u8,
+    request_length: usize,
+    out_request: *mut *mut HandshakeModelsRequest,
+) -> HandshakeStatus {
+    catch_status(|| {
+        // SAFETY: The caller guarantees aligned writable storage; null is checked.
+        let output = unsafe { out_request.as_mut() }.ok_or(BridgeError::NullPointer)?;
+        *output = std::ptr::null_mut();
+        // SAFETY: The caller guarantees readable input and a live client for this call.
+        let request = unsafe {
+            ffi::with_input_bytes(request_bytes, request_length, MAX_COMMAND_BYTES, |bytes| {
+                ffi::with_client(client, |client| client.request_harness_models(bytes))
+            })
+        }?;
+        *output = Box::into_raw(Box::new(HandshakeModelsRequest(request)));
+        Ok(())
+    })
+}
+
+#[unsafe(no_mangle)]
+/// Polls a model listing without waiting. Empty means the harness hasn't answered yet; otherwise
+/// the JSON status is listed (with models) or failed (with message).
+///
+/// # Safety
+/// Non-null request must be live and exclusively owned. Non-null output must be aligned writable
+/// storage without an unreleased allocation. Null pointers are rejected before dereferencing.
+pub unsafe extern "C" fn handshake_models_request_poll(
+    request: *mut HandshakeModelsRequest,
+    out_models: *mut HandshakeBuffer,
+) -> HandshakeStatus {
+    catch_status(|| {
+        // SAFETY: Output meets the buffer contract, and the helper checks null.
+        unsafe { ffi::initialize_buffer(out_models) }?;
+        // SAFETY: The caller keeps its exclusively owned request alive through this call.
+        let request = unsafe { request.as_ref() }.ok_or(BridgeError::NullPointer)?;
+        let result = request.0.poll().ok_or(BridgeError::Empty)?;
+        let response = protocol::harnesses::encode_models(result)?;
+        // SAFETY: The output storage is valid as described above.
+        unsafe { ffi::write_buffer(out_models, HandshakeBuffer::from_vec(response)) }
+    })
+}
+
+#[unsafe(no_mangle)]
+/// Releases a model listing, stopping its harness if it's still running.
+///
+/// # Safety
+/// A non-null pointer must be the unchanged live request returned by this bridge, and released once.
+pub unsafe extern "C" fn handshake_models_request_destroy(
+    request: *mut HandshakeModelsRequest,
+) -> HandshakeStatus {
+    catch_status(|| {
+        if request.is_null() {
+            return Err(BridgeError::NullPointer);
+        }
+        // SAFETY: The caller returns this bridge-owned request exactly once.
+        drop(unsafe { Box::from_raw(request) });
+        Ok(())
+    })
+}
+
+#[unsafe(no_mangle)]
+/// Saves text through core, returning a saved preview, conflict preview, or failure message as JSON.
+///
+/// # Safety
+/// Uses the same pointer, length, and ownership contract as `handshake_client_send_command`, with
+/// a `MAX_FILE_SAVE_BYTES` input limit to accommodate escaped text.
+pub unsafe extern "C" fn handshake_client_save_file(
+    client: *mut HandshakeClient,
+    request_bytes: *const u8,
+    request_length: usize,
+    out_result: *mut HandshakeBuffer,
+) -> HandshakeStatus {
+    catch_status(|| {
+        // SAFETY: The caller supplies writable, aligned output storage without a live allocation.
+        unsafe { ffi::initialize_buffer(out_result) }?;
+        // SAFETY: The caller guarantees readable input and a live client for this call.
+        let response = unsafe {
+            ffi::with_input_bytes(
+                request_bytes,
+                request_length,
+                MAX_FILE_SAVE_BYTES,
+                |bytes| ffi::with_client(client, |client| client.save_file(bytes)),
+            )
+        }?;
+        // SAFETY: Output was validated before allocating the response.
+        unsafe { ffi::write_buffer(out_result, HandshakeBuffer::from_vec(response)) }
+    })
+}
+
+#[unsafe(no_mangle)]
+/// Creates a bridge client whose core keeps its database in `data_directory`.
+///
+/// # Safety
+///
+/// A null `out_client` is rejected without dereferencing any other pointer. Otherwise it must
+/// point to aligned, writable storage for one client pointer. A data directory longer than
+/// `MAX_PATH_BYTES` is rejected without reading `data_directory`. For a nonzero length at or below
+/// the limit, a null `data_directory` is rejected; otherwise it must point to
+/// `data_directory_length` readable bytes.
+pub unsafe extern "C" fn handshake_client_create(
+    data_directory: *const u8,
+    data_directory_length: usize,
+    out_client: *mut *mut HandshakeClient,
+) -> HandshakeStatus {
+    // SAFETY: The helper has the same input and output contracts as this entry point.
+    unsafe { create_client(data_directory, data_directory_length, out_client, false) }
+}
+
+#[unsafe(no_mangle)]
+/// Creates an independent window runtime sharing storage with other window clients.
+///
+/// # Safety
+/// The pointer and length contracts are identical to [`handshake_client_create`].
+pub unsafe extern "C" fn handshake_client_create_window(
+    data_directory: *const u8,
+    data_directory_length: usize,
+    out_client: *mut *mut HandshakeClient,
+) -> HandshakeStatus {
+    // SAFETY: The helper has the same input and output contracts as this entry point.
+    unsafe { create_client(data_directory, data_directory_length, out_client, true) }
+}
+
+unsafe fn create_client(
+    data_directory: *const u8,
+    data_directory_length: usize,
+    out_client: *mut *mut HandshakeClient,
+    window: bool,
+) -> HandshakeStatus {
+    catch_status(|| {
+        // SAFETY: Guaranteed by this function's output contract.
+        unsafe { ffi::write_client(out_client, std::ptr::null_mut()) }?;
+        logging::initialize()?;
+        // SAFETY: Guaranteed by this function's input contract. The borrowed bytes stay scoped to
+        // the callback.
+        let client = unsafe {
+            ffi::with_input_bytes(
+                data_directory,
+                data_directory_length,
+                MAX_PATH_BYTES,
+                |bytes| {
+                    let path = Path::new(
+                        std::str::from_utf8(bytes).map_err(|_| BridgeError::InvalidUtf8)?,
+                    );
+                    if !path.is_absolute() {
+                        return Err(BridgeError::InvalidArgument);
+                    }
+                    if window {
+                        HandshakeClient::new_window(path)
+                    } else {
+                        HandshakeClient::new(path)
+                    }
+                },
+            )
+        }?;
+        // SAFETY: Guaranteed by this function's output contract.
+        unsafe { ffi::write_client(out_client, Box::into_raw(Box::new(client))) }
+    })
+}
+
+#[unsafe(no_mangle)]
+/// Returns a JSON array of folder paths to restore at app launch.
+///
+/// # Safety
+/// `client` must be live and actor-isolated. `out_result` must point to aligned, writable storage
+/// for an empty buffer. The returned buffer must be released once with `handshake_buffer_release`.
+pub unsafe extern "C" fn handshake_client_restorable_folders(
+    client: *mut HandshakeClient,
+    out_result: *mut HandshakeBuffer,
+) -> HandshakeStatus {
+    catch_status(|| {
+        // SAFETY: Guaranteed by this entry point's output contract.
+        unsafe { ffi::write_buffer(out_result, HandshakeBuffer::empty()) }?;
+        // SAFETY: Guaranteed by this entry point's client contract.
+        let bytes = unsafe { ffi::with_client(client, HandshakeClient::restorable_folders) }?;
+        // SAFETY: Output was validated before creating the response.
+        unsafe { ffi::write_buffer(out_result, HandshakeBuffer::from_vec(bytes)) }
+    })
+}
+
+#[unsafe(no_mangle)]
+/// Destroys a bridge client.
+///
+/// # Safety
+///
+/// A null `client` is accepted. Otherwise it must be a live, correctly aligned pointer returned by
+/// `handshake_client_create` and must be destroyed exactly once with no concurrent operations.
+pub unsafe extern "C" fn handshake_client_destroy(client: *mut HandshakeClient) -> HandshakeStatus {
+    catch_status(|| {
+        if client.is_null() {
+            return Ok(());
+        }
+
+        // SAFETY: The C contract requires the pointer to have come from `handshake_client_create` and
+        // to be destroyed exactly once. Swift keeps it actor-isolated and follows that contract.
+        unsafe { drop(Box::from_raw(client)) };
+        Ok(())
+    })
+}
+
+#[unsafe(no_mangle)]
+/// Sends one serialized command to the core.
+///
+/// # Safety
+///
+/// A null `out_response` is rejected without dereferencing any other pointer. Otherwise it must
+/// point to aligned, writable storage and must not contain an unreleased bridge allocation. A
+/// command larger than `MAX_COMMAND_BYTES` is rejected without reading `command_bytes` or `client`.
+/// For a nonzero command at or below the limit, a null `command_bytes` is rejected; otherwise it
+/// must point to `command_length` readable bytes. A null `client` is rejected; otherwise it must be
+/// live, correctly aligned, and exclusively owned for the call.
+pub unsafe extern "C" fn handshake_client_send_command(
+    client: *mut HandshakeClient,
+    command_bytes: *const u8,
+    command_length: usize,
+    out_response: *mut HandshakeBuffer,
+) -> HandshakeStatus {
+    catch_status(|| {
+        // SAFETY: Guaranteed by this function's output contract.
+        unsafe { ffi::initialize_buffer(out_response) }?;
+        // SAFETY: Guaranteed by this function's input and client contracts. The borrowed bytes stay
+        // scoped to the callback.
+        let response = unsafe {
+            ffi::with_input_bytes(command_bytes, command_length, MAX_COMMAND_BYTES, |bytes| {
+                // SAFETY: The outer function's contract keeps the client alive for this call.
+                ffi::with_client(client, |client| client.send_command(bytes))
+            })
+        }?;
+        // SAFETY: Guaranteed by this function's output contract.
+        unsafe { ffi::write_buffer(out_response, HandshakeBuffer::from_vec(response)) }
+    })
+}
+
+#[unsafe(no_mangle)]
+/// Returns a serialized state snapshot.
+///
+/// # Safety
+///
+/// A null `out_snapshot` is rejected without dereferencing it. Otherwise it must point to aligned,
+/// writable storage and must not contain an unreleased bridge allocation. A null `client` is
+/// rejected; otherwise it must be live, correctly aligned, and exclusively owned for the call.
+pub unsafe extern "C" fn handshake_client_snapshot(
+    client: *mut HandshakeClient,
+    out_snapshot: *mut HandshakeBuffer,
+) -> HandshakeStatus {
+    catch_status(|| {
+        // SAFETY: Guaranteed by this function's output contract.
+        unsafe { ffi::initialize_buffer(out_snapshot) }?;
+        // SAFETY: Guaranteed by this function's client contract.
+        let snapshot = unsafe { ffi::with_client(client, HandshakeClient::snapshot) }?;
+        // SAFETY: Guaranteed by this function's output contract.
+        unsafe { ffi::write_buffer(out_snapshot, HandshakeBuffer::from_vec(snapshot)) }
+    })
+}
+
+#[unsafe(no_mangle)]
+/// Returns serialized events after a sequence cursor.
+///
+/// # Safety
+///
+/// A null `out_events` is rejected without dereferencing it. Otherwise it must point to aligned,
+/// writable storage and must not contain an unreleased bridge allocation. A null `client` is
+/// rejected; otherwise it must be live, correctly aligned, and exclusively owned for the call.
+pub unsafe extern "C" fn handshake_client_events_after(
+    client: *mut HandshakeClient,
+    sequence: u64,
+    limit: u32,
+    out_events: *mut HandshakeBuffer,
+) -> HandshakeStatus {
+    catch_status(|| {
+        // SAFETY: Guaranteed by this function's output contract.
+        unsafe { ffi::initialize_buffer(out_events) }?;
+        if limit == 0 || usize::try_from(limit).unwrap_or(usize::MAX) > MAX_EVENT_BATCH {
+            return Err(BridgeError::InvalidArgument);
+        }
+
+        // SAFETY: Guaranteed by this function's client contract.
+        let events = unsafe {
+            ffi::with_client(client, |client| {
+                client.events_after(sequence, limit as usize)
+            })
+        }?;
+        // SAFETY: Guaranteed by this function's output contract.
+        unsafe { ffi::write_buffer(out_events, HandshakeBuffer::from_vec(events)) }
+    })
+}
+
+#[unsafe(no_mangle)]
+/// Returns a page of durable spans; a zero `before_span_id` reads the newest page.
+///
+/// # Safety
+/// The client must be live and exclusively owned during this call. The output must identify aligned,
+/// writable storage without a live bridge allocation. Null pointers are rejected before use.
+pub unsafe extern "C" fn handshake_client_workflow_trace(
+    client: *mut HandshakeClient,
+    workflow_id: u64,
+    before_span_id: u64,
+    limit: u32,
+    out_page: *mut HandshakeBuffer,
+) -> HandshakeStatus {
+    catch_status(|| {
+        // SAFETY: Guaranteed by this function's output contract.
+        unsafe { ffi::initialize_buffer(out_page) }?;
+        if limit == 0 || limit as usize > handshake_core::MAX_TRACE_PAGE_SIZE {
+            return Err(BridgeError::InvalidArgument);
+        }
+        // SAFETY: Guaranteed by this function's client contract.
+        let page = unsafe {
+            ffi::with_client(client, |client| {
+                client.workflow_trace(workflow_id, before_span_id, limit as usize)
+            })
+        }?;
+        // SAFETY: Guaranteed by this function's output contract.
+        unsafe { ffi::write_buffer(out_page, HandshakeBuffer::from_vec(page)) }
+    })
+}
+
+#[unsafe(no_mangle)]
+/// Returns a page of span events; a zero `after_event_id` reads from the beginning.
+///
+/// # Safety
+/// The client must be live and exclusively owned during this call. The output must identify aligned,
+/// writable storage without a live bridge allocation. Null pointers are rejected before use.
+pub unsafe extern "C" fn handshake_client_trace_events(
+    client: *mut HandshakeClient,
+    span_id: u64,
+    after_event_id: u64,
+    limit: u32,
+    out_page: *mut HandshakeBuffer,
+) -> HandshakeStatus {
+    catch_status(|| {
+        // SAFETY: Guaranteed by this function's output contract.
+        unsafe { ffi::initialize_buffer(out_page) }?;
+        if limit == 0 || limit as usize > handshake_core::MAX_TRACE_PAGE_SIZE {
+            return Err(BridgeError::InvalidArgument);
+        }
+        // SAFETY: Guaranteed by this function's client contract.
+        let page = unsafe {
+            ffi::with_client(client, |client| {
+                client.trace_events(span_id, after_event_id, limit as usize)
+            })
+        }?;
+        // SAFETY: Guaranteed by this function's output contract.
+        unsafe { ffi::write_buffer(out_page, HandshakeBuffer::from_vec(page)) }
+    })
+}
+
+#[unsafe(no_mangle)]
+/// Returns a page of native activities; a zero `after_activity_id` reads from the beginning.
+///
+/// # Safety
+/// The client must be live and exclusively owned during this call. The output must identify aligned,
+/// writable storage without a live bridge allocation. Null pointers are rejected before use.
+pub unsafe extern "C" fn handshake_client_trace_activities(
+    client: *mut HandshakeClient,
+    span_id: u64,
+    after_activity_id: u64,
+    limit: u32,
+    out_page: *mut HandshakeBuffer,
+) -> HandshakeStatus {
+    catch_status(|| {
+        // SAFETY: Guaranteed by this function's output contract.
+        unsafe { ffi::initialize_buffer(out_page) }?;
+        if limit == 0 || limit as usize > handshake_core::MAX_TRACE_PAGE_SIZE {
+            return Err(BridgeError::InvalidArgument);
+        }
+        // SAFETY: Guaranteed by this function's client contract.
+        let page = unsafe {
+            ffi::with_client(client, |client| {
+                client.trace_activities(span_id, after_activity_id, limit as usize)
+            })
+        }?;
+        // SAFETY: Guaranteed by this function's output contract.
+        unsafe { ffi::write_buffer(out_page, HandshakeBuffer::from_vec(page)) }
+    })
+}
+
+#[unsafe(no_mangle)]
+/// Returns a UTF-8 page of full recorded activity input or output.
+///
+/// # Safety
+/// The client must be live and exclusively owned. Output storage must be aligned and writable
+/// without an existing allocation. Null pointers and invalid limits are rejected.
+pub unsafe extern "C" fn handshake_client_trace_detail(
+    client: *mut HandshakeClient,
+    activity_id: u64,
+    output: bool,
+    offset: u64,
+    limit: u32,
+    out_page: *mut HandshakeBuffer,
+) -> HandshakeStatus {
+    catch_status(|| {
+        // SAFETY: The caller supplies writable output storage, validated before use.
+        unsafe { ffi::initialize_buffer(out_page) }?;
+        if !(4..=64 * 1024).contains(&limit) {
+            return Err(BridgeError::InvalidArgument);
+        }
+        // SAFETY: The caller owns a live client for the duration of this call.
+        let page = unsafe {
+            ffi::with_client(client, |client| {
+                client.trace_detail(activity_id, output, offset, limit as usize)
+            })
+        }?;
+        // SAFETY: Output storage was initialized and validated above.
+        unsafe { ffi::write_buffer(out_page, HandshakeBuffer::from_vec(page)) }
+    })
+}
+
+#[unsafe(no_mangle)]
+/// Reads trace storage, pins/unpins a step, or clears completed unpinned full details.
+///
+/// # Safety
+/// The client must be live and exclusively owned; output must be writable without an existing
+/// allocation. Null pointers and invalid operation values are rejected.
+pub unsafe extern "C" fn handshake_client_trace_storage(
+    client: *mut HandshakeClient,
+    span_id: u64,
+    operation: u32,
+    out_page: *mut HandshakeBuffer,
+) -> HandshakeStatus {
+    catch_status(|| {
+        // SAFETY: Output storage is validated and initialized before use.
+        unsafe { ffi::initialize_buffer(out_page) }?;
+        if operation > 3 || (matches!(operation, 1 | 2) && span_id == 0) {
+            return Err(BridgeError::InvalidArgument);
+        }
+        // SAFETY: The caller owns the live client exclusively for this call.
+        let bytes =
+            unsafe { ffi::with_client(client, |client| client.trace_storage(span_id, operation)) }?;
+        // SAFETY: Output was initialized and validated above.
+        unsafe { ffi::write_buffer(out_page, HandshakeBuffer::from_vec(bytes)) }
+    })
+}
+
+#[unsafe(no_mangle)]
+/// Removes and returns the next binary terminal-output chunk.
+///
+/// # Safety
+///
+/// A null `out_chunk` is rejected without dereferencing it. Otherwise it must point to aligned,
+/// writable storage and its byte buffer must not contain an unreleased bridge allocation. A null
+/// `client` is rejected; otherwise it must be live, correctly aligned, and exclusively owned for
+/// the call.
+pub unsafe extern "C" fn handshake_client_next_terminal_chunk(
+    client: *mut HandshakeClient,
+    out_chunk: *mut HandshakeTerminalChunk,
+) -> HandshakeStatus {
+    catch_status(|| {
+        // SAFETY: Guaranteed by this function's output contract.
+        unsafe { ffi::initialize_terminal_chunk(out_chunk) }?;
+        // SAFETY: Guaranteed by this function's client contract.
+        let Some(chunk) =
+            (unsafe { ffi::with_client(client, HandshakeClient::next_terminal_chunk) })?
+        else {
+            return Err(BridgeError::Empty);
+        };
+        // SAFETY: Guaranteed by this function's output contract.
+        unsafe { ffi::write_terminal_chunk(out_chunk, HandshakeTerminalChunk::from_core(chunk)) }
+    })
+}
+
+/// An exclusively owned pending transcript read. Destroy exactly once after completion/cancellation.
+pub struct HandshakeTranscriptRequest(handshake_core::TranscriptRequest);
+
+#[unsafe(no_mangle)]
+/// Starts a transcript read without waiting for disk. Empty means retry when queue space is available.
+///
+/// # Safety
+/// Non-null client must be live and exclusively owned. Non-null output must be aligned writable
+/// storage without an unreleased request. Null pointers are rejected before dereferencing.
+pub unsafe extern "C" fn handshake_client_request_transcript(
+    client: *mut HandshakeClient,
+    terminal_id: u64,
+    offset: u64,
+    limit: u32,
+    out_request: *mut *mut HandshakeTranscriptRequest,
+) -> HandshakeStatus {
+    catch_status(|| {
+        // SAFETY: The caller guarantees aligned writable storage; null is checked.
+        let output = unsafe { out_request.as_mut() }.ok_or(BridgeError::NullPointer)?;
+        *output = std::ptr::null_mut();
+        if limit == 0 || limit as usize > handshake_core::MAX_TRANSCRIPT_READ_BYTES {
+            return Err(BridgeError::InvalidArgument);
+        }
+        // SAFETY: The client is exclusively owned and alive for this call.
+        let request = unsafe {
+            ffi::with_client(client, |client| {
+                client.request_terminal_transcript(terminal_id, offset, limit as usize)
+            })
+        }?
+        .ok_or(BridgeError::Empty)?;
+        *output = Box::into_raw(Box::new(HandshakeTranscriptRequest(request)));
+        Ok(())
+    })
+}
+
+#[unsafe(no_mangle)]
+/// Polls a transcript request without waiting for storage. Empty means it is still pending.
+///
+/// # Safety
+/// Non-null request must be live and exclusively owned. Non-null output must be aligned writable
+/// storage without an unreleased allocation. Null pointers are rejected before dereferencing.
+pub unsafe extern "C" fn handshake_transcript_request_poll(
+    request: *mut HandshakeTranscriptRequest,
+    out_page: *mut HandshakeBuffer,
+) -> HandshakeStatus {
+    catch_status(|| {
+        // SAFETY: Output meets the buffer contract, and the helper checks null.
+        unsafe { ffi::initialize_buffer(out_page) }?;
+        // SAFETY: The caller keeps its exclusively owned request alive through this call.
+        let request = unsafe { request.as_ref() }.ok_or(BridgeError::NullPointer)?;
+        let page = request
+            .0
+            .poll()
+            .map_err(|error| {
+                BridgeError::Application(handshake_core::ApplicationError::Terminal(
+                    handshake_core::TerminalError::Transcript(error),
+                ))
+            })?
+            .ok_or(BridgeError::Empty)?;
+        // SAFETY: The output storage is valid as described above.
+        unsafe {
+            ffi::write_buffer(
+                out_page,
+                HandshakeBuffer::from_vec(client::encode_transcript(page)),
+            )
+        }
+    })
+}
+
+#[unsafe(no_mangle)]
+/// Releases a completed or canceled transcript request.
+///
+/// # Safety
+/// A non-null pointer must be the unchanged live request returned by this bridge, and released once.
+pub unsafe extern "C" fn handshake_transcript_request_destroy(
+    request: *mut HandshakeTranscriptRequest,
+) -> HandshakeStatus {
+    catch_status(|| {
+        if request.is_null() {
+            return Err(BridgeError::NullPointer);
+        }
+        // SAFETY: The caller returns this bridge-owned request exactly once.
+        drop(unsafe { Box::from_raw(request) });
+        Ok(())
+    })
+}
+
+#[unsafe(no_mangle)]
+/// Writes raw input bytes to a live terminal.
+///
+/// # Safety
+///
+/// An input larger than `MAX_TERMINAL_INPUT_BYTES` is rejected without reading `input_bytes`. For
+/// a nonzero input at or below that limit, a null `input_bytes` is rejected; otherwise it must
+/// identify `input_length` readable bytes for the duration of this call. A null `client` is
+/// rejected; otherwise it must be live, correctly aligned, and exclusively owned for the call.
+pub unsafe extern "C" fn handshake_client_write_terminal_input(
+    client: *mut HandshakeClient,
+    terminal_id: u64,
+    input_bytes: *const u8,
+    input_length: usize,
+) -> HandshakeStatus {
+    // SAFETY: This entry point preserves the helper's client and input slice contracts.
+    unsafe { write_terminal_bytes(client, terminal_id, input_bytes, input_length, true) }
+}
+
+#[unsafe(no_mangle)]
+/// Sends a terminal-generated reply without treating it as user draft input.
+///
+/// # Safety
+/// The client and input slice must satisfy the same contracts as
+/// `handshake_client_write_terminal_input`.
+pub unsafe extern "C" fn handshake_client_write_terminal_response(
+    client: *mut HandshakeClient,
+    terminal_id: u64,
+    input_bytes: *const u8,
+    input_length: usize,
+) -> HandshakeStatus {
+    // SAFETY: This entry point preserves the helper's client and input slice contracts.
+    unsafe { write_terminal_bytes(client, terminal_id, input_bytes, input_length, false) }
+}
+
+unsafe fn write_terminal_bytes(
+    client: *mut HandshakeClient,
+    terminal_id: u64,
+    input_bytes: *const u8,
+    input_length: usize,
+    user_input: bool,
+) -> HandshakeStatus {
+    catch_status(|| {
+        // SAFETY: Guaranteed by this function's input contract. The slice remains scoped to the
+        // callback and is copied to the PTY before this call returns.
+        unsafe {
+            ffi::with_input_bytes(
+                input_bytes,
+                input_length,
+                MAX_TERMINAL_INPUT_BYTES,
+                |bytes| {
+                    // SAFETY: The outer function's contract keeps the client alive for this call.
+                    ffi::with_client(client, |client| {
+                        client.write_terminal_input(terminal_id, bytes, user_input)
+                    })
+                },
+            )
+        }
+    })
+}
+
+#[unsafe(no_mangle)]
+/// Changes the dimensions of a live terminal's PTY.
+///
+/// # Safety
+///
+/// A null `client` is rejected; otherwise it must be live, correctly aligned, and exclusively
+/// owned for the duration of this call.
+pub unsafe extern "C" fn handshake_client_resize_terminal(
+    client: *mut HandshakeClient,
+    terminal_id: u64,
+    rows: u16,
+    columns: u16,
+    pixel_width: u16,
+    pixel_height: u16,
+) -> HandshakeStatus {
+    catch_status(|| {
+        // SAFETY: Guaranteed by this function's client contract.
+        unsafe {
+            ffi::with_client(client, |client| {
+                client.resize_terminal(
+                    terminal_id,
+                    TerminalSize {
+                        rows,
+                        columns,
+                        pixel_width,
+                        pixel_height,
+                    },
+                )
+            })
+        }
+    })
+}
+
+#[unsafe(no_mangle)]
+/// Releases a bridge buffer.
+///
+/// # Safety
+///
+/// A null `buffer` is rejected without dereferencing it. Otherwise it must point to aligned,
+/// writable storage. A nonempty buffer must contain the unchanged allocation returned by this
+/// bridge and must be released exactly once.
+pub unsafe extern "C" fn handshake_buffer_release(buffer: *mut HandshakeBuffer) -> HandshakeStatus {
+    // SAFETY: Guaranteed by this function's contract.
+    catch_status(|| unsafe { ffi::release_buffer(buffer) })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::ffi::{OsStr, OsString};
+    use std::path::PathBuf;
+    use std::time::{Duration, Instant};
+
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
+
+    use tempfile::TempDir;
+
+    use super::*;
+    use crate::test_support::TEST_LOCK;
+
+    #[test]
+    fn config_editor_reads_saves_and_conflicts_without_a_client() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        let directory = TempDir::new().unwrap();
+        let _environment =
+            EnvironmentOverride::set("XDG_CONFIG_HOME", directory.path().as_os_str());
+        let mut output = HandshakeBuffer::empty();
+        // SAFETY: Output is aligned writable storage with no live allocation.
+        assert_eq!(
+            unsafe { handshake_config_file(&raw mut output) },
+            HandshakeStatus::Ok
+        );
+        let file: serde_json::Value = serde_json::from_slice(&take_buffer(output)).unwrap();
+        assert_eq!(file["status"], "text");
+        let source = file["text"].as_str().unwrap();
+        assert!(source.contains("[theme]"));
+        assert!(source.contains(
+            "https://standing-desks.github.io/handshake/documentation/guide/#configuration"
+        ));
+        assert!(!source.contains("[terminal.colors]"));
+        let mut request = serde_json::json!({
+            "path": file["path"], "folder": Path::new(file["path"].as_str().unwrap()).parent().unwrap(),
+            "text": "terminal.font_size = 18\n", "expectedVersion": file["version"], "overwrite": false,
+        });
+        let save = |request: &serde_json::Value| {
+            let bytes = serde_json::to_vec(request).unwrap();
+            let mut output = HandshakeBuffer::empty();
+            // SAFETY: Request bytes and empty output live throughout the call.
+            assert_eq!(
+                unsafe { handshake_config_save_file(bytes.as_ptr(), bytes.len(), &raw mut output) },
+                HandshakeStatus::Ok
+            );
+            serde_json::from_slice::<serde_json::Value>(&take_buffer(output)).unwrap()
+        };
+        let saved = save(&request);
+        assert_eq!(saved["status"], "saved");
+        request["expectedVersion"] = saved["file"]["version"].clone();
+        std::fs::write(file["path"].as_str().unwrap(), "# external\n").unwrap();
+        let conflict = save(&request);
+        assert_eq!(conflict["status"], "conflict");
+        assert_eq!(conflict["file"]["text"], "# external\n");
+        request["overwrite"] = true.into();
+        assert_eq!(save(&request)["status"], "saved");
+        request["path"] = directory
+            .path()
+            .join("other.toml")
+            .to_string_lossy()
+            .to_string()
+            .into();
+        assert_eq!(save(&request)["status"], "failed");
+        assert!(!directory.path().join("other.toml").exists());
+    }
+
+    #[test]
+    fn config_editor_rejects_null_pointers_invalid_json_and_oversized_input() {
+        let mut output = HandshakeBuffer::empty();
+        // SAFETY: Null or excessive input is rejected before dereferencing it; output is valid.
+        unsafe {
+            assert_eq!(
+                handshake_config_file(std::ptr::null_mut()),
+                HandshakeStatus::NullPointer
+            );
+            assert_eq!(
+                handshake_config_save_file(std::ptr::null(), 1, &raw mut output),
+                HandshakeStatus::NullPointer
+            );
+            assert_eq!(
+                handshake_config_save_file(
+                    std::ptr::null(),
+                    MAX_FILE_SAVE_BYTES + 1,
+                    &raw mut output
+                ),
+                HandshakeStatus::InvalidArgument
+            );
+            assert_eq!(
+                handshake_config_save_file(b"{".as_ptr(), 1, &raw mut output),
+                HandshakeStatus::MalformedCommand
+            );
+            assert_eq!(
+                handshake_config_save_file([0xff].as_ptr(), 1, &raw mut output),
+                HandshakeStatus::InvalidUtf8
+            );
+        }
+        assert!(output.data.is_null());
+        assert_eq!(output.length, 0);
+    }
+
+    struct EnvironmentOverride {
+        key: &'static str,
+        previous: Option<OsString>,
+    }
+
+    impl EnvironmentOverride {
+        fn set(key: &'static str, value: &OsStr) -> Self {
+            let previous = std::env::var_os(key);
+            // SAFETY: Bridge tests that override the environment hold `TEST_LOCK`. Client
+            // creation reads HOME synchronously, and terminal creation reads SHELL synchronously.
+            unsafe { std::env::set_var(key, value) };
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvironmentOverride {
+        fn drop(&mut self) {
+            // SAFETY: The guard is dropped while its test still holds `TEST_LOCK`.
+            unsafe {
+                if let Some(previous) = &self.previous {
+                    std::env::set_var(self.key, previous);
+                } else {
+                    std::env::remove_var(self.key);
+                }
+            }
+        }
+    }
+
+    /// Creates a client with a fresh data directory, which must outlive the client.
+    fn create_client() -> (TempDir, *mut HandshakeClient) {
+        let data = tempfile::tempdir().expect("a data directory should be available");
+        let client = create_client_in(data.path());
+        (data, client)
+    }
+
+    fn create_client_in(data_directory: &Path) -> *mut HandshakeClient {
+        let home = tempfile::tempdir().expect("an isolated home directory should be available");
+        let _home_override = EnvironmentOverride::set("HOME", home.path().as_os_str());
+        let config_home = home.path().join(".config");
+        let _config_override = EnvironmentOverride::set("XDG_CONFIG_HOME", config_home.as_os_str());
+        let path = data_directory
+            .to_str()
+            .expect("the test data directory should be UTF-8");
+        let mut client = std::ptr::null_mut();
+        assert_eq!(
+            // SAFETY: The path bytes are live for the call and the output points to writable
+            // storage for one client pointer.
+            unsafe { handshake_client_create(path.as_ptr(), path.len(), &raw mut client) },
+            HandshakeStatus::Ok
+        );
+        assert!(!client.is_null());
+        assert!(home.path().join(".config/handshake/config.toml").is_file());
+        client
+    }
+
+    fn send_command(client: *mut HandshakeClient, command: &str) -> serde_json::Value {
+        let mut response = HandshakeBuffer::empty();
+        assert_eq!(
+            // SAFETY: The test client and command bytes are live and the output is empty.
+            unsafe {
+                handshake_client_send_command(
+                    client,
+                    command.as_ptr(),
+                    command.len(),
+                    &raw mut response,
+                )
+            },
+            HandshakeStatus::Ok
+        );
+        serde_json::from_slice(&take_buffer(response)).expect("the response should be JSON")
+    }
+
+    fn snapshot(client: *mut HandshakeClient) -> serde_json::Value {
+        let mut snapshot = HandshakeBuffer::empty();
+        assert_eq!(
+            // SAFETY: The test client is live and the output storage is empty and writable.
+            unsafe { handshake_client_snapshot(client, &raw mut snapshot) },
+            HandshakeStatus::Ok
+        );
+        serde_json::from_slice(&take_buffer(snapshot)).expect("the snapshot should be JSON")
+    }
+
+    fn events_after(client: *mut HandshakeClient, sequence: u64) -> serde_json::Value {
+        let mut events = HandshakeBuffer::empty();
+        assert_eq!(
+            // SAFETY: The test client is live and the output storage is empty and writable.
+            unsafe { handshake_client_events_after(client, sequence, 16, &raw mut events) },
+            HandshakeStatus::Ok
+        );
+        serde_json::from_slice(&take_buffer(events)).expect("the events should be JSON")
+    }
+
+    fn destroy(client: *mut HandshakeClient) {
+        // SAFETY: The live test client is destroyed exactly once after all operations finish.
+        assert_eq!(
+            unsafe { handshake_client_destroy(client) },
+            HandshakeStatus::Ok
+        );
+    }
+
+    fn take_buffer(mut buffer: HandshakeBuffer) -> Vec<u8> {
+        let bytes = if buffer.length == 0 {
+            Vec::new()
+        } else {
+            // SAFETY: The buffer was returned by this bridge and remains owned until release.
+            unsafe { std::slice::from_raw_parts(buffer.data, buffer.length) }.to_vec()
+        };
+        // SAFETY: This is the unchanged bridge allocation and has not been released.
+        assert_eq!(
+            unsafe { handshake_buffer_release(&raw mut buffer) },
+            HandshakeStatus::Ok
+        );
+        assert!(buffer.data.is_null());
+        assert_eq!(buffer.length, 0);
+        bytes
+    }
+
+    fn send_json_command(
+        client: *mut HandshakeClient,
+        command: &serde_json::Value,
+    ) -> serde_json::Value {
+        let command = serde_json::to_vec(&command).expect("test command should encode");
+        let mut response = HandshakeBuffer::empty();
+        assert_eq!(
+            // SAFETY: The test client and command bytes are live and the output is empty.
+            unsafe {
+                handshake_client_send_command(
+                    client,
+                    command.as_ptr(),
+                    command.len(),
+                    &raw mut response,
+                )
+            },
+            HandshakeStatus::Ok
+        );
+        serde_json::from_slice(&take_buffer(response)).expect("command response should be JSON")
+    }
+
+    /// Writes a shell script that `SHELL` can point at, so a test controls what the terminal runs.
+    fn write_test_shell(name: &str, script: &str) -> PathBuf {
+        let path =
+            std::env::temp_dir().join(format!("handshake-bridge-{name}-{}", std::process::id()));
+        std::fs::write(&path, script).expect("test shell should be written");
+        #[cfg(unix)]
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700))
+            .expect("test shell should be executable");
+        path
+    }
+
+    /// Starts a terminal in the current directory through the command ABI and returns its ID.
+    fn start_terminal(client: *mut HandshakeClient, request_id: u64) -> u64 {
+        let working_directory = std::env::current_dir().expect("current directory should exist");
+        let response = send_json_command(
+            client,
+            &serde_json::json!({
+                "requestId": request_id,
+                "command": {
+                    "type": "startTerminal",
+                    "workingDirectory": working_directory,
+                    "size": {
+                        "rows": 24,
+                        "columns": 80,
+                        "pixelWidth": 800,
+                        "pixelHeight": 480
+                    }
+                }
+            }),
+        );
+        assert_eq!(response["status"], "accepted");
+
+        let mut events = HandshakeBuffer::empty();
+        assert_eq!(
+            // SAFETY: The test client is live and the output storage is empty and writable.
+            unsafe { handshake_client_events_after(client, 0, 16, &raw mut events) },
+            HandshakeStatus::Ok
+        );
+        let events: serde_json::Value =
+            serde_json::from_slice(&take_buffer(events)).expect("terminal events should be JSON");
+        events["events"]
+            .as_array()
+            .expect("events should be an array")
+            .iter()
+            .find_map(|event| {
+                (event["event"]["requestId"] == request_id)
+                    .then(|| event["event"]["result"]["terminalId"].as_u64())
+                    .flatten()
+            })
+            .expect("start event should include the terminal ID")
+    }
+
+    #[test]
+    fn trace_reads_validate_limits_pointers_and_release_their_buffers() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        let (data, client) = create_client();
+        let folder = tempfile::tempdir().unwrap();
+        send_json_command(
+            client,
+            &serde_json::json!({"requestId":1,"command":{"type":"openFolder", "path":folder.path()}}),
+        );
+        send_json_command(
+            client,
+            &serde_json::json!({"requestId":2,"command":{"type":"createWorkflow", "folder":folder.path(), "kind":"terminal", "size":{"rows":24,"columns":80,"pixelWidth":800,"pixelHeight":480}}}),
+        );
+        let workflow_id = snapshot(client)["workflows"]["workflows"][0]["workflowId"]
+            .as_u64()
+            .unwrap();
+        let mut buffer = HandshakeBuffer::empty();
+        // SAFETY: All output storage and client handles are valid, except intentional null tests.
+        unsafe {
+            assert_eq!(
+                handshake_client_workflow_trace(client, workflow_id, 0, 0, &raw mut buffer),
+                HandshakeStatus::InvalidArgument
+            );
+            assert!(buffer.data.is_null());
+            assert_eq!(
+                handshake_client_workflow_trace(
+                    std::ptr::null_mut(),
+                    workflow_id,
+                    0,
+                    10,
+                    &raw mut buffer
+                ),
+                HandshakeStatus::NullPointer
+            );
+            assert_eq!(
+                handshake_client_workflow_trace(client, workflow_id, 0, 10, std::ptr::null_mut()),
+                HandshakeStatus::NullPointer
+            );
+            assert_eq!(
+                handshake_client_workflow_trace(client, workflow_id, 0, 10, &raw mut buffer),
+                HandshakeStatus::Ok
+            );
+        }
+        let page: serde_json::Value = serde_json::from_slice(&take_buffer(buffer)).unwrap();
+        let span_id = page["spans"][0]["spanId"].as_u64().unwrap();
+        assert_eq!(page["summary"]["agentCount"], 0);
+        assert_eq!(page["spans"][0]["isLive"], true);
+        let mut buffer = HandshakeBuffer::empty();
+        // SAFETY: Live client and initialized writable output buffer.
+        unsafe {
+            assert_eq!(
+                handshake_client_trace_events(client, span_id, 0, 10, &raw mut buffer),
+                HandshakeStatus::Ok
+            );
+        }
+        let page: serde_json::Value = serde_json::from_slice(&take_buffer(buffer)).unwrap();
+        assert_eq!(page["events"][0]["kind"], "processStarted");
+        assert_eq!(page["events"][0]["anchor"]["byteOffset"], 0);
+        let mut activities = HandshakeBuffer::empty();
+        // SAFETY: Live client and writable output, with intentional null/invalid arguments below.
+        unsafe {
+            assert_eq!(
+                handshake_client_trace_activities(client, span_id, 0, 200, &raw mut activities),
+                HandshakeStatus::Ok
+            );
+        }
+        let activities: serde_json::Value =
+            serde_json::from_slice(&take_buffer(activities)).unwrap();
+        assert_eq!(activities["spanId"], span_id);
+        assert_eq!(activities["activities"], serde_json::json!([]));
+
+        let mut buffer = HandshakeBuffer::empty();
+        // SAFETY: Invalid limits/IDs must return initialized empty outputs.
+        unsafe {
+            assert_eq!(
+                handshake_client_trace_events(client, span_id, 0, 201, &raw mut buffer),
+                HandshakeStatus::InvalidArgument
+            );
+            assert_eq!(
+                handshake_client_trace_events(client, u64::MAX, 0, 10, &raw mut buffer),
+                HandshakeStatus::InternalError
+            );
+        }
+        destroy(client);
+        drop(data);
+        assert_eq!(ffi::live_buffer_count(), 0);
+    }
+
+    #[test]
+    fn trace_activity_reads_reject_invalid_limits_and_pointers() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        let (_data, client) = create_client();
+        let span_id = 1;
+        let mut output = HandshakeBuffer::empty();
+        // SAFETY: Invalid arguments must return initialized empty outputs without dereferencing null.
+        unsafe {
+            assert_eq!(
+                handshake_client_trace_activities(client, span_id, 0, 201, &raw mut output),
+                HandshakeStatus::InvalidArgument
+            );
+            assert_eq!(
+                handshake_client_trace_activities(
+                    std::ptr::null_mut(),
+                    span_id,
+                    0,
+                    1,
+                    &raw mut output
+                ),
+                HandshakeStatus::NullPointer
+            );
+            assert_eq!(
+                handshake_client_trace_activities(client, span_id, 0, 1, std::ptr::null_mut()),
+                HandshakeStatus::NullPointer
+            );
+            assert_eq!(
+                handshake_client_trace_activities(client, 99999, 0, 1, &raw mut output),
+                HandshakeStatus::InvalidArgument
+            );
+        }
+        assert!(output.data.is_null());
+        destroy(client);
+    }
+
+    #[test]
+    fn command_round_trip_and_event_stream_preserve_request_id() {
+        let _guard = TEST_LOCK.lock().expect("test lock should be available");
+        let (_data, client) = create_client();
+        let mut snapshot = HandshakeBuffer::empty();
+        assert_eq!(
+            // SAFETY: The test client is live and the output storage is empty and writable.
+            unsafe { handshake_client_snapshot(client, &raw mut snapshot) },
+            HandshakeStatus::Ok
+        );
+        let snapshot: serde_json::Value =
+            serde_json::from_slice(&take_buffer(snapshot)).expect("snapshot should be JSON");
+        let sequence = snapshot["sequence"]
+            .as_u64()
+            .expect("sequence should be an integer");
+
+        let command = br#"{"requestId":42,"command":{"type":"ping"}}"#;
+        let mut response = HandshakeBuffer::empty();
+        assert_eq!(
+            // SAFETY: The test client and command bytes are live and the output is empty.
+            unsafe {
+                handshake_client_send_command(
+                    client,
+                    command.as_ptr(),
+                    command.len(),
+                    &raw mut response,
+                )
+            },
+            HandshakeStatus::Ok
+        );
+        let response: serde_json::Value =
+            serde_json::from_slice(&take_buffer(response)).expect("response should be JSON");
+        assert_eq!(response["requestId"], 42);
+        assert_eq!(response["status"], "accepted");
+
+        let mut events = HandshakeBuffer::empty();
+        assert_eq!(
+            // SAFETY: The test client is live and the output storage is empty and writable.
+            unsafe { handshake_client_events_after(client, sequence, 16, &raw mut events) },
+            HandshakeStatus::Ok
+        );
+        let events: serde_json::Value =
+            serde_json::from_slice(&take_buffer(events)).expect("events should be JSON");
+        assert_eq!(events["events"][0]["sequence"], sequence + 1);
+        assert_eq!(events["events"][0]["event"]["requestId"], 42);
+        assert_eq!(events["events"][0]["event"]["result"]["type"], "pong");
+
+        // SAFETY: The live test client is destroyed exactly once after all operations finish.
+        assert_eq!(
+            unsafe { handshake_client_destroy(client) },
+            HandshakeStatus::Ok
+        );
+    }
+
+    #[test]
+    fn unsupported_and_malformed_commands_are_errors_not_panics() {
+        let _guard = TEST_LOCK.lock().expect("test lock should be available");
+        let (_data, client) = create_client();
+        let unknown = br#"{"requestId":9,"command":{"type":"launchMoon"}}"#;
+        let mut response = HandshakeBuffer::empty();
+        assert_eq!(
+            // SAFETY: The test client and command bytes are live and the output is empty.
+            unsafe {
+                handshake_client_send_command(
+                    client,
+                    unknown.as_ptr(),
+                    unknown.len(),
+                    &raw mut response,
+                )
+            },
+            HandshakeStatus::Ok
+        );
+        let response_json: serde_json::Value =
+            serde_json::from_slice(&take_buffer(response)).expect("response should be JSON");
+        assert_eq!(response_json["requestId"], 9);
+        assert_eq!(response_json["status"], "rejected");
+
+        let malformed = b"not json";
+        let mut malformed_response = HandshakeBuffer::empty();
+        assert_eq!(
+            // SAFETY: The test client and input bytes are live and the output is empty.
+            unsafe {
+                handshake_client_send_command(
+                    client,
+                    malformed.as_ptr(),
+                    malformed.len(),
+                    &raw mut malformed_response,
+                )
+            },
+            HandshakeStatus::MalformedCommand
+        );
+        assert!(malformed_response.data.is_null());
+
+        let invalid_utf8 = [0xff];
+        assert_eq!(
+            // SAFETY: The test client and input bytes are live and the output is empty.
+            unsafe {
+                handshake_client_send_command(
+                    client,
+                    invalid_utf8.as_ptr(),
+                    invalid_utf8.len(),
+                    &raw mut malformed_response,
+                )
+            },
+            HandshakeStatus::InvalidUtf8
+        );
+        // SAFETY: The live test client is destroyed exactly once after all operations finish.
+        assert_eq!(
+            unsafe { handshake_client_destroy(client) },
+            HandshakeStatus::Ok
+        );
+    }
+
+    #[test]
+    fn client_creation_rejects_invalid_arguments_and_initializes_outputs() {
+        let _guard = TEST_LOCK.lock().expect("test lock should be available");
+        let data = tempfile::tempdir().expect("a data directory should be available");
+        let path = data
+            .path()
+            .to_str()
+            .expect("the test data directory should be UTF-8");
+        assert_eq!(
+            // SAFETY: A null output is permitted by the ABI contract and rejected by the bridge.
+            unsafe { handshake_client_create(path.as_ptr(), path.len(), std::ptr::null_mut()) },
+            HandshakeStatus::NullPointer
+        );
+        let mut rejected = std::ptr::dangling_mut::<HandshakeClient>();
+        for (bytes, length, status) in [
+            // A nonzero length requires a readable pointer.
+            (std::ptr::null(), 1, HandshakeStatus::NullPointer),
+            (b"relative".as_ptr(), 8, HandshakeStatus::InvalidArgument),
+            (b"".as_ptr(), 0, HandshakeStatus::InvalidArgument),
+            (b"/\xff".as_ptr(), 2, HandshakeStatus::InvalidUtf8),
+            // An oversized length is rejected before the pointer is read.
+            (
+                path.as_ptr(),
+                MAX_PATH_BYTES + 1,
+                HandshakeStatus::InvalidArgument,
+            ),
+        ] {
+            assert_eq!(
+                // SAFETY: Each input is either rejected before it is read or identifies `length`
+                // live bytes; the output points to writable storage for one client pointer.
+                unsafe { handshake_client_create(bytes, length, &raw mut rejected) },
+                status
+            );
+            assert!(rejected.is_null());
+        }
+    }
+
+    #[test]
+    fn client_operations_reject_invalid_arguments_and_initialize_outputs() {
+        let _guard = TEST_LOCK.lock().expect("test lock should be available");
+        let (_data, client) = create_client();
+        let byte = 0_u8;
+        let mut response = HandshakeBuffer {
+            data: std::ptr::dangling_mut::<u8>(),
+            length: 99,
+        };
+        assert_eq!(
+            // SAFETY: The intentionally null input is rejected before it is dereferenced; the
+            // client and output storage are valid.
+            unsafe {
+                handshake_client_send_command(client, std::ptr::null(), 1, &raw mut response)
+            },
+            HandshakeStatus::NullPointer
+        );
+        assert!(response.data.is_null());
+        assert_eq!(response.length, 0);
+
+        assert_eq!(
+            // SAFETY: Zero-length input does not require a readable pointer; other arguments are
+            // valid.
+            unsafe {
+                handshake_client_send_command(client, std::ptr::null(), 0, &raw mut response)
+            },
+            HandshakeStatus::MalformedCommand
+        );
+        assert!(response.data.is_null());
+        assert_eq!(
+            // SAFETY: The oversized length is rejected before the one-byte pointer is read.
+            unsafe {
+                handshake_client_send_command(
+                    client,
+                    &raw const byte,
+                    MAX_COMMAND_BYTES + 1,
+                    &raw mut response,
+                )
+            },
+            HandshakeStatus::InvalidArgument
+        );
+        assert!(response.data.is_null());
+
+        assert_eq!(
+            // SAFETY: The test client is live and the output storage is empty and writable.
+            unsafe { handshake_client_events_after(client, 0, 0, &raw mut response) },
+            HandshakeStatus::InvalidArgument
+        );
+        assert!(response.data.is_null());
+        assert_eq!(
+            // SAFETY: The test client is live and the output storage is empty and writable.
+            unsafe {
+                handshake_client_events_after(
+                    client,
+                    0,
+                    u32::try_from(MAX_EVENT_BATCH + 1).expect("test limit should fit"),
+                    &raw mut response,
+                )
+            },
+            HandshakeStatus::InvalidArgument
+        );
+        assert!(response.data.is_null());
+
+        let mut chunk = HandshakeTerminalChunk {
+            terminal_id: 99,
+            offset: 99,
+            bytes: HandshakeBuffer {
+                data: std::ptr::dangling_mut::<u8>(),
+                length: 99,
+            },
+        };
+        assert_eq!(
+            // SAFETY: The test client is live and the output storage has no live allocation.
+            unsafe { handshake_client_next_terminal_chunk(client, &raw mut chunk) },
+            HandshakeStatus::Empty
+        );
+        assert_eq!(chunk.terminal_id, 0);
+        assert_eq!(chunk.offset, 0);
+        assert!(chunk.bytes.data.is_null());
+        assert_eq!(
+            // SAFETY: A null pointer is permitted by the ABI contract and rejected by the bridge.
+            unsafe { handshake_buffer_release(std::ptr::null_mut()) },
+            HandshakeStatus::NullPointer
+        );
+        // SAFETY: The live test client is destroyed exactly once after all operations finish.
+        assert_eq!(
+            unsafe { handshake_client_destroy(client) },
+            HandshakeStatus::Ok
+        );
+    }
+
+    #[test]
+    fn transcript_requests_validate_pointers_limits_and_initialize_outputs() {
+        let mut request = std::ptr::dangling_mut::<HandshakeTranscriptRequest>();
+        // SAFETY: Output storage is valid, and null clients/invalid limits are rejected before access.
+        assert_eq!(
+            unsafe {
+                handshake_client_request_transcript(std::ptr::null_mut(), 1, 0, 0, &raw mut request)
+            },
+            HandshakeStatus::InvalidArgument
+        );
+        assert!(request.is_null());
+        // SAFETY: Null pointers are rejected before dereferencing.
+        assert_eq!(
+            unsafe {
+                handshake_client_request_transcript(std::ptr::null_mut(), 1, 0, 1, &raw mut request)
+            },
+            HandshakeStatus::NullPointer
+        );
+        let mut buffer = HandshakeBuffer::empty();
+        // SAFETY: Valid empty output storage and a null request are checked by the bridge.
+        assert_eq!(
+            unsafe { handshake_transcript_request_poll(std::ptr::null_mut(), &raw mut buffer) },
+            HandshakeStatus::NullPointer
+        );
+        assert!(buffer.data.is_null());
+        assert_eq!(buffer.length, 0);
+        // SAFETY: A null request is rejected without reconstructing a box.
+        assert_eq!(
+            unsafe { handshake_transcript_request_destroy(std::ptr::null_mut()) },
+            HandshakeStatus::NullPointer
+        );
+    }
+
+    #[test]
+    fn terminal_functions_reject_invalid_arguments() {
+        let _guard = TEST_LOCK.lock().expect("test lock should be available");
+        let (_data, client) = create_client();
+        let byte = 0_u8;
+        assert_eq!(
+            // SAFETY: The null input is intentionally paired with a nonzero length and must be
+            // rejected before it is read.
+            unsafe { handshake_client_write_terminal_input(client, 1, std::ptr::null(), 1) },
+            HandshakeStatus::NullPointer
+        );
+        assert_eq!(
+            // SAFETY: The oversized length must be rejected before the one-byte pointer is read.
+            unsafe {
+                handshake_client_write_terminal_input(
+                    client,
+                    1,
+                    &raw const byte,
+                    MAX_TERMINAL_INPUT_BYTES + 1,
+                )
+            },
+            HandshakeStatus::InvalidArgument
+        );
+        assert_eq!(
+            // SAFETY: The client is live; the invalid size is rejected by the core.
+            unsafe { handshake_client_resize_terminal(client, 1, 0, 80, 800, 480) },
+            HandshakeStatus::InvalidArgument
+        );
+        assert_eq!(
+            // SAFETY: A null client is permitted by the ABI contract and rejected by the bridge.
+            unsafe { handshake_client_resize_terminal(std::ptr::null_mut(), 1, 24, 80, 800, 480) },
+            HandshakeStatus::NullPointer
+        );
+        destroy(client);
+    }
+
+    #[test]
+    fn terminal_responses_reject_invalid_arguments() {
+        let _guard = TEST_LOCK.lock().expect("test lock should be available");
+        let (_data, client) = create_client();
+        let byte = 0_u8;
+        // SAFETY: Invalid pointers and lengths must be rejected before reading the input.
+        unsafe {
+            assert_eq!(
+                handshake_client_write_terminal_response(client, 1, std::ptr::null(), 1),
+                HandshakeStatus::NullPointer
+            );
+            assert_eq!(
+                handshake_client_write_terminal_response(
+                    client,
+                    1,
+                    &raw const byte,
+                    MAX_TERMINAL_INPUT_BYTES + 1
+                ),
+                HandshakeStatus::InvalidArgument
+            );
+            assert_eq!(
+                handshake_client_write_terminal_response(
+                    std::ptr::null_mut(),
+                    1,
+                    &raw const byte,
+                    1
+                ),
+                HandshakeStatus::NullPointer
+            );
+        }
+        destroy(client);
+    }
+
+    #[test]
+    fn terminal_stream_preserves_binary_bytes_and_absolute_offset() {
+        let _guard = TEST_LOCK.lock().expect("test lock should be available");
+        let shell_path = write_test_shell(
+            "binary-shell",
+            "#!/bin/sh\nprintf '\\000\\377a'\nexec cat\n",
+        );
+        let _shell_override = EnvironmentOverride::set("SHELL", shell_path.as_os_str());
+        let (_data, client) = create_client();
+        let terminal_id = start_terminal(client, 60);
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut first_offset = None;
+        let mut output = Vec::new();
+        while output.len() < 3 {
+            let mut chunk = HandshakeTerminalChunk::empty();
+            match
+                // SAFETY: The test client is live and the output storage is empty and writable.
+                unsafe { handshake_client_next_terminal_chunk(client, &raw mut chunk) }
+            {
+                HandshakeStatus::Ok => {
+                    assert_eq!(chunk.terminal_id, terminal_id);
+                    first_offset.get_or_insert(chunk.offset);
+                    output.extend(take_buffer(chunk.bytes));
+                }
+                HandshakeStatus::Empty => std::thread::sleep(Duration::from_millis(5)),
+                status => panic!("terminal output failed with {status:?}"),
+            }
+            assert!(Instant::now() < deadline, "terminal output did not arrive");
+        }
+        assert_eq!(first_offset, Some(0));
+        assert_eq!(&output[..3], &[0, 0xff, b'a']);
+
+        // SAFETY: The live test client is destroyed exactly once after all operations finish.
+        assert_eq!(
+            unsafe { handshake_client_destroy(client) },
+            HandshakeStatus::Ok
+        );
+        std::fs::remove_file(shell_path).expect("test shell should be removed");
+    }
+
+    #[test]
+    fn immediately_exiting_shell_reports_its_start_before_its_exit() {
+        let _guard = TEST_LOCK.lock().expect("test lock should be available");
+        let shell_path = write_test_shell("exiting-shell", "#!/bin/sh\nexit 3\n");
+        let _shell_override = EnvironmentOverride::set("SHELL", shell_path.as_os_str());
+        let (_data, client) = create_client();
+        let terminal_id = start_terminal(client, 80);
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let events = loop {
+            let mut buffer = HandshakeBuffer::empty();
+            assert_eq!(
+                // SAFETY: The test client is live and the output storage is empty and writable.
+                unsafe { handshake_client_events_after(client, 0, 16, &raw mut buffer) },
+                HandshakeStatus::Ok
+            );
+            let batch: serde_json::Value =
+                serde_json::from_slice(&take_buffer(buffer)).expect("events should be JSON");
+            let events = batch["events"]
+                .as_array()
+                .expect("events should be an array")
+                .clone();
+            if events
+                .iter()
+                .any(|event| event["event"]["type"] == "terminalExited")
+            {
+                break events;
+            }
+            assert!(Instant::now() < deadline, "shell exit was not reported");
+            std::thread::sleep(Duration::from_millis(5));
+        };
+        let position = |predicate: &dyn Fn(&serde_json::Value) -> bool| {
+            events
+                .iter()
+                .position(|event| predicate(&event["event"]))
+                .expect("event should be present")
+        };
+        let started = position(&|event| event["requestId"] == 80);
+        let exited = position(&|event| event["type"] == "terminalExited");
+        assert!(started < exited);
+        assert_eq!(events[exited]["event"]["terminalId"], terminal_id);
+        assert_eq!(events[exited]["event"]["exitCode"], 3);
+
+        let input = b"late input";
+        assert_eq!(
+            // SAFETY: The client and input are live; the exited terminal is still retained.
+            unsafe {
+                handshake_client_write_terminal_input(
+                    client,
+                    terminal_id,
+                    input.as_ptr(),
+                    input.len(),
+                )
+            },
+            HandshakeStatus::TerminalNotRunning
+        );
+        assert_eq!(
+            // SAFETY: The client is live and the exited terminal is still retained.
+            unsafe { handshake_client_resize_terminal(client, terminal_id, 24, 80, 800, 480) },
+            HandshakeStatus::TerminalNotRunning
+        );
+
+        // SAFETY: The live test client is destroyed exactly once after all operations finish.
+        assert_eq!(
+            unsafe { handshake_client_destroy(client) },
+            HandshakeStatus::Ok
+        );
+        std::fs::remove_file(shell_path).expect("test shell should be removed");
+    }
+
+    #[test]
+    fn resize_abi_updates_a_live_terminal() {
+        let _guard = TEST_LOCK.lock().expect("test lock should be available");
+        let shell_path = write_test_shell("test-shell", "#!/bin/sh\nexec /bin/sh\n");
+        let _shell_override = EnvironmentOverride::set("SHELL", shell_path.as_os_str());
+        let (_data, client) = create_client();
+        let terminal_id = start_terminal(client, 70);
+
+        assert_eq!(
+            // SAFETY: The client and terminal are live and exclusively accessed by this test.
+            unsafe { handshake_client_resize_terminal(client, terminal_id, 37, 101, 1_010, 740) },
+            HandshakeStatus::Ok
+        );
+        let input = b"stty size\nexit\n";
+        assert_eq!(
+            // SAFETY: The client and input bytes are live for the duration of the call.
+            unsafe {
+                handshake_client_write_terminal_input(
+                    client,
+                    terminal_id,
+                    input.as_ptr(),
+                    input.len(),
+                )
+            },
+            HandshakeStatus::Ok
+        );
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut output = Vec::new();
+        while !String::from_utf8_lossy(&output).contains("37 101") {
+            let mut chunk = HandshakeTerminalChunk::empty();
+            match
+                // SAFETY: The test client is live and the output storage is empty and writable.
+                unsafe { handshake_client_next_terminal_chunk(client, &raw mut chunk) }
+            {
+                HandshakeStatus::Ok => output.extend(take_buffer(chunk.bytes)),
+                HandshakeStatus::Empty => std::thread::sleep(Duration::from_millis(5)),
+                status => panic!("terminal output failed with {status:?}"),
+            }
+            assert!(
+                Instant::now() < deadline,
+                "resized dimensions did not reach the shell; output: {}",
+                String::from_utf8_lossy(&output)
+            );
+        }
+
+        let close_response = send_json_command(
+            client,
+            &serde_json::json!({
+                "requestId": 71,
+                "command": {
+                    "type": "closeTerminal",
+                    "terminalId": terminal_id
+                }
+            }),
+        );
+        assert_eq!(close_response["status"], "accepted");
+
+        // SAFETY: The live test client is destroyed exactly once after all operations finish.
+        assert_eq!(
+            unsafe { handshake_client_destroy(client) },
+            HandshakeStatus::Ok
+        );
+        std::fs::remove_file(shell_path).expect("test shell should be removed");
+    }
+
+    #[test]
+    fn repeated_buffer_release_returns_live_count_to_zero() {
+        let _guard = TEST_LOCK.lock().expect("test lock should be available");
+        let (_data, client) = create_client();
+        let command = br#"{"requestId":1,"command":{"type":"ping"}}"#;
+
+        for _ in 0..10_000 {
+            let mut response = HandshakeBuffer::empty();
+            assert_eq!(
+                // SAFETY: The test client and input bytes are live and the output is empty.
+                unsafe {
+                    handshake_client_send_command(
+                        client,
+                        command.as_ptr(),
+                        command.len(),
+                        &raw mut response,
+                    )
+                },
+                HandshakeStatus::Ok
+            );
+            let _ = take_buffer(response);
+        }
+
+        assert_eq!(ffi::live_buffer_count(), 0);
+        // SAFETY: The live test client is destroyed exactly once after all operations finish.
+        assert_eq!(
+            unsafe { handshake_client_destroy(client) },
+            HandshakeStatus::Ok
+        );
+    }
+
+    #[test]
+    fn folder_commands_round_trip_through_snapshot_and_events() {
+        let _guard = TEST_LOCK.lock().expect("test lock should be available");
+        let (_data, client) = create_client();
+        let folder = tempfile::tempdir().expect("a folder should be available");
+        let path = folder
+            .path()
+            .to_str()
+            .expect("the test folder should be UTF-8");
+        let initial = snapshot(client);
+        assert_eq!(
+            initial["folders"],
+            serde_json::json!({"openFolder": null, "recentFolders": [], "unavailableFolder": null, "currentBranch": null})
+        );
+
+        let command = serde_json::json!({
+            "requestId": 1,
+            "command": {"type": "openFolder", "path": path},
+        });
+        assert_eq!(
+            send_command(client, &command.to_string())["status"],
+            "accepted"
+        );
+        let sequence = initial["sequence"]
+            .as_u64()
+            .expect("sequence should be an integer");
+        let events = events_after(client, sequence);
+        assert_eq!(events["events"][0]["event"]["type"], "foldersChanged");
+        let opened = serde_json::json!({
+            "openFolder": path,
+            "recentFolders": [{"path": path, "isMissing": false}],
+            "unavailableFolder": null, "currentBranch": null,
+        });
+        assert_eq!(events["events"][0]["event"]["folders"], opened);
+        assert_eq!(snapshot(client)["folders"], opened);
+
+        let response = send_command(
+            client,
+            r#"{"requestId":2,"command":{"type":"closeFolder"}}"#,
+        );
+        assert_eq!(response["status"], "accepted");
+        assert_eq!(
+            snapshot(client)["folders"]["openFolder"],
+            serde_json::Value::Null
+        );
+
+        let command = serde_json::json!({
+            "requestId": 3,
+            "command": {"type": "removeRecentFolder", "path": path},
+        });
+        assert_eq!(
+            send_command(client, &command.to_string())["status"],
+            "accepted"
+        );
+        assert_eq!(
+            snapshot(client)["folders"]["recentFolders"],
+            serde_json::json!([])
+        );
+        destroy(client);
+    }
+
+    #[test]
+    fn folder_commands_reject_missing_folders_and_require_a_path() {
+        let _guard = TEST_LOCK.lock().expect("test lock should be available");
+        let (_data, client) = create_client();
+        let missing = {
+            let folder = tempfile::tempdir().expect("a folder should be available");
+            folder
+                .path()
+                .to_str()
+                .expect("the test folder should be UTF-8")
+                .to_owned()
+        }; // Dropping `folder` deletes it.
+
+        let command = serde_json::json!({
+            "requestId": 1,
+            "command": {"type": "openFolder", "path": missing},
+        });
+        let response = send_command(client, &command.to_string());
+        assert_eq!(response["status"], "rejected");
+        assert_eq!(response["error"]["code"], "folderNotFound");
+        assert_eq!(
+            snapshot(client)["folders"]["unavailableFolder"],
+            serde_json::json!({"path": missing, "reason": "missing"})
+        );
+
+        let without_path = br#"{"requestId":2,"command":{"type":"openFolder"}}"#;
+        let mut response = HandshakeBuffer::empty();
+        assert_eq!(
+            // SAFETY: The test client and command bytes are live and the output is empty.
+            unsafe {
+                handshake_client_send_command(
+                    client,
+                    without_path.as_ptr(),
+                    without_path.len(),
+                    &raw mut response,
+                )
+            },
+            HandshakeStatus::MalformedCommand
+        );
+        assert!(response.data.is_null());
+        destroy(client);
+    }
+
+    #[test]
+    fn a_new_client_reopens_the_last_folder_from_its_data_directory() {
+        let _guard = TEST_LOCK.lock().expect("test lock should be available");
+        let (data, client) = create_client();
+        let folder = tempfile::tempdir().expect("a folder should be available");
+        let path = folder
+            .path()
+            .to_str()
+            .expect("the test folder should be UTF-8");
+        let command = serde_json::json!({
+            "requestId": 1,
+            "command": {"type": "openFolder", "path": path},
+        });
+        assert_eq!(
+            send_command(client, &command.to_string())["status"],
+            "accepted"
+        );
+        destroy(client);
+
+        let relaunched = create_client_in(data.path());
+        assert_eq!(snapshot(relaunched)["folders"]["openFolder"], path);
+        destroy(relaunched);
+    }
+    fn poll(client: *mut HandshakeClient, bytes: &[u8]) -> (HandshakeStatus, HandshakeBuffer) {
+        let mut output = HandshakeBuffer::empty();
+        // SAFETY: The test client and byte slice stay live; output is writable and owns no allocation.
+        let status = unsafe {
+            handshake_client_poll_files(client, bytes.as_ptr(), bytes.len(), &raw mut output)
+        };
+        (status, output)
+    }
+
+    #[test]
+    fn file_snapshots_release_buffers_and_unchanged_polls_are_empty() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        let (_data, client) = create_client();
+        let folder = tempfile::tempdir().unwrap();
+        let file = folder.path().join("readme.txt");
+        std::fs::write(&file, "hello").unwrap();
+        send_command(
+            client,
+            &serde_json::json!({"requestId": 1, "command": {
+                "type": "openFolder", "path": folder.path()
+            }})
+            .to_string(),
+        );
+        let mut request =
+            serde_json::json!({"folder": folder.path(), "directories": [], "file": file});
+        let baseline = ffi::live_buffer_count();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let snapshot = loop {
+            let (status, buffer) = poll(client, request.to_string().as_bytes());
+            if status == HandshakeStatus::Ok {
+                assert_eq!(ffi::live_buffer_count(), baseline + 1);
+                break serde_json::from_slice::<serde_json::Value>(&take_buffer(buffer)).unwrap();
+            }
+            assert_eq!(status, HandshakeStatus::Empty);
+            assert!(buffer.data.is_null());
+            assert_eq!(buffer.length, 0);
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(10));
+        };
+        assert_eq!(ffi::live_buffer_count(), baseline);
+        assert_eq!(snapshot["file"]["text"], "hello");
+        assert_eq!(snapshot["textLimit"], 2 * 1024 * 1024);
+        request["revision"] = snapshot["revision"].clone();
+        let (status, buffer) = poll(client, request.to_string().as_bytes());
+        assert_eq!(status, HandshakeStatus::Empty);
+        assert!(buffer.data.is_null());
+        assert_eq!(buffer.length, 0);
+        send_command(
+            client,
+            r#"{"requestId":2,"command":{"type":"closeFolder"}}"#,
+        );
+        assert_eq!(
+            poll(client, request.to_string().as_bytes()).0,
+            HandshakeStatus::InvalidArgument
+        );
+        destroy(client);
+    }
+
+    #[test]
+    fn model_listing_returns_at_once_and_rejects_invalid_input() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        let (_data, client) = create_client();
+        let mut request: *mut HandshakeModelsRequest = std::ptr::null_mut();
+        // SAFETY: Each call gets a live client or null, valid or null input, and writable output.
+        unsafe {
+            for (bytes, expected) in [
+                (b"{".as_slice(), HandshakeStatus::MalformedCommand),
+                (
+                    br#"{"harness":"nope"}"#.as_slice(),
+                    HandshakeStatus::MalformedCommand,
+                ),
+                (&[0xff], HandshakeStatus::InvalidUtf8),
+            ] {
+                assert_eq!(
+                    handshake_client_request_harness_models(
+                        client,
+                        bytes.as_ptr(),
+                        bytes.len(),
+                        &raw mut request
+                    ),
+                    expected
+                );
+                assert!(request.is_null());
+            }
+            let valid = br#"{"harness":"pi"}"#;
+            assert_eq!(
+                handshake_client_request_harness_models(
+                    client,
+                    valid.as_ptr(),
+                    valid.len(),
+                    std::ptr::null_mut()
+                ),
+                HandshakeStatus::NullPointer
+            );
+            assert_eq!(
+                handshake_client_request_harness_models(
+                    std::ptr::null_mut(),
+                    valid.as_ptr(),
+                    valid.len(),
+                    &raw mut request
+                ),
+                HandshakeStatus::NullPointer
+            );
+            assert_eq!(
+                handshake_client_request_harness_models(
+                    client,
+                    valid.as_ptr(),
+                    valid.len(),
+                    &raw mut request
+                ),
+                HandshakeStatus::Ok
+            );
+            assert!(!request.is_null());
+            // Whether or not pi is installed here, the listing finishes with a listed or failed status.
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+            let mut output = HandshakeBuffer::empty();
+            loop {
+                match handshake_models_request_poll(request, &raw mut output) {
+                    HandshakeStatus::Empty => {
+                        assert!(
+                            std::time::Instant::now() < deadline,
+                            "the listing never finished"
+                        );
+                        std::thread::sleep(std::time::Duration::from_millis(10));
+                    }
+                    status => {
+                        assert_eq!(status, HandshakeStatus::Ok);
+                        break;
+                    }
+                }
+            }
+            let json: serde_json::Value =
+                serde_json::from_slice(std::slice::from_raw_parts(output.data, output.length))
+                    .unwrap();
+            assert!(
+                json["status"] == "listed" || json["status"] == "failed",
+                "{json}"
+            );
+            assert_eq!(
+                handshake_buffer_release(&raw mut output),
+                HandshakeStatus::Ok
+            );
+            assert_eq!(
+                handshake_models_request_poll(std::ptr::null_mut(), &raw mut output),
+                HandshakeStatus::NullPointer
+            );
+            assert_eq!(
+                handshake_models_request_destroy(request),
+                HandshakeStatus::Ok
+            );
+            assert_eq!(
+                handshake_models_request_destroy(std::ptr::null_mut()),
+                HandshakeStatus::NullPointer
+            );
+        }
+        destroy(client);
+    }
+
+    #[test]
+    fn file_poll_rejects_invalid_input_without_allocating() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        let (_data, client) = create_client();
+        for (bytes, expected) in [
+            (b"{".as_slice(), HandshakeStatus::MalformedCommand),
+            (&[0xff], HandshakeStatus::InvalidUtf8),
+        ] {
+            let (status, output) = poll(client, bytes);
+            assert_eq!(status, expected);
+            assert!(output.data.is_null());
+            assert_eq!(output.length, 0);
+        }
+        let mut output = HandshakeBuffer::empty();
+        // SAFETY: Invalid inputs are rejected before dereference; output is valid writable storage.
+        unsafe {
+            assert_eq!(
+                handshake_client_poll_files(client, std::ptr::null(), 1, &raw mut output),
+                HandshakeStatus::NullPointer
+            );
+            assert_eq!(
+                handshake_client_poll_files(
+                    client,
+                    std::ptr::null(),
+                    MAX_COMMAND_BYTES + 1,
+                    &raw mut output
+                ),
+                HandshakeStatus::InvalidArgument
+            );
+            assert_eq!(
+                handshake_client_poll_files(client, std::ptr::null(), 0, std::ptr::null_mut()),
+                HandshakeStatus::NullPointer
+            );
+            let request = b"{}";
+            assert_eq!(
+                handshake_client_poll_files(
+                    std::ptr::null_mut(),
+                    request.as_ptr(),
+                    request.len(),
+                    &raw mut output
+                ),
+                HandshakeStatus::NullPointer
+            );
+        }
+        assert!(output.data.is_null());
+        assert_eq!(output.length, 0);
+        destroy(client);
+    }
+
+    #[test]
+    fn file_saves_return_versions_conflicts_failures_and_release_buffers() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        let (_data, client) = create_client();
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("file");
+        std::fs::write(&path, "original").unwrap();
+        send_command(
+            client,
+            &serde_json::json!({"requestId": 1,
+            "command": {"type": "openFolder", "path": root.path()}})
+            .to_string(),
+        );
+        let query = serde_json::json!({"folder": root.path(), "directories": [], "file": path});
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let preview = loop {
+            let (status, buffer) = poll(client, query.to_string().as_bytes());
+            if status == HandshakeStatus::Ok {
+                break serde_json::from_slice::<serde_json::Value>(&take_buffer(buffer)).unwrap()["file"].clone();
+            }
+            assert_eq!(status, HandshakeStatus::Empty);
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(10));
+        };
+        let mut request = serde_json::json!({"folder": root.path(), "path": path,
+            "text": "edited", "expectedVersion": preview["version"], "overwrite": false});
+        let saved = save_json(client, &request);
+        assert_eq!(saved["status"], "saved");
+        assert_eq!(saved["file"]["text"], "edited");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "edited");
+        request["expectedVersion"] = saved["file"]["version"].clone();
+        std::fs::write(&path, "external").unwrap();
+        let conflict = save_json(client, &request);
+        assert_eq!(conflict["status"], "conflict");
+        assert_eq!(conflict["file"]["text"], "external");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "external");
+        request["overwrite"] = true.into();
+        // Legal control whitespace expands in JSON, and must not inherit the 1 MiB command bound.
+        request["text"] = "\u{b}".repeat(2 * 1024 * 1024).into();
+        assert_eq!(save_json(client, &request)["status"], "saved");
+        request["text"] = "x".repeat(2 * 1024 * 1024 + 1).into();
+        assert_eq!(save_json(client, &request)["status"], "failed");
+        send_command(
+            client,
+            r#"{"requestId":2,"command":{"type":"closeFolder"}}"#,
+        );
+        request["text"] = "small".into();
+        let failure = save_json(client, &request);
+        assert_eq!(failure["status"], "failed");
+        assert!(
+            failure["message"]
+                .as_str()
+                .unwrap()
+                .contains("no longer open")
+        );
+        destroy(client);
+    }
+
+    fn save_json(client: *mut HandshakeClient, request: &serde_json::Value) -> serde_json::Value {
+        let before = ffi::live_buffer_count();
+        let bytes = request.to_string().into_bytes();
+        let mut output = HandshakeBuffer::empty();
+        // SAFETY: The live test client and input outlive the call; output is empty writable storage.
+        assert_eq!(
+            unsafe {
+                handshake_client_save_file(client, bytes.as_ptr(), bytes.len(), &raw mut output)
+            },
+            HandshakeStatus::Ok
+        );
+        assert_eq!(ffi::live_buffer_count(), before + 1);
+        let value = serde_json::from_slice(&take_buffer(output)).unwrap();
+        assert_eq!(ffi::live_buffer_count(), before);
+        value
+    }
+
+    #[test]
+    fn file_save_rejects_invalid_input_without_allocating() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        let (_data, client) = create_client();
+        let before = ffi::live_buffer_count();
+        let mut output = HandshakeBuffer::empty();
+        for (bytes, expected) in [
+            (b"{".as_slice(), HandshakeStatus::MalformedCommand),
+            (b"{}".as_slice(), HandshakeStatus::MalformedCommand),
+            (&[0xff], HandshakeStatus::InvalidUtf8),
+        ] {
+            // SAFETY: The client and slice stay live and output is valid empty storage.
+            assert_eq!(
+                unsafe {
+                    handshake_client_save_file(client, bytes.as_ptr(), bytes.len(), &raw mut output)
+                },
+                expected
+            );
+            assert!(output.data.is_null());
+        }
+        // SAFETY: Invalid pointers/lengths are rejected before dereference; output is writable.
+        unsafe {
+            assert_eq!(
+                handshake_client_save_file(client, std::ptr::null(), 1, &raw mut output),
+                HandshakeStatus::NullPointer
+            );
+            assert_eq!(
+                handshake_client_save_file(
+                    client,
+                    std::ptr::null(),
+                    MAX_FILE_SAVE_BYTES + 1,
+                    &raw mut output
+                ),
+                HandshakeStatus::InvalidArgument
+            );
+            assert_eq!(
+                handshake_client_save_file(client, std::ptr::null(), 0, std::ptr::null_mut()),
+                HandshakeStatus::NullPointer
+            );
+            assert_eq!(
+                handshake_client_save_file(
+                    std::ptr::null_mut(),
+                    b"{}".as_ptr(),
+                    2,
+                    &raw mut output
+                ),
+                HandshakeStatus::NullPointer
+            );
+        }
+        assert_eq!(ffi::live_buffer_count(), before);
+        assert!(output.data.is_null());
+        destroy(client);
+    }
+}

@@ -1,44 +1,51 @@
-# Automatic Twine Memories trial
+# Automatic Handshake Memories trial
 
 This branch now runs an automatic, local AMIS 0.4 memory reconciler for Codex and
 Claude Code. The interactive memory journey is
-[journey-of-a-memory.html](journey-of-a-memory.html); the architecture walkthrough is
+[journey-of-a-memory.html](journey-of-a-memory.html); the original Twine architecture walkthrough is
 [native-memory-visual-guide.html](native-memory-visual-guide.html).
 
-Twine owns the canonical AMIS library at
-`~/Library/Application Support/Twine/memories`. It captures eligible native project
-memories, appends immutable observations and consolidated views, and delivers them
-in native harness formats. Fresh Twine sessions receive their native memory
-configuration automatically. There is no shared-catalog retrieval instruction and
-no import button in the primary UI.
+Handshake owns a canonical AMIS library, captures eligible native project memories,
+appends immutable observations and consolidated views, and delivers them in native
+harness formats. Fresh Handshake sessions receive native memory configuration
+automatically, without a shared-catalog instruction or an import button.
+
+New installations use `~/Library/Application Support/Handshake/memories`.
+A registered legacy library at `~/Library/Application Support/Twine/memories` stays
+in place unless a Handshake memory destination is already established. Its native
+profiles, source identities, physical ownership bindings and sealed receipts are
+preserved. Application-data migration does not clone that live library. See the
+[rename compatibility inventory](../adr/0009-handshake-rename-inventory.md#cross-agent-memory-integration).
+`HANDSHAKE_MEMORY_DIRECTORY` takes precedence over the legacy
+`TWINE_MEMORY_DIRECTORY` input; explicit app/test roots remain isolated.
 
 ## Try the small workspace
 
-Use `~/workspaces/twine-memory-small/Open in Twine.command`. The new trial app is
-**Twine AMIS Memory**, bundle identifier `com.twineproject.Twine.amis-memory-trial`.
-Its application state is isolated at `~/workspaces/.twine-amis-memory-trial-state`;
-its memory store deliberately uses the standard Twine location above. The old
-1,001-topic playground, both obsolete state stores and the earlier trial app were
-removed. All 1,019 injected files in its native Claude memory directory were deleted,
-and its native Codex thread was excluded from future memory generation. Unrelated
-projects and ordinary chat history were preserved.
+The rebuilt app is **Handshake 0.4.0**, installed at `~/Applications/Handshake.app`.
+Use `~/workspaces/twine-memory-small/Open in Handshake.command`, or open the app
+normally. The small workspace keeps its existing folder path and memory UUID.
+Its application state is carried from the earlier isolated trial into
+`~/Library/Application Support/Handshake`, using `handshake.db`; the source is
+retained. The existing three native memory views and generated Codex startup
+memory remain in their original managed profiles.
 
-Open **Twine** beside **Memories** to see the project policy, status and current
-memories. Sharing is enabled automatically. **Sync now** is optional. Start a fresh
-Codex or Claude session and ask an ordinary project question.
+Open **Handshake** beside **Memories** for project policy, status and native paths.
+Sharing is automatic; **Sync now** is optional. Start a fresh Codex or Claude
+conversation and ask an ordinary project question. Existing conversations can
+retain earlier startup context; Codex's first native memory pass and quota guard
+can delay startup availability in a new project.
 
-Codex builds its generated startup memory in its own background pass. Native file
-delivery can precede that pass, and native quota or memory settings can defer it.
-Existing Codex sessions created in the global home retain that home on resume;
-start a fresh session to use the managed project home. Existing conversations can
-retain earlier startup context.
+The retired large playground, obsolete trial state stores and 1,019 injected
+Claude memory files remain removed. Earlier Twine application bundles are removed
+after the rebuilt app is verified. Unrelated projects and ordinary conversation
+history are retained.
 
 ## Native integration
 
 - **Claude:** an invocation-only `--settings` value selects `autoMemoryDirectory`
-  at `~/.claude/projects/twine-<project UUID>/memory/`. It merges with Twine's existing
+  at `~/.claude/projects/twine-<project UUID>/memory/`. It merges with Handshake's existing
   observer hooks. User authentication, configuration and session-history locations
-  stay in their normal locations. The native `MEMORY.md` links to Twine's native
+  stay in their normal locations. The native `MEMORY.md` links to Handshake's native
   project index and topic files.
 - **Codex:** a per-project `CODEX_HOME` lives under
   `memories/projects/<project UUID>/native/codex`. Credentials, configuration and
@@ -57,13 +64,13 @@ Native session leases prevent background replacement while that harness is
 running. Delivery into the other idle harness continues. The worker retries after
 the active session ends; an existing conversation's startup context is not hot
 replaced. Standalone CLI sessions use their ordinary profile unless launched
-through Twine.
+through Handshake.
 
 ## AMIS and durable storage
 
 Schemas are vendored unchanged from AMIS commit
 `9723ef4f33a3aadb194f8c6db14291102ddc182a`; see
-[UPSTREAM.md](../../twine-core/contracts/amis-0.4.0/UPSTREAM.md).
+[UPSTREAM.md](../../handshake-core/contracts/amis-0.4.0/UPSTREAM.md).
 
 Each project keeps `library.amis.json`, local receiver bindings, exact source
 snapshots, native before/after blobs, sealed publication plans, local policy
@@ -73,7 +80,7 @@ keys, conflicting heads, unsupported time bounds and unsafe native paths hold
 reconciliation rather than overwriting memory.
 
 Consolidation is deterministic: exact text can share a derived view, with separate
-source identities retained. Similar or contradictory claims stay separate. Twine
+source identities retained. Similar or contradictory claims stay separate. Handshake
 makes no model calls for this pass. Native memory generation uses the harness's
 normal quota controls; this machine's Codex threshold remains 10%.
 
@@ -82,6 +89,20 @@ withdrawal revision and corrects owned native copies, including original managed
 source notes. Generated native summaries can retain an old claim until their
 harness refreshes them; receipts claim native-byte availability, not guaranteed
 forgetting or recall.
+
+## Handshake port validation (2026-10-25)
+
+The feature branch includes renamed main at `862c5b8`. `make fmt` and `make check`
+pass: 581 core tests, 49 bridge tests and 383 app unit tests. Four renamed desktop
+memory UX cases pass, and both actual native harnesses answer the ordinary recall
+questions from their existing managed memory profiles. Screenshots were inspected.
+Codex's weekly meter was 2% before and after these two short questions.
+
+The six existing immutable AMIS revisions are byte-for-byte preserved. New
+compatibility tests cover memory override precedence, keeping established native
+bindings in place, and avoiding a copied second memory library during app-data
+adoption. Source: `out/validation/handshake-port/validation.json`; build/check logs,
+UX results and install/removal receipts live beside that report.
 
 ## Validation
 
@@ -101,7 +122,7 @@ forgetting or recall.
   deferral with automatic retry; and readable storage details with reachable actions
   at 200% zoom. Evidence: `out/validation/memory-journey/fixture-ux-final.log`.
 - Two small seeded native facts were recalled through ordinary questions in fresh
-  agents launched from the actual Twine menus. Codex answered `maple-417` from the
+  agents launched from the actual Handshake menus. Codex answered `maple-417` from the
   Claude-origin memory; Claude answered `green` from the Codex-origin memory.
   Neither prompt nor workspace contained the values. Screenshots and recorded
   responses were checked. Evidence: `out/validation/memory-journey/ux-validation.json`.
@@ -135,4 +156,4 @@ These are local trial results. Schema/reference checks do not constitute indepen
 AMIS synchronizer certification or broad compatibility across future harness versions.
 
 The older explicit native importer remains in core for compatibility; the primary
-app flow now uses the automatic Twine AMIS memory implementation.
+app flow now uses the automatic Handshake AMIS memory implementation.

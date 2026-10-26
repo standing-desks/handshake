@@ -29,13 +29,15 @@ jobs:
     steps:
       - name: Authenticate the tap notification
         id: tap-token
-        uses: actions/create-github-app-token@v3.2.0
+        uses: actions/create-github-app-token@v3.3.0
         with:
           client-id: ${{ vars[matrix.client_id_variable] }}
           private-key: ${{ secrets[matrix.private_key_secret] }}
           owner: ${{ matrix.owner }}
           repositories: homebrew-tap
           permission-contents: write
+      # Old tap workflows ignore this event until their migrations merge.
+      # Replay the first notification afterward (HAND-128).
       - name: Trigger the cask updater
         env:
           GH_TOKEN: ${{ steps.tap-token.outputs.token }}
@@ -43,5 +45,5 @@ jobs:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: >-
           gh api --method POST "repos/$TAP_REPOSITORY/dispatches"
-          -f event_type=twine-release-published
+          -f event_type=handshake-release-published
           -f "client_payload[release_tag]=$RELEASE_TAG"

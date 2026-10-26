@@ -3,12 +3,12 @@
 .NOTPARALLEL:
 
 OUT := $(CURDIR)/out
-PROJECT := macOS/Twine/Twine.xcodeproj
+PROJECT := macOS/Handshake/Handshake.xcodeproj
 LIB_TARGET := aarch64-apple-darwin
 export CARGO_TARGET_DIR := $(CURDIR)/target
 export MACOSX_DEPLOYMENT_TARGET := 26.0
 export SWIFT_PACKAGES_DIR := $(OUT)/dependencies/SourcePackages
-XCODEBUILD := TMPDIR="$(OUT)/dependencies/tmp" xcodebuild -project $(PROJECT) -scheme Twine -skipPackagePluginValidation \
+XCODEBUILD := TMPDIR="$(OUT)/dependencies/tmp" xcodebuild -project $(PROJECT) -scheme Handshake -skipPackagePluginValidation \
 	-clonedSourcePackagesDirPath "$(SWIFT_PACKAGES_DIR)" \
 	-packageCachePath "$(OUT)/dependencies/cache" -onlyUsePackageVersionsFromResolvedFile
 XCODEBUILD_DEBUG := $(XCODEBUILD) -configuration Debug -destination 'platform=macOS,arch=arm64'
@@ -16,8 +16,8 @@ XCODEBUILD_RELEASE := $(XCODEBUILD) -configuration Release -destination 'generic
 RELEASE_SETTINGS := ARCHS=arm64 GCC_GENERATE_DEBUGGING_SYMBOLS=NO DEBUG_INFORMATION_FORMAT= \
 	ENABLE_CODE_COVERAGE=NO CLANG_ENABLE_CODE_COVERAGE=NO SWIFT_OPTIMIZATION_LEVEL=-O SWIFT_COMPILATION_MODE=wholemodule
 XCODE_BUILD_ARGS ?=
-FRAMEWORK_BUILD := sh macOS/TwineCorePackage/build.sh
-FRAMEWORK_SELECT := sh macOS/TwineCorePackage/select.sh
+FRAMEWORK_BUILD := sh macOS/HandshakeCorePackage/build.sh
+FRAMEWORK_SELECT := sh macOS/HandshakeCorePackage/select.sh
 TESTS_DIR := $(OUT)/tests/build
 # Tests run from these build products without the project, so CI can build once and test on other machines.
 TEST_PRODUCTS := $(TESTS_DIR)/Build/Products
@@ -30,7 +30,9 @@ APP_DOC_DIR := $(OUT)/docs/swift
 DMG_TOOLS_DIR := $(OUT)/packaging/tools
 ACTIONLINT ?= actionlint
 # The test host uses fresh temporary data; Xcode products and results stay in out/tests.
-TEST_ENV := TEST_RUNNER_TWINE_PREFERENCES_SUITE=com.twineproject.Twine.tests.unit-host
+TEST_ENV := TEST_RUNNER_HANDSHAKE_PREFERENCES_SUITE=com.twineproject.Twine.tests.unit-host \
+	TEST_RUNNER_DEVELOPER_DIR="$${DEVELOPER_DIR:-$$(xcode-select -p)}" \
+	TEST_RUNNER_PATH="$$(dirname "$$(xcrun --find git)"):$$PATH"
 
 # PREBUILT=1 runs a target without its prerequisites. CI uses it to run tests from unpacked test products.
 needs = $(if $(PREBUILT),,$(1))
@@ -78,7 +80,7 @@ UI_DEFAULT_TESTS := testFirstLaunchShowsStartPage \
 	testHTMLSyntaxHighlightingPreservesSourceEditingAndCSSDetection \
 	testMarkdownPreviewSourceSaveReloadAndLocalLinks \
 	testMemoryDockReadRefreshAndLeaveSourcesUnchanged \
-	testTwineMemoriesAutomaticallyShareBothDirectionsAndSurviveRelaunch \
+	testHandshakeMemoriesAutomaticallyShareBothDirectionsAndSurviveRelaunch \
 	testMemoryDockClaudeScopesNarrowNavigationAndHiddenTerminal \
 	testMemoryDockOtherWorkspacesRememberNavigationAcrossRelaunch \
 	testMemoryDockArrowNavigationKeepsFocusAfterRendering \
@@ -96,9 +98,9 @@ UI_SHARD_TESTS = $(shell printf '%s\n' $(UI_DEFAULT_TESTS) | \
 # RETRIES=n reruns each failed UI test up to n more times. CI uses RETRIES=1.
 UI_RETRY_ARGS = $(if $(filter-out 0,$(RETRIES)),-retry-tests-on-failure -test-iterations $(shell expr $(RETRIES) + 1))
 UI_TEST_ARGS := $(if $(strip $(ONLY)),\
-	$(addprefix -only-testing:TwineUITests/TwineUITests/,$(ONLY)),\
-	$(if $(filter 1,$(ALL)),-only-testing:TwineUITests,\
-		$(addprefix -only-testing:TwineUITests/TwineUITests/,\
+	$(addprefix -only-testing:HandshakeUITests/HandshakeUITests/,$(ONLY)),\
+	$(if $(filter 1,$(ALL)),-only-testing:HandshakeUITests,\
+		$(addprefix -only-testing:HandshakeUITests/HandshakeUITests/,\
 			$(if $(strip $(SHARD)),$(UI_SHARD_TESTS),$(UI_DEFAULT_TESTS)))))
 
 .PHONY: help
@@ -148,7 +150,11 @@ lint-lib: ## Lint the library
 
 .PHONY: test-lib
 test-lib: ## Test the library (LIB_TEST_ARGS='filter -- flags')
-	cargo test --workspace --locked $(LIB_TEST_ARGS)
+	@set -eu; \
+	handshake_config_tests=$$(mktemp -d "$${TMPDIR:-/tmp}/handshake-config-tests.XXXXXX"); \
+	trap 'rm -rf "$$handshake_config_tests"' EXIT; \
+	env -u HANDSHAKE_CONFIG_PATH -u TWINE_CONFIG_PATH XDG_CONFIG_HOME="$$handshake_config_tests" \
+		cargo test --workspace --locked $(LIB_TEST_ARGS)
 
 .PHONY: check-lib
 check-lib: lint-lib test-lib ## Lint and test the library
@@ -160,16 +166,16 @@ fmt-app: ## Format the app
 .PHONY: lint-app
 lint-app: $(call needs,deps-debug) ## Lint the app
 	swift format lint --strict --recursive macOS/
-	macOS/Twine/Scripts/swiftlint.sh
+	macOS/Handshake/Scripts/swiftlint.sh
 
 .PHONY: test-app
 test-app: $(call needs,build-tests) ## Run the app's unit tests
 	@set -eu; \
-	twine_test_data=$$(mktemp -d "$${TMPDIR:-/tmp}/twine-unit-tests.XXXXXX"); \
-	trap 'rm -rf "$$twine_test_data"' EXIT; \
-	TEST_RUNNER_TWINE_DATA_DIRECTORY="$$twine_test_data" \
-	TEST_RUNNER_XDG_CONFIG_HOME="$$twine_test_data/config" $(TEST_ENV) \
-		$(TEST_RUN) -only-testing:TwineTests
+	handshake_test_data=$$(mktemp -d "$${TMPDIR:-/tmp}/handshake-unit-tests.XXXXXX"); \
+	trap 'rm -rf "$$handshake_test_data"' EXIT; \
+	TEST_RUNNER_HANDSHAKE_DATA_DIRECTORY="$$handshake_test_data" \
+	TEST_RUNNER_XDG_CONFIG_HOME="$$handshake_test_data/config" $(TEST_ENV) \
+		$(TEST_RUN) -only-testing:HandshakeTests
 
 .PHONY: check-app
 check-app: lint-app test-app ## Lint and unit-test the app
@@ -177,16 +183,16 @@ check-app: lint-app test-app ## Lint and unit-test the app
 .PHONY: ui-test
 ui-test: $(call needs,build-tests) ## Run UI tests (ONLY="testA testB", ALL=1 or SHARD=n/N; RETRIES=n)
 	@test -n "$(strip $(UI_TEST_ARGS))" || { echo 'usage: make ui-test [ONLY="testA testB" | ALL=1 | SHARD=n/N]' >&2; exit 2; }
-	TEST_RUNNER_TWINE_TEST_GIT="$$(xcrun --find git)" $(TEST_ENV) $(TEST_RUN) $(UI_TEST_ARGS) $(UI_RETRY_ARGS)
+	TEST_RUNNER_HANDSHAKE_TEST_GIT="$$(xcrun --find git)" $(TEST_ENV) $(TEST_RUN) $(UI_TEST_ARGS) $(UI_RETRY_ARGS)
 
 .PHONY: ui-test-visual
 ui-test-visual: ## Run the visual UI tests
 	$(MAKE) ui-test ONLY="$(UI_VISUAL_TESTS)"
 
 .PHONY: lint-ci
-lint-ci: ## Lint CI workflows and build scripts
+lint-ci: check-assets ## Lint CI workflows and build scripts
 	$(ACTIONLINT) -ignore 'label "xcode-27" is unknown'
-	shellcheck scripts/*.sh macOS/TwineCorePackage/*.sh macOS/Twine/Scripts/swiftlint.sh
+	shellcheck scripts/*.sh macOS/HandshakeCorePackage/*.sh macOS/Handshake/Scripts/swiftlint.sh
 
 .PHONY: check-bundle
 check-bundle: ## Test and lint the release scripts
@@ -197,12 +203,12 @@ check-bundle: ## Test and lint the release scripts
 # Build stages. debug, release and the app targets run these first.
 .PHONY: framework-debug
 framework-debug:
-	cargo build --package twine-bridge --profile debug --locked --target $(LIB_TARGET)
+	cargo build --package handshake-bridge --profile debug --locked --target $(LIB_TARGET)
 	$(FRAMEWORK_BUILD) debug
 
 .PHONY: framework-release
 framework-release:
-	cargo build --package twine-bridge --profile release --locked --target $(LIB_TARGET)
+	cargo build --package handshake-bridge --profile release --locked --target $(LIB_TARGET)
 	$(FRAMEWORK_BUILD) release
 
 .PHONY: deps-debug
@@ -225,7 +231,7 @@ build-tests: $(call needs,deps-debug)
 # CI archives the test products in the build job and unpacks them in each test job.
 .PHONY: pack-tests
 pack-tests: $(call needs,build-tests)
-	cd "$(TEST_PRODUCTS)" && tar -czf "$(TEST_ARCHIVE)" Debug/Twine.app Debug/TwineUITests-Runner.app *.xctestrun
+	cd "$(TEST_PRODUCTS)" && tar -czf "$(TEST_ARCHIVE)" Debug/Handshake.app Debug/HandshakeUITests-Runner.app *.xctestrun
 
 .PHONY: unpack-tests
 unpack-tests:
@@ -258,15 +264,13 @@ regenerate-dmg-artwork: ## Regenerate the DMG background
 
 ##@ Documentation
 .PHONY: build-site
-build-site: $(call needs,docs-lib docs-app) ## Build the documentation website
+build-site: check-site $(call needs,docs-lib docs-app) ## Build the documentation website
 	rm -rf "$(SITE_DIR)"
 	mkdir -p "$(SITE_DIR)"
 	cp docs/index.html "$(SITE_DIR)/"
 	cp -R docs/assets docs/documentation "$(SITE_DIR)/"
-	cp macOS/Twine/Twine/Assets.xcassets/AppIcon.appiconset/twine-256.png "$(SITE_DIR)/assets/icon.png"
-	cp macOS/Twine/Twine/Assets.xcassets/AppIcon.appiconset/twine-32.png "$(SITE_DIR)/assets/favicon.png"
 	cp -R "$(LIB_DOC_DIR)/doc/." "$(SITE_DIR)/documentation/rust/"
-	cp -R "$(APP_DOC_DIR)/Build/Products/Debug/Twine.doccarchive" "$(SITE_DIR)/documentation/swift"
+	cp -R "$(APP_DOC_DIR)/Build/Products/Debug/Handshake.doccarchive" "$(SITE_DIR)/documentation/swift"
 
 .PHONY: docs-lib
 docs-lib: ## Build the library API reference
@@ -279,14 +283,25 @@ docs-lib: ## Build the library API reference
 docs-app: $(call needs,deps-debug) ## Build the app API reference
 	$(XCODEBUILD_DEBUG) docbuild -derivedDataPath "$(APP_DOC_DIR)" \
 		OTHER_SWIFT_FLAGS='-symbol-graph-skip-synthesized-members' \
-		DOCC_HOSTING_BASE_PATH=twine/documentation/swift DOCC_TRANSFORM_FOR_STATIC_HOSTING=YES $(XCODE_BUILD_ARGS)
-	# Validate Twine's catalog strictly without treating dependency documentation warnings as errors.
+		DOCC_HOSTING_BASE_PATH=handshake/documentation/swift DOCC_TRANSFORM_FOR_STATIC_HOSTING=YES $(XCODE_BUILD_ARGS)
+	# Validate Handshake's catalog strictly without treating dependency documentation warnings as errors.
 	mkdir -p "$(APP_DOC_DIR)/Build/Products/Debug"
-	xcrun docc convert macOS/Twine/Twine/Documentation.docc \
-		--additional-symbol-graph-dir "$(APP_DOC_DIR)/Build/Intermediates.noindex/Twine.build/Debug/Twine.build/symbol-graph" \
-		--output-dir "$(APP_DOC_DIR)/Build/Products/Debug/Twine.doccarchive" \
-		--fallback-display-name Twine --fallback-bundle-identifier com.twineproject.Twine \
-		--fallback-default-module-kind Application --hosting-base-path twine/documentation/swift \
+	xcrun docc convert macOS/Handshake/Handshake/Documentation.docc \
+		--additional-symbol-graph-dir "$(APP_DOC_DIR)/Build/Intermediates.noindex/Handshake.build/Debug/Handshake.build/symbol-graph" \
+		--output-dir "$(APP_DOC_DIR)/Build/Products/Debug/Handshake.doccarchive" \
+		--fallback-display-name Handshake --fallback-bundle-identifier com.twineproject.Twine \
+		--fallback-default-module-kind Application --hosting-base-path handshake/documentation/swift \
 		--transform-for-static-hosting --warnings-as-errors \
-		--source-service github --source-service-base-url https://github.com/standing-desks/twine/blob/main \
+		--source-service github --source-service-base-url https://github.com/standing-desks/handshake/blob/main \
 		--checkout-path "$(CURDIR)"
+
+.PHONY: check-site
+check-site: check-assets ## Check website downloads and copy controls without desktop access
+	node scripts/test-site.cjs
+
+.PHONY: check-assets sync-assets
+check-assets: ## Verify shared brand sources and component copies
+	node assets/sync.cjs
+
+sync-assets: ## Refresh component copies and the generated README lockup
+	node assets/sync.cjs --write

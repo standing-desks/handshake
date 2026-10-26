@@ -27,6 +27,8 @@ jobs:
       - name: Set up macOS build tools and caches
         id: build-tools
         uses: ./.github/actions/setup-build
+      - name: Install website test dependency
+        run: command -v node >/dev/null || brew install node
       - name: Build website and API docs
         run: make build-site
       # Pull requests restore this cache; only main saves it.
