@@ -44,6 +44,7 @@ UI_DEFAULT_TESTS := testFirstLaunchShowsStartPage \
 	testMemoryHeaderSharingControlsRemainIndependentAndPersist \
 	testMemoryHeaderOpensSettingsWhenPolicySaveFails \
 	testHandshakeMemoriesRemainUsableAtMaximumZoom \
+	testSidebarDefaultsClosedAndRemembersVisibilityAfterRelaunch \
 	testGitFileTreeShowsPrimaryCheckoutChangesAcrossRepositories \
 	testGitFileTreeRefreshesConflictsAndUnavailableRepositories \
 	testFileMenuCanOpenWindowsAndFoldersAfterClosingLastWindow \

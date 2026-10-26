@@ -12,7 +12,8 @@ struct FolderView: View {
     @Environment(\.appZoom) private var zoom
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let path: String
-    @State private var sidebarVisibility: NavigationSplitViewVisibility = .all
+    private let sidebarPreferences = SidebarPreferences()
+    @State private var sidebarVisibility: NavigationSplitViewVisibility
     @State private var selection = WorkflowTabSelection()
     @State private var files = FileBrowserModel()
     @State private var traceNavigation = TraceTerminalNavigation()
@@ -26,6 +27,7 @@ struct FolderView: View {
 
     init(path: String) {
         self.path = path
+        _sidebarVisibility = State(initialValue: sidebarPreferences.isOpen(in: path) ? .all : .detailOnly)
         let model = MemoryModel(folder: path)
         _memories = State(initialValue: model)
     }
@@ -117,6 +119,9 @@ struct FolderView: View {
             }
         }
         .modifier(MemoryLoading(folder: path, model: memories))
+        .onChange(of: sidebarVisibility) { _, visibility in
+            sidebarPreferences.remember(isOpen: visibility != .detailOnly, in: path)
+        }
         .environment(traceNavigation)
         .environment(\.traceLaneColors, traceNavigation.laneColors)
         .onChange(of: isTracesExpanded) { _, expanded in

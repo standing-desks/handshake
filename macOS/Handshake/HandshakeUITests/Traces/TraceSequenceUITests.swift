@@ -60,7 +60,7 @@ extension HandshakeUITests {
 
     @MainActor
     private func verifySequenceAtMinimumWidth(_ app: XCUIApplication) {
-        sidebarToggle(in: app).click()
+        setSidebar(open: false, in: app)
         resizeWindow(app.windows.firstMatch, to: CGSize(width: 400, height: 620))
         XCTAssertTrue(app.buttons["traceSpan-114"].isHittable, app.debugDescription)
         XCTAssertTrue(app.buttons["traceFocusSpan-114"].isHittable, app.debugDescription)

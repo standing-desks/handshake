@@ -111,7 +111,7 @@ extension HandshakeUITests {
         attachWindow(in: app, name: "\(appearance), Traces expanded with details")
 
         // At the supported minimum width the lane contracts to its role symbol.
-        sidebarToggle(in: app).click()
+        setSidebar(open: false, in: app)
         resizeWindow(app.windows.firstMatch, to: CGSize(width: 400, height: 620))
         XCTAssertTrue(span.isHittable, app.debugDescription)
         XCTAssertTrue(close.isHittable, app.debugDescription)

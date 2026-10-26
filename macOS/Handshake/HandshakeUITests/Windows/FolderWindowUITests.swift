@@ -17,6 +17,7 @@ extension HandshakeUITests {
         let toggle = sidebarToggle(in: app)
         XCTAssertTrue(toggle.waitForExistence(timeout: 10), app.debugDescription)
         resizeWindow(app.windows.firstMatch, to: CGSize(width: 900, height: 620))
+        setSidebar(open: true, in: app)
         let root = fileRow(folder, in: app)
         XCTAssertTrue(root.waitForExistence(timeout: 5), app.debugDescription)
         let viewport = app.scrollViews["workspaceViewport"]
@@ -96,7 +97,7 @@ extension HandshakeUITests {
         resizeWindow(app.windows.firstMatch, to: CGSize(width: 900, height: 620))
         attachWindow(in: app, name: "\(appearance), centered draft and footer")
 
-        sidebarToggle(in: app).click()
+        setSidebar(open: false, in: app)
         // The title bar adds 52 points to the 400 × 250 minimum content size.
         resizeWindow(app.windows.firstMatch, to: CGSize(width: 400, height: 302))
         XCTAssertEqual(app.windows.firstMatch.frame.width, 400, accuracy: 2)
@@ -156,9 +157,7 @@ extension HandshakeUITests {
         let toggle = sidebarToggle(in: app)
         XCTAssertTrue(toggle.waitForExistence(timeout: 10), app.debugDescription)
         let root = fileRow(folder, in: app)
-        XCTAssertTrue(root.waitForExistence(timeout: 5), "The sidebar should start open")
-        toggle.click()
-        XCTAssertTrue(root.waitForNonExistence(timeout: 5), "The sidebar must remain collapsible")
+        XCTAssertTrue(root.waitForNonExistence(timeout: 5), "The sidebar should start closed")
         let traces = app.descendants(matching: .any).matching(identifier: "tracesHeader").firstMatch
         XCTAssertTrue(traces.waitForExistence(timeout: 10), app.debugDescription)
         XCTAssertEqual(traces.label, "Traces, collapsed")

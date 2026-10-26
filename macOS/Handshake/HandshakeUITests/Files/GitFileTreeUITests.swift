@@ -23,6 +23,7 @@ extension HandshakeUITests {
         let index = try Data(contentsOf: desktop.appending(path: ".git/index"))
         let app = try makeApp(lastOpenFolder: folder)
         app.launch()
+        setSidebar(open: true, in: app)
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
         resizeWindow(app.windows.firstMatch, to: CGSize(width: 1100, height: 850))
         waitForGit("Contains Git changes", at: desktop, in: app)
@@ -69,6 +70,7 @@ extension HandshakeUITests {
         let app = try makeApp(lastOpenFolder: folder)
         app.launchEnvironment["HANDSHAKE_TEST_APPEARANCE"] = "Light"
         app.launch()
+        setSidebar(open: true, in: app)
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
         waitForGit("Merge conflict", at: readme, in: app)
         fileRow(readme, in: app).click()

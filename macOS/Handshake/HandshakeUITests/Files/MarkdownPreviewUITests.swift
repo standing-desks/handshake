@@ -14,6 +14,7 @@ extension HandshakeUITests {
             to: next, atomically: true, encoding: .utf8)
         let app = try makeApp(lastOpenFolder: folder)
         app.launch()
+        setSidebar(open: true, in: app)
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
         resizeWindow(app.windows.firstMatch, to: CGSize(width: 1000, height: 680))
         XCTAssertTrue(fileRow(file, in: app).waitForExistence(timeout: 5))

@@ -16,6 +16,7 @@ extension HandshakeUITests {
         try "[editor]\nautosave = false\n".write(to: config, atomically: true, encoding: .utf8)
         app.launchEnvironment["HANDSHAKE_CONFIG_PATH"] = config.path
         app.launch()
+        setSidebar(open: true, in: app)
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
         resizeWindow(app.windows.firstMatch, to: CGSize(width: 1000, height: 680))
         XCTAssertTrue(sidebarToggle(in: app).waitForExistence(timeout: 10))

@@ -15,6 +15,7 @@ extension HandshakeUITests {
         try FileManager.default.createSymbolicLink(at: link, withDestinationURL: file)
         let app = try makeApp(lastOpenFolder: folder)
         app.launch()
+        setSidebar(open: true, in: app)
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
         resizeWindow(app.windows.firstMatch, to: CGSize(width: 900, height: 620))
         let firstRow = fileRow(first, in: app)
