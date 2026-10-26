@@ -232,3 +232,9 @@ AMIS synchronizer certification or broad compatibility across future harness ver
 
 The older explicit native importer remains in core for compatibility; the primary
 app flow now uses the automatic Handshake AMIS memory implementation.
+
+## Maintainer review (2026-10-26)
+
+Aravind Nidadavolu reviewed PR #199 and authorized his DCO sign-off for the
+branch’s prior commits, with merge gated on passing CI. The remediation commit
+records that authorization without rewriting the feature branch’s history.
