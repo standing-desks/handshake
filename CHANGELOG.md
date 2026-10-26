@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Replace the memory-sharing sheet entry with a compact Share switch and settings gear
+  in the Memories header. Keep agent labels and native-profile layouts open to additional
+  supported agents while preserving the current adapters and AMIS behavior.
+
+### Added
+
+- Add a Feature flags section in Settings, starting with app-wide cross-agent memory consolidation.
+  The flag defaults off, persists in configuration, and applies to open folders without a restart.
+
+- Share project memory automatically between Codex and Claude Code using a local AMIS 0.4 library,
+  native memory delivery, receiver-owned policy, provenance and recoverable publication receipts.
+- Inspect sharing status, pause or resume the project policy, and view native profile locations.
+
+### Fixed
+
+- Show active-session deferral as waiting, and keep storage details usable at 200% zoom.
+
 ## [0.4.1] - 2026-10-25
 
 ### Changed
@@ -29,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Preserve the app's bundle identifier and preferences, and accept legacy Twine
   environment overrides when their Handshake replacements are not supplied.
 - Package Handshake downloads and prepare both Homebrew taps for the new cask.
+
 
 ## [0.3.3] - 2026-10-17
 

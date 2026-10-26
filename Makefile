@@ -40,6 +40,10 @@ needs = $(if $(PREBUILT),,$(1))
 # Tests outside this list are retired from default runs, but remain available with ONLY or ALL=1.
 # Add a test here to re-enable it in local and CI default runs.
 UI_DEFAULT_TESTS := testFirstLaunchShowsStartPage \
+	testFeatureFlagControlsMemorySharingImmediatelyAndPersists \
+	testMemoryHeaderSharingControlsRemainIndependentAndPersist \
+	testMemoryHeaderOpensSettingsWhenPolicySaveFails \
+	testHandshakeMemoriesRemainUsableAtMaximumZoom \
 	testGitFileTreeShowsPrimaryCheckoutChangesAcrossRepositories \
 	testGitFileTreeRefreshesConflictsAndUnavailableRepositories \
 	testFileMenuCanOpenWindowsAndFoldersAfterClosingLastWindow \
@@ -80,6 +84,7 @@ UI_DEFAULT_TESTS := testFirstLaunchShowsStartPage \
 	testHTMLSyntaxHighlightingPreservesSourceEditingAndCSSDetection \
 	testMarkdownPreviewSourceSaveReloadAndLocalLinks \
 	testMemoryDockReadRefreshAndLeaveSourcesUnchanged \
+	testHandshakeMemoriesAutomaticallyShareBothDirectionsAndSurviveRelaunch \
 	testMemoryDockClaudeScopesNarrowNavigationAndHiddenTerminal \
 	testMemoryDockOtherWorkspacesRememberNavigationAcrossRelaunch \
 	testMemoryDockArrowNavigationKeepsFocusAfterRendering \
@@ -172,6 +177,10 @@ test-app: $(call needs,build-tests) ## Run the app's unit tests
 	@set -eu; \
 	handshake_test_data=$$(mktemp -d "$${TMPDIR:-/tmp}/handshake-unit-tests.XXXXXX"); \
 	trap 'rm -rf "$$handshake_test_data"' EXIT; \
+	mkdir -p "$$handshake_test_data/config/handshake" "$$handshake_test_data/native/codex" "$$handshake_test_data/native/claude"; \
+	printf '[feature_flags]\ncross_agent_memory_consolidation = true\n' > "$$handshake_test_data/config/handshake/config.toml"; \
+	TEST_RUNNER_CODEX_HOME="$$handshake_test_data/native/codex" \
+	TEST_RUNNER_CLAUDE_CONFIG_DIR="$$handshake_test_data/native/claude" \
 	TEST_RUNNER_HANDSHAKE_DATA_DIRECTORY="$$handshake_test_data" \
 	TEST_RUNNER_XDG_CONFIG_HOME="$$handshake_test_data/config" $(TEST_ENV) \
 		$(TEST_RUN) -only-testing:HandshakeTests

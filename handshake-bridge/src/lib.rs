@@ -2,11 +2,14 @@
 
 mod client;
 mod error;
+mod feature_flags;
 mod ffi;
 mod logging;
 mod memories;
 mod migration;
+mod native_memory;
 mod protocol;
+mod shared_memory;
 #[cfg(test)]
 mod test_support;
 

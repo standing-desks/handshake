@@ -30,6 +30,8 @@ impl Application {
             }
         }
         let mut inner = self.lock_inner()?;
+        let enabled = loaded.config.feature_flags.cross_agent_memory_consolidation;
+        let memory_changed = inner.config.feature_flags.cross_agent_memory_consolidation != enabled;
         if inner.config != loaded.config {
             inner
                 .folders
@@ -41,6 +43,15 @@ impl Application {
                     loaded.config.clone(),
                 ))))?;
             inner.config = loaded.config;
+        }
+        drop(inner);
+        if let Some(worker) = &self.memory_worker {
+            worker.set_enabled(enabled)?;
+            if enabled && memory_changed {
+                for folder in self.restorable_folders()? {
+                    self.register_memory_project(&folder);
+                }
+            }
         }
         Ok(CommandDisposition::Accepted)
     }

@@ -14,6 +14,8 @@ pub enum ConfigEditError {
     Migration(#[from] super::ConfigMigrationError),
     #[error("Cannot find the user config directory.")]
     MissingDirectory,
+    #[error("Cannot edit feature flags: {0}")]
+    FeatureFlags(String),
     #[error("Could not open the config file: {0}")]
     Open(String),
     #[error("The settings editor can only save the user config file.")]
@@ -54,7 +56,7 @@ fn editor_path(path: &Path) -> Result<PathBuf, ConfigEditError> {
     Ok(directory.join(path.file_name().ok_or(ConfigEditError::InvalidPath)?))
 }
 
-fn read_file(path: &Path) -> Result<FilePreview, ConfigEditError> {
+pub(super) fn read_file(path: &Path) -> Result<FilePreview, ConfigEditError> {
     let parent = path.parent().ok_or(ConfigEditError::InvalidPath)?;
     fs::create_dir_all(parent).map_err(|error| ConfigEditError::Open(error.to_string()))?;
     let path = editor_path(path)?;
@@ -68,7 +70,10 @@ fn read_file(path: &Path) -> Result<FilePreview, ConfigEditError> {
     Ok(files::read_preview(parent, &path))
 }
 
-fn save_file(path: &Path, request: &FileSaveRequest) -> Result<FileSaveOutcome, ConfigEditError> {
+pub(super) fn save_file(
+    path: &Path,
+    request: &FileSaveRequest,
+) -> Result<FileSaveOutcome, ConfigEditError> {
     let path = editor_path(path)?;
     if request.path != path || Some(request.folder.as_path()) != path.parent() {
         return Err(ConfigEditError::InvalidPath);

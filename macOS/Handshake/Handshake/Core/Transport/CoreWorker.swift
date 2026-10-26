@@ -3,6 +3,8 @@ import HandshakeCore
 
 actor CoreWorker: CoreTransport {
     let memoryWorker = MemoryWorker()
+    /// Native imports can wait on Codex; keep browsing and editing memory on its own worker.
+    private let nativeImportWorker = MemoryWorker()
     /// The directory where the core keeps its database.
     private let dataDirectory: URL
     private let windowMode: Bool
@@ -20,6 +22,20 @@ actor CoreWorker: CoreTransport {
         if let client {
             _ = handshake_client_destroy(client)
         }
+    }
+
+    func handshakeMemories(folder: String, action: HandshakeMemoryAction) async throws -> HandshakeMemorySnapshot {
+        try await memoryWorker.handshakeMemories(
+            .init(dataDirectory: dataDirectory.path, folder: folder, action: action))
+    }
+
+    func nativeMemoryImport(_ request: NativeMemoryImportRequest) async throws -> NativeMemoryImportSnapshot {
+        try await nativeImportWorker.nativeMemoryImport(request)
+    }
+
+    func sharedMemory(folder: String, action: SharedMemoryAction) async throws -> SharedMemorySnapshot {
+        try await memoryWorker.sharedMemory(
+            SharedMemoryRequest(dataDirectory: dataDirectory.path, folder: folder, action: action))
     }
 
     func close() {

@@ -3,6 +3,48 @@ import HandshakeCore
 
 /// Memory scans run independently so snapshots never hold up terminal I/O.
 actor MemoryWorker {
+    func handshakeMemories(_ request: HandshakeMemoryRequest) throws -> HandshakeMemorySnapshot {
+        try Task.checkCancellation()
+        let data = try JSONEncoder().encode(request)
+        var response = HandshakeBuffer()
+        let status = data.withUnsafeBytes { bytes in
+            handshake_project_memories(bytes.bindMemory(to: UInt8.self).baseAddress, bytes.count, &response)
+        }
+        try checkMemoryStatus(status)
+        let result = try JSONDecoder().decode(HandshakeMemoryResponse.self, from: consumeMemory(&response))
+        if let error = result.error { throw CoreFailure.failed(error) }
+        guard let snapshot = result.snapshot else { throw CoreFailure.empty }
+        return snapshot
+    }
+
+    func nativeMemoryImport(_ request: NativeMemoryImportRequest) throws -> NativeMemoryImportSnapshot {
+        try Task.checkCancellation()
+        let data = try JSONEncoder().encode(request)
+        var response = HandshakeBuffer()
+        let status = data.withUnsafeBytes { bytes in
+            handshake_native_memory_import(bytes.bindMemory(to: UInt8.self).baseAddress, bytes.count, &response)
+        }
+        try checkMemoryStatus(status)
+        let result = try JSONDecoder().decode(NativeMemoryImportResponse.self, from: consumeMemory(&response))
+        if let error = result.error { throw CoreFailure.failed(error) }
+        guard let snapshot = result.snapshot else { throw CoreFailure.empty }
+        return snapshot
+    }
+
+    func sharedMemory(_ request: SharedMemoryRequest) throws -> SharedMemorySnapshot {
+        try Task.checkCancellation()
+        let data = try JSONEncoder().encode(request)
+        var response = HandshakeBuffer()
+        let status = data.withUnsafeBytes { bytes in
+            handshake_shared_memory(bytes.bindMemory(to: UInt8.self).baseAddress, bytes.count, &response)
+        }
+        try checkMemoryStatus(status)
+        let result = try JSONDecoder().decode(SharedMemoryResponse.self, from: consumeMemory(&response))
+        if let error = result.error { throw CoreFailure.failed(error) }
+        guard let snapshot = result.snapshot else { throw CoreFailure.empty }
+        return snapshot
+    }
+
     func memorySave(_ request: CoreMemorySaveRequest) throws -> FileSaveResult {
         try Task.checkCancellation()
         let data = try JSONEncoder().encode(request)

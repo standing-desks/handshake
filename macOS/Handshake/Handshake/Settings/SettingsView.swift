@@ -2,6 +2,11 @@ import AppKit
 import SwiftUI
 
 struct SettingsView: View {
+    @State private var section = Section.configuration
+    private enum Section: String, CaseIterable {
+        case configuration = "Configuration"
+        case flags = "Feature flags"
+    }
     let settings: SettingsPopup
     let windows: FolderWindows
     @Environment(\.appZoomMaximumPresentationSize) private var maximumSize
@@ -15,13 +20,23 @@ struct SettingsView: View {
                     .keyboardShortcut(.cancelAction)
                     .accessibilityIdentifier("closeSettings")
             }
-            Text("Press ⌘S to save. Saved settings apply immediately to all open folders.")
-                .font(.caption).foregroundStyle(.secondary)
-            if let editor = settings.editor {
+            Picker("Settings section", selection: $section) {
+                ForEach(Section.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            }.pickerStyle(.segmented).accessibilityIdentifier("settingsSection")
+            if section == .flags {
+                FeatureFlagsView(
+                    model: settings.featureFlags,
+                    configurationHasChanges: settings.editor?.isDirty == true || settings.editor?.isSaving == true,
+                    change: { id, value in Task { await settings.setFeatureFlag(id, enabled: value, windows: windows) }
+                    },
+                    retry: { Task { await settings.retryFeatureFlags(windows: windows) } })
+            } else if let editor = settings.editor {
+                Text("Press ⌘S to save. Saved settings apply immediately to all open folders.")
+                    .font(.caption).foregroundStyle(.secondary)
                 FileViewer(
                     path: editor.path, folder: editor.folder, failure: nil,
                     isVisible: settings.isPresented, openFile: { _ in },
-                    didSave: { try await windows.reloadConfig() }
+                    didSave: { try await settings.configurationSaved(windows: windows) }
                 )
                 .environment(editor)
                 .environment(settings.coreClient)

@@ -47,7 +47,7 @@ impl Collector {
 
     pub fn push(&mut self, mut source: MemorySource, backing: Backing) {
         source.example = self.example;
-        if self.entries.len() < SOURCE_LIMIT && self.seen.insert(source.id.clone()) {
+        if self.seen.insert(source.id.clone()) {
             self.entries.push(Entry { source, backing });
         }
     }
@@ -94,13 +94,8 @@ impl Collector {
         default: MemoryKind,
         group: &str,
     ) {
-        let mut pending = vec![(root.to_owned(), 0)];
-        let mut visited = 0;
-        while let Some((directory, depth)) = pending.pop() {
-            visited += 1;
-            if visited > SOURCE_LIMIT || self.entries.len() >= SOURCE_LIMIT {
-                break;
-            }
+        let mut pending = vec![root.to_owned()];
+        while let Some(directory) = pending.pop() {
             let Ok(metadata) = std::fs::symlink_metadata(&directory) else {
                 continue;
             };
@@ -123,11 +118,7 @@ impl Collector {
                     .push(format!("Cannot list {}", directory.display()));
                 continue;
             };
-            let mut paths: Vec<_> = entries
-                .take(SOURCE_LIMIT)
-                .filter_map(Result::ok)
-                .map(|e| e.path())
-                .collect();
+            let mut paths: Vec<_> = entries.filter_map(Result::ok).map(|e| e.path()).collect();
             paths.sort();
             for path in paths {
                 let name = path.file_name().unwrap_or_default().to_string_lossy();
@@ -149,9 +140,7 @@ impl Collector {
                         ));
                         continue;
                     }
-                    if depth < 8 {
-                        pending.push((path, depth + 1));
-                    }
+                    pending.push(path);
                 } else {
                     let relative = path.strip_prefix(root).unwrap_or(&path);
                     self.file(
@@ -528,9 +517,9 @@ impl Collector {
         };
         let projects = locations.claude.join("projects");
         if let Ok(entries) = std::fs::read_dir(&projects) {
-            let mut entries: Vec<_> = entries.take(SOURCE_LIMIT).filter_map(Result::ok).collect();
+            let mut entries: Vec<_> = entries.filter_map(Result::ok).collect();
             entries.sort_by_key(std::fs::DirEntry::file_name);
-            for entry in entries.into_iter().take(SOURCE_LIMIT) {
+            for entry in entries {
                 if !entry.file_type().is_ok_and(|t| t.is_dir()) {
                     continue;
                 }
@@ -585,11 +574,6 @@ pub(super) fn discover(request: &MemoryRequest) -> Result<(Vec<Entry>, Vec<Strin
     if let Some(root) = &request.examples_root {
         collector.example = true;
         collector.scan(&Locations::examples(root));
-    }
-    if collector.entries.len() >= SOURCE_LIMIT {
-        collector
-            .diagnostics
-            .push(format!("Discovery is limited to {SOURCE_LIMIT} sources."));
     }
     collector.entries.sort_by(|a, b| {
         a.source
@@ -698,6 +682,45 @@ mod tests {
         let path = root.join(relative);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(path, contents).unwrap();
+    }
+
+    #[test]
+    fn native_libraries_are_not_truncated_by_other_sources_or_tree_depth() {
+        let root = tempfile::tempdir().unwrap();
+        let codex = root.path().join("codex");
+        for index in 0..=SOURCE_LIMIT {
+            write(&codex, &format!("memory-{index}.md"), "Native memory");
+        }
+        let claude = root.path().join("claude");
+        write(&claude, "MEMORY.md", "Native index");
+        write(
+            &claude,
+            "a/b/c/d/e/f/g/h/i/j/topic.md",
+            "Nested native memory",
+        );
+        let mut collector = Collector::new(false);
+        collector.tree(
+            &codex,
+            MemoryHarness::Codex,
+            MemoryScope::Global,
+            MemoryKind::Durable,
+            "Codex",
+        );
+        collector.tree(
+            &claude,
+            MemoryHarness::ClaudeCode,
+            MemoryScope::Folder,
+            MemoryKind::Durable,
+            "Claude",
+        );
+        assert_eq!(collector.entries.len(), SOURCE_LIMIT + 3);
+        assert!(
+            collector
+                .entries
+                .iter()
+                .any(|entry| entry.source.title == "topic.md")
+        );
+        assert_eq!(collector.diagnostics, Vec::<String>::new());
     }
 
     #[test]

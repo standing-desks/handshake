@@ -67,10 +67,15 @@ nonisolated protocol CoreTransport: Sendable {
     func snapshot() async throws -> CoreSnapshot
     func pollFiles(_ request: FileBrowserRequest) async throws -> FileBrowserSnapshot?
     func saveFile(_ request: FileSaveRequest) async throws -> FileSaveResult
+    func featureFlags() async throws -> FeatureFlagSnapshot
+    func setFeatureFlag(_ id: FeatureFlagID, enabled: Bool, expectedVersion: FileVersion) async throws -> FileSaveResult
     func configFile() async throws -> FilePreview
     func memoryCatalog(_ request: CoreMemoryRequest) async throws -> CoreMemoryCatalog
     func memoryRead(_ request: CoreMemoryRequest) async throws -> CoreMemoryRead
     func memorySave(_ request: CoreMemorySaveRequest) async throws -> FileSaveResult
+    func handshakeMemories(folder: String, action: HandshakeMemoryAction) async throws -> HandshakeMemorySnapshot
+    func nativeMemoryImport(_ request: NativeMemoryImportRequest) async throws -> NativeMemoryImportSnapshot
+    func sharedMemory(folder: String, action: SharedMemoryAction) async throws -> SharedMemorySnapshot
     func saveConfigFile(_ request: FileSaveRequest) async throws -> FileSaveResult
     func harnessModels(_ request: HarnessModelsRequest) async throws -> CoreHarnessModelsResult
     func events(after sequence: UInt64, limit: UInt32) async throws -> [CoreEvent]
@@ -88,6 +93,18 @@ nonisolated protocol CoreTransport: Sendable {
 }
 
 extension CoreTransport {
+    func handshakeMemories(folder: String, action: HandshakeMemoryAction) async throws -> HandshakeMemorySnapshot {
+        throw CoreFailure.unexpectedCommandResult
+    }
+
+    func nativeMemoryImport(_ request: NativeMemoryImportRequest) async throws -> NativeMemoryImportSnapshot {
+        throw CoreFailure.unexpectedCommandResult
+    }
+
+    func sharedMemory(folder: String, action: SharedMemoryAction) async throws -> SharedMemorySnapshot {
+        throw CoreFailure.unexpectedCommandResult
+    }
+
     func memoryCatalog(_ request: CoreMemoryRequest) async throws -> CoreMemoryCatalog {
         throw CoreFailure.unexpectedCommandResult
     }
@@ -97,6 +114,13 @@ extension CoreTransport {
     }
 
     func memorySave(_ request: CoreMemorySaveRequest) async throws -> FileSaveResult {
+        throw CoreFailure.unexpectedCommandResult
+    }
+
+    func featureFlags() async throws -> FeatureFlagSnapshot { throw CoreFailure.unexpectedCommandResult }
+    func setFeatureFlag(
+        _ id: FeatureFlagID, enabled: Bool, expectedVersion: FileVersion
+    ) async throws -> FileSaveResult {
         throw CoreFailure.unexpectedCommandResult
     }
 

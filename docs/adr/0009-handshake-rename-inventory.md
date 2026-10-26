@@ -586,3 +586,24 @@ text is retained under the third-party policy, not blindly rewritten.
 | `twine-core/src/workflow_type/files.rs` | 251 |
 | `twine-core/tests/fixtures/legacy-adversarial.toml` | 1 |
 | `twine-core/tests/fixtures/legacy-coordinator.toml` | 1 |
+
+## Cross-agent memory integration
+
+The feature uses `handshake-core`, `handshake-bridge`, the Handshake Swift targets
+and `handshake_project_memories`. The supported `HANDSHAKE_MEMORY_DIRECTORY`
+override takes precedence over `TWINE_MEMORY_DIRECTORY`; app data overrides
+follow the same primary/fallback rule. New standard libraries use
+`~/Library/Application Support/Handshake/memories`.
+
+An existing registered library at `~/Library/Application Support/Twine/memories`
+is retained in place when no Handshake memory destination exists. Production
+application-data adoption excludes that registered subtree. Its live SQLite
+bindings, native profile symlinks and absolute publication paths must not be
+cloned into a second writable library. An established Handshake destination wins.
+Explicit app/test roots remain isolated.
+
+Existing `twine-<UUID>` Claude profile directories, `twine-*` native projection
+filenames, AMIS adapter/profile IDs and source keys remain compatibility contracts.
+They preserve native startup memory, owned-file recognition, sealed receipts and
+immutable provenance. Product labels and new application symbols use Handshake;
+historical memory content and imported AMIS schema bytes are not rewritten.

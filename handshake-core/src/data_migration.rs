@@ -267,6 +267,12 @@ fn copy_directory(source: &Path, destination: &Path, root: bool) -> Result<(), D
     for entry in io_at(source, "read data directory", fs::read_dir(source))? {
         let entry = io_at(source, "read directory entry", entry)?;
         let name = entry.file_name();
+        // The cross-agent library has absolute native bindings, its own receiver lock,
+        // live SQLite state and native profile symlinks. It is retained in place and
+        // selected by memories::handshake, not copied into a second writable library.
+        if root && name == "memories" && entry.path().join("bindings.sqlite").is_file() {
+            continue;
+        }
         if root
             && [
                 "twine.db",
@@ -372,6 +378,32 @@ mod tests {
                 .disposition,
             CommandDisposition::Accepted
         );
+    }
+
+    #[test]
+    fn retains_the_registered_memory_library_without_cloning_native_profiles() {
+        let root = tempfile::tempdir().unwrap();
+        let legacy = root.path().join("Twine");
+        let destination = root.path().join("Handshake");
+        let memory = legacy.join("memories");
+        fs::create_dir_all(&memory).unwrap();
+        fs::write(memory.join("bindings.sqlite"), b"receiver-owned library").unwrap();
+        std::os::unix::fs::symlink("native-profile", memory.join("native-link")).unwrap();
+        migrate_data_directory(&legacy, &destination).unwrap();
+        assert_eq!(
+            fs::read(memory.join("bindings.sqlite")).unwrap(),
+            b"receiver-owned library"
+        );
+        assert!(
+            memory
+                .join("native-link")
+                .symlink_metadata()
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        assert!(!destination.join("memories").exists());
+        assert!(destination.join("handshake.db").exists());
     }
 
     fn recorded_legacy(source: &Path, folder: &Path) -> (crate::TerminalId, TranscriptRead) {

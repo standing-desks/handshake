@@ -3,22 +3,31 @@ import Foundation
 nonisolated struct CoreConfig: Decodable, Equatable, Sendable {
     let appearance: CoreAppearance
     let terminal: CoreTerminalConfig
+    let featureFlags: CoreFeatureConfiguration
     let editor: CoreEditorConfig
 
-    init(appearance: CoreAppearance, terminal: CoreTerminalConfig, editor: CoreEditorConfig = .init()) {
+    init(
+        appearance: CoreAppearance, terminal: CoreTerminalConfig, editor: CoreEditorConfig = .init(),
+        featureFlags: CoreFeatureConfiguration = .init()
+    ) {
         self.appearance = appearance
         self.terminal = terminal
         self.editor = editor
+        self.featureFlags = featureFlags
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         appearance = try container.decode(CoreAppearance.self, forKey: .appearance)
         terminal = try container.decode(CoreTerminalConfig.self, forKey: .terminal)
+        featureFlags = try container.decodeIfPresent(CoreFeatureConfiguration.self, forKey: .featureFlags) ?? .init()
         editor = try container.decodeIfPresent(CoreEditorConfig.self, forKey: .editor) ?? .init()
     }
 
-    private enum CodingKeys: String, CodingKey { case appearance, terminal, editor }
+    private enum CodingKeys: String, CodingKey {
+        case appearance, terminal, editor
+        case featureFlags = "feature_flags"
+    }
 
     enum ColorScheme: String, Decodable, Sendable {
         case system

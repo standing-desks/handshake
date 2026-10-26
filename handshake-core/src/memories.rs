@@ -3,7 +3,10 @@
 mod database;
 mod discovery;
 mod editing;
+pub mod handshake;
 mod locations;
+pub mod native_import;
+pub mod shared;
 
 pub use editing::save;
 

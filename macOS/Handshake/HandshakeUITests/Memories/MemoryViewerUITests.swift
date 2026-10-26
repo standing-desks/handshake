@@ -85,7 +85,8 @@ extension HandshakeUITests {
         for scope in ["folder", "global", "otherFolder"] {
             XCTAssertTrue(app.buttons["memoryScope-\(scope)"].isHittable)
         }
-        XCTAssertTrue(app.buttons["refreshMemories"].isHittable)
+        let memoryAction = app.buttons["openNativeMemory"]
+        XCTAssertTrue(memoryAction.exists ? memoryAction.isHittable : app.buttons["refreshMemories"].isHittable)
         XCTAssertTrue(app.buttons["memorySourceInfo"].isHittable)
         attachScreenshot(of: app, named: "Claude memory dock at 125 percent")
         sidebarToggle(in: app).click()
@@ -139,7 +140,7 @@ extension HandshakeUITests {
         try "# Local memory\nUpdated memory marker\n".write(to: memory, atomically: true, encoding: .utf8)
         app.buttons["memoryEntry-outline"].click()
         waitForMemoryDock(expanded: true, in: app)
-        app.buttons["refreshMemories"].click()
+        refreshMemorySources(in: app)
         let refreshed = expectation(
             for: NSPredicate { _, _ in
                 (contents.value as? String)?.contains("Updated memory marker") == true
@@ -154,6 +155,13 @@ extension HandshakeUITests {
         app.buttons["sessionRow-1"].click()
         XCTAssertTrue(app.buttons["workflowTab-1"].waitForExistence(timeout: 5))
         app.terminate()
+    }
+
+    @MainActor
+    private func refreshMemorySources(in app: XCUIApplication) {
+        if !app.buttons["refreshMemories"].exists { openHandshakeMemory(in: app) }
+        app.buttons["refreshMemories"].click()
+        if app.buttons["handshakeMemorySync"].exists { app.typeKey(.escape, modifierFlags: []) }
     }
 
     @MainActor

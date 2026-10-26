@@ -17,6 +17,7 @@ use crate::terminal::{
 use crate::harness::{HarnessId, LoginPath};
 use crate::workflow::{SessionId, WorkflowId, WorkflowKind, WorkflowState};
 
+mod agent_instructions;
 mod agents;
 mod configuration;
 mod files;
@@ -240,6 +241,7 @@ struct Inner {
 }
 
 pub struct Application {
+    memory_worker: Option<crate::memories::handshake::Worker>,
     window_storage: Option<windows::WindowStorageLease>,
     /// Window runtimes share their recorder; only its final owner shuts it down.
     shared_recording: bool,
@@ -261,6 +263,56 @@ pub struct Application {
 }
 
 impl Application {
+    #[cfg_attr(test, allow(clippy::unused_self))]
+    fn attach_memories(&mut self, data_directory: &Path, enabled: bool) {
+        #[cfg(not(test))]
+        {
+            let root = crate::memories::handshake::store_directory(data_directory);
+            self.memory_worker = Some(crate::memories::handshake::Worker::start(root, enabled));
+            for folder in self.restorable_folders().unwrap_or_default() {
+                self.register_memory_project(&folder);
+            }
+        }
+        #[cfg(test)]
+        let _ = (data_directory, enabled);
+    }
+    fn register_memory_project(&self, folder: &Path) {
+        if let Some(worker) = &self.memory_worker {
+            worker.register(folder);
+        }
+    }
+    /// Reads project policy and memory state without tying file work to presentation state.
+    /// # Errors
+    /// Returns validation, storage and native reconciliation errors.
+    pub fn handshake_memories(
+        &self,
+        request: &crate::memories::handshake::Request,
+    ) -> Result<crate::memories::handshake::Snapshot, crate::memories::handshake::Error> {
+        if !self
+            .lock_inner()
+            .map_err(std::io::Error::other)?
+            .config
+            .feature_flags
+            .cross_agent_memory_consolidation
+        {
+            return Err(crate::memories::handshake::Error::Disabled);
+        }
+        let root = self
+            .memory_worker
+            .as_ref()
+            .map_or_else(crate::memories::handshake::directory, |w| {
+                w.directory().to_owned()
+            });
+        crate::memories::handshake::execute_guarded(&root, request, || {
+            Ok(self
+                .lock_inner()
+                .map_err(std::io::Error::other)?
+                .config
+                .feature_flags
+                .cross_agent_memory_consolidation
+                && crate::memories::handshake::feature_enabled())
+        })
+    }
     /// Creates the application with production queue limits and the user's config file, keeping
     /// its database in `data_directory`, and reopens the folder that was open when Handshake last quit.
     ///
@@ -286,7 +338,10 @@ impl Application {
             &data_directory.join("transcripts"),
         )?);
         let store = Store::open(&database_path(data_directory))?;
-        Self::with_store(store, config, DEFAULT_EVENT_CAPACITY, transcripts)
+        let memory_enabled = config.feature_flags.cross_agent_memory_consolidation;
+        let mut application = Self::with_store(store, config, DEFAULT_EVENT_CAPACITY, transcripts)?;
+        application.attach_memories(data_directory, memory_enabled);
+        Ok(application)
     }
 
     /// Creates the application with an in-memory database, default configuration, and an
@@ -344,6 +399,7 @@ impl Application {
         let application = Self {
             window_storage: None,
             shared_recording,
+            memory_worker: None,
             files: crate::files::FileWatcher::new()?,
             run_processes: Mutex::new(HashMap::new()),
             harness_steps: Mutex::new(HashMap::new()),
@@ -433,7 +489,13 @@ impl Application {
                 })?;
                 CommandDisposition::Accepted
             }
-            Command::OpenFolder { path } => self.change_folder(Some(&path))?,
+            Command::OpenFolder { path } => {
+                let result = self.change_folder(Some(&path))?;
+                if path.is_dir() {
+                    self.register_memory_project(&path);
+                }
+                result
+            }
             Command::RestoreFolder { path } => self.restore_window_folder(&path)?,
             Command::CloseFolder => self.change_folder(None)?,
             Command::CloseFolderIfOpen { path } => {
@@ -692,6 +754,7 @@ impl Drop for Application {
             // Exit callbacks are ignored after explicit shutdown takes ownership of stopping.
             inner.terminals.clear();
         }
+        self.memory_worker.take();
         self.terminals.shutdown();
         if !self.shared_recording {
             self.terminal_output.shutdown_recording();
@@ -709,6 +772,8 @@ fn rejection(code: &str, error: &dyn std::error::Error) -> CommandDisposition {
 
 #[derive(Debug, Error)]
 pub enum ApplicationError {
+    #[error(transparent)]
+    Memory(#[from] crate::memories::handshake::Error),
     #[error(transparent)]
     ConfigMigration(#[from] crate::config::ConfigMigrationError),
     #[error(transparent)]

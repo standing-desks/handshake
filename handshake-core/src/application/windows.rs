@@ -71,9 +71,11 @@ impl Application {
             store.recover_interrupted_work()?;
         }
         let folders = Folders::for_window(store, restore)?;
+        let config = Config::load_user();
+        let memory_enabled = config.feature_flags.cross_agent_memory_consolidation;
         let mut application = Self::with_folders(
             folders,
-            Config::load_user(),
+            config,
             DEFAULT_EVENT_CAPACITY,
             Arc::clone(&transcripts),
             true,
@@ -85,6 +87,7 @@ impl Application {
                 windows: 0,
             })
             .windows += 1;
+        application.attach_memories(data_directory, memory_enabled);
         application.window_storage = Some(WindowStorageLease { path });
         Ok(application)
     }

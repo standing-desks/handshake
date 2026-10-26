@@ -147,7 +147,34 @@ impl Application {
             Ok(id) => id,
             Err(error) => return Ok(rejection("agentStartFailed", &error)),
         };
-        let (arguments, hooks) = self.harness_arguments(harness, reserved, options, prompt);
+        let (mut arguments, hooks) = self.harness_arguments(harness, reserved, options, "");
+        let (memory_environment, memory_lease) = match self.memory_environment(harness, &folder) {
+            Ok(values) => values,
+            Err(error) => {
+                let _ = self.terminals.cancel_reserved_terminal(reserved);
+                return Ok(rejection("nativeMemoryUnavailable", &error));
+            }
+        };
+        if let Err(error) =
+            Self::append_memory_settings(harness, &memory_environment, &mut arguments).and_then(
+                |()| {
+                    Self::append_agent_instructions(
+                        harness,
+                        "",
+                        &mut arguments,
+                        hooks.as_ref(),
+                        &located,
+                        &folder,
+                    )
+                },
+            )
+        {
+            let _ = self.terminals.cancel_reserved_terminal(reserved);
+            return Ok(rejection("sharedMemoryUnavailable", &error));
+        }
+        if !prompt.is_empty() {
+            arguments.extend(definition.arguments(prompt));
+        }
         let mut inner = self.lock_inner()?;
         // Start the agent at the size its draft terminal has now, as the view has already fitted it.
         let placeholder_size = inner
@@ -163,9 +190,17 @@ impl Application {
             &located.program,
             &arguments,
             &located.path,
-            &crate::harness::launch::observed_environment(harness, hooks.as_ref()),
+            &crate::harness::launch::observed_environment(harness, hooks.as_ref())
+                .into_iter()
+                .chain(
+                    memory_environment
+                        .iter()
+                        .filter(|(key, _)| key != "HANDSHAKE_CLAUDE_MEMORY_DIRECTORY")
+                        .map(|(k, v)| (k.as_str(), v.as_str())),
+                )
+                .collect::<Vec<_>>(),
             placeholder_size,
-            Arc::new(self.exit_callback()),
+            Arc::new(self.memory_exit_callback(memory_lease)),
         ) {
             Ok(terminal_id) => terminal_id,
             Err(error) => return Ok(rejection("agentStartFailed", &error)),

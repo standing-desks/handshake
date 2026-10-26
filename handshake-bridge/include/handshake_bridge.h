@@ -50,6 +50,9 @@ HandshakeStatus handshake_migrate_data(
 // user config file can be saved. Output ownership follows handshake_buffer_release.
 // Save input is bounded to 12 MiB + 16 KiB; pointer/length rules match handshake_client_save_file.
 HandshakeStatus handshake_config_file(HandshakeBuffer *out_file);
+// Read {type:"read"}, or set {type:"set",id,enabled,expectedVersion}.
+// No folder runtime is required; config-file versions and output ownership are preserved.
+HandshakeStatus handshake_feature_flags(const uint8_t *bytes, size_t length, HandshakeBuffer *out_result);
 // Local memory discovery and reading. Request JSON: {folder?, sourceId?, examplesRoot?}.
 // Catalog returns sources and discovery diagnostics; read requires a discovered sourceId.
 // No client is needed. Input/ownership rules match send_command and handshake_buffer_release.
@@ -59,6 +62,10 @@ HandshakeStatus handshake_memory_read(const uint8_t *bytes, size_t length, Hands
 // Returns saved/conflict/failed JSON. Input bound and pointer rules match save_file;
 // no client is needed, and output ownership follows handshake_buffer_release.
 HandshakeStatus handshake_memory_save(const uint8_t *bytes, size_t length, HandshakeBuffer *out_result);
+// Project memory operations: local core policy and owned output follow the contracts above.
+HandshakeStatus handshake_shared_memory(const uint8_t *bytes, size_t length, HandshakeBuffer *out_result);
+HandshakeStatus handshake_native_memory_import(const uint8_t *bytes, size_t length, HandshakeBuffer *out_result);
+HandshakeStatus handshake_project_memories(const uint8_t *bytes, size_t length, HandshakeBuffer *out_result);
 HandshakeStatus handshake_config_save_file(const uint8_t *request_bytes, size_t request_length, HandshakeBuffer *out_result);
 
 // A null out parameter is rejected with HANDSHAKE_STATUS_NULL_POINTER. Otherwise it must point to

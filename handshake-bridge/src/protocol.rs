@@ -685,6 +685,7 @@ mod tests {
                     "appearance": { "color_scheme": "dark" },
                     "theme": { "light": "handshake_light", "dark": "handshake_dark" },
                     "terminal": { "font_family": "Menlo", "font_size": 15.5, "cursor_style": "block", "cursor_blink": true, "colors": {}, "palettes": handshake_core::config::TerminalPalettes::default() },
+                    "feature_flags": {"cross_agent_memory_consolidation": false},
                     "traces": {"detail_budget_mb":512,"retention_days":90},
                     "editor": { "autosave": false, "autosave_delay_ms": 2000 }
                 },
