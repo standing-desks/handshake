@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-25
+
+### Changed
+
+- Update Rust, syntax parsing, and installer build dependencies.
+
+### Fixed
+
+- Use the same dark background in light and dark app icon modes to improve
+  contrast on white backgrounds. Preserve clear and tinted icon appearances.
+
 ## [0.4.0]
 
 ### Changed

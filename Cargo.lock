@@ -156,7 +156,7 @@ dependencies = [
 
 [[package]]
 name = "handshake-bridge"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "handshake-core",
  "serde",
@@ -170,7 +170,7 @@ dependencies = [
 
 [[package]]
 name = "handshake-core"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "libc",
  "portable-pty",
