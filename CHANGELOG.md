@@ -7,8 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-10-26
+
 ### Changed
 
+- Default the sidebar to closed and remember its visibility for each folder.
+- Launch Single agent workflows directly from the harness menu with each harness's
+  defaults, and remember the YOLO mode checkbox on the workflow tile.
 - Replace the memory-sharing sheet entry with a compact Share switch and settings gear
   in the Memories header. Keep agent labels and native-profile layouts open to additional
   supported agents while preserving the current adapters and AMIS behavior.

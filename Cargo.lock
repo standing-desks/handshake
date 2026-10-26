@@ -321,7 +321,7 @@ dependencies = [
 
 [[package]]
 name = "handshake-bridge"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "handshake-core",
  "serde",
@@ -335,7 +335,7 @@ dependencies = [
 
 [[package]]
 name = "handshake-core"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "jsonschema",
  "libc",
