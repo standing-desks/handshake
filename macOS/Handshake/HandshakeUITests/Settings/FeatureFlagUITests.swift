@@ -6,6 +6,7 @@ extension HandshakeUITests {
         let fixture = try makeAMISFixture(featureEnabled: false)
         let app = fixture.app
         app.launch()
+        setSidebar(open: true, in: app)
         defer { app.terminate() }
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["openNativeMemory"].exists)

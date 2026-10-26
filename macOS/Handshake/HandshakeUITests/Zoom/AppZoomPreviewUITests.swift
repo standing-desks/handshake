@@ -112,6 +112,7 @@ extension HandshakeUITests {
         try "# Linked page".write(to: folder.appending(path: "next.md"), atomically: true, encoding: .utf8)
         let app = try makeApp(lastOpenFolder: folder)
         app.launch()
+        setSidebar(open: true, in: app)
         defer { app.terminate() }
         XCTAssertTrue(app.buttons["workflowTab-1"].waitForExistence(timeout: 10))
         resizeWindow(app.windows.firstMatch, to: CGSize(width: 1100, height: 800))

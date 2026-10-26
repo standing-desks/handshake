@@ -114,6 +114,7 @@ extension HandshakeUITests {
         let fixture = try makeAMISFixture()
         let app = fixture.app
         app.launch()
+        setSidebar(open: true, in: app)
         defer { app.terminate() }
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
         resizeWindow(app.windows.firstMatch, to: CGSize(width: 1000, height: 800))
@@ -154,6 +155,7 @@ extension HandshakeUITests {
         let fixture = try makeAMISFixture()
         let app = fixture.app
         app.launch()
+        setSidebar(open: true, in: app)
         defer { app.terminate() }
         waitForSharingToggle(true, in: app)
         let bindings = fixture.store.appending(path: "bindings.sqlite")
