@@ -257,6 +257,7 @@ extension HandshakeUITests {
             app.launchEnvironment["XDG_CONFIG_HOME"] = configHome.path
         }
         app.launch()
+        setSidebar(open: true, in: app)
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
         resizeWindow(app.windows.firstMatch, to: CGSize(width: 900, height: 620))
         XCTAssertTrue(sidebarToggle(in: app).waitForExistence(timeout: 10))

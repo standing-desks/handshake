@@ -14,6 +14,7 @@ extension HandshakeUITests {
         try "first\nsecond\nthird\n".write(to: file, atomically: true, encoding: .utf8)
         let app = try makeApp(lastOpenFolder: folder)
         app.launch()
+        setSidebar(open: true, in: app)
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
         resizeWindow(app.windows.firstMatch, to: CGSize(width: 900, height: 620))
         XCTAssertTrue(sidebarToggle(in: app).waitForExistence(timeout: 10))

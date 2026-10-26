@@ -166,6 +166,7 @@ extension HandshakeUITests {
         let app = try makeApp(lastOpenFolder: folder)
         app.launchEnvironment["HANDSHAKE_TEST_APPEARANCE"] = appearance
         app.launch()
+        setSidebar(open: true, in: app)
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
         resizeWindow(app.windows.firstMatch, to: CGSize(width: 1_000, height: 700))
         XCTAssertTrue(sidebarToggle(in: app).waitForExistence(timeout: 10))

@@ -52,6 +52,20 @@ extension HandshakeUITests {
         sidebarToggleButtons(in: app).firstMatch
     }
 
+    /// Establish the surface a test needs without assuming a startup or restored visibility.
+    @MainActor
+    func setSidebar(open: Bool, in app: XCUIApplication) {
+        let toggle = sidebarToggle(in: app)
+        XCTAssertTrue(toggle.waitForExistence(timeout: 10), app.debugDescription)
+        let sidebar = app.scrollViews["sidebarViewport"]
+        if sidebar.exists != open { toggle.click() }
+        if open {
+            XCTAssertTrue(sidebar.waitForExistence(timeout: 5), app.debugDescription)
+        } else {
+            XCTAssertTrue(sidebar.waitForNonExistence(timeout: 5), app.debugDescription)
+        }
+    }
+
     /// A new folder under the temporary directory, deleted when the test ends.
     func makeTestFolder(prefix: String) throws -> URL {
         let folder = FileManager.default.temporaryDirectory.appending(path: "\(prefix)-\(UUID().uuidString)")
