@@ -29,7 +29,7 @@ jobs:
     steps:
       - name: Authenticate the tap notification
         id: tap-token
-        uses: actions/create-github-app-token@v3.2.0
+        uses: actions/create-github-app-token@v3.3.0
         with:
           client-id: ${{ vars[matrix.client_id_variable] }}
           private-key: ${{ secrets[matrix.private_key_secret] }}
