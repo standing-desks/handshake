@@ -115,20 +115,28 @@ extension HandshakeUITests {
         if processIsRunning(processID) { _ = kill(processID, SIGKILL) }
     }
 
+    /// Reveals a choice inside both scroll viewports, including tiles a lazy grid hasn't created yet.
+    @MainActor
+    func revealWorkflowChoice(_ tile: XCUIElement, in app: XCUIApplication) {
+        let choices = app.scrollViews["newTabChoices"]
+        XCTAssertTrue(choices.waitForExistence(timeout: 10), app.debugDescription)
+        let viewport = app.scrollViews["workspaceViewport"]
+        for _ in 0..<8 {
+            let visible = choices.frame.intersection(viewport.frame)
+            if tile.exists, visible.contains(CGPoint(x: tile.frame.midX, y: tile.frame.midY)) { break }
+            let delta: CGFloat = tile.exists && tile.frame.midY < visible.minY ? 60 : -60
+            choices.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1))
+                .scroll(byDeltaX: 0, deltaY: delta)
+        }
+        XCTAssertTrue(tile.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(tile.isHittable, app.debugDescription)
+    }
+
     /// Starts `harness` directly with its own model and effort defaults.
     @MainActor
     func chooseHarness(_ harness: String, displayName: String? = nil, in app: XCUIApplication) {
         let tile = app.descendants(matching: .any).matching(identifier: "workflowChoice-Single agent").firstMatch
-        XCTAssertTrue(tile.waitForExistence(timeout: 10), app.debugDescription)
-        let choices = app.scrollViews["newTabChoices"]
-        let viewport = app.scrollViews["workspaceViewport"]
-        // Short windows show part of the card. Reveal the tile's click point before opening it.
-        for _ in 0..<8 {
-            let visible = choices.frame.intersection(viewport.frame)
-            if visible.contains(CGPoint(x: tile.frame.midX, y: tile.frame.midY)) { break }
-            choices.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1))
-                .scroll(byDeltaX: 0, deltaY: -60)
-        }
+        revealWorkflowChoice(tile, in: app)
         // The harness list loads asynchronously; retry opening the menu until the harness appears.
         var found = false
         for _ in 0..<10 {
