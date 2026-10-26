@@ -50,6 +50,9 @@ HandshakeStatus handshake_migrate_data(
 // user config file can be saved. Output ownership follows handshake_buffer_release.
 // Save input is bounded to 12 MiB + 16 KiB; pointer/length rules match handshake_client_save_file.
 HandshakeStatus handshake_config_file(HandshakeBuffer *out_file);
+// Read {type:"read"}, or set {type:"set",id,enabled,expectedVersion}.
+// No folder runtime is required; config-file versions and output ownership are preserved.
+HandshakeStatus handshake_feature_flags(const uint8_t *bytes, size_t length, HandshakeBuffer *out_result);
 // Local memory discovery and reading. Request JSON: {folder?, sourceId?, examplesRoot?}.
 // Catalog returns sources and discovery diagnostics; read requires a discovered sourceId.
 // No client is needed. Input/ownership rules match send_command and handshake_buffer_release.

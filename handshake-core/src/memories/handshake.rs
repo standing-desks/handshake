@@ -1,5 +1,7 @@
 //! Handshake-owned AMIS memory, background reconciliation and native project profiles.
 mod contract;
+mod gate;
+use gate::operation_gate;
 mod native;
 mod storage;
 mod worker;
@@ -12,6 +14,8 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum Error {
+    #[error("Enable cross-agent memory consolidation in Settings > Feature flags first.")]
+    Disabled,
     #[error("Choose an existing absolute project folder.")]
     InvalidFolder,
     #[error("The Handshake memory store is busy. It will retry automatically.")]
@@ -139,11 +143,36 @@ pub fn execute(request: &Request) -> Result<Snapshot, Error> {
         .data_directory
         .as_deref()
         .map_or_else(directory, store_directory);
-    execute_at(&root, request)
+    execute_guarded(&root, request, || Ok(feature_enabled()))
 }
 
-pub(crate) fn execute_at(root: &Path, request: &Request) -> Result<Snapshot, Error> {
+pub(crate) fn feature_enabled() -> bool {
+    crate::config::Config::load_user()
+        .feature_flags
+        .cross_agent_memory_consolidation
+}
+
+pub(crate) fn execute_guarded(
+    root: &Path,
+    request: &Request,
+    enabled: impl Fn() -> Result<bool, Error>,
+) -> Result<Snapshot, Error> {
+    let gate = operation_gate(root);
+    let _guard = gate
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if !enabled()? {
+        return Err(Error::Disabled);
+    }
     let mut library = storage::Library::open(root)?;
+    // The receiver lock also serializes other processes; recheck after acquiring it.
+    if !enabled()? {
+        return Err(Error::Disabled);
+    }
+    execute_library(&mut library, request)
+}
+
+fn execute_library(library: &mut storage::Library, request: &Request) -> Result<Snapshot, Error> {
     let project = library.register(&request.folder)?;
     match &request.action {
         Action::SetEnabled { enabled } => library.set_enabled(&project, *enabled)?,
@@ -166,7 +195,15 @@ pub(crate) fn launch_environment(
     root: &Path,
     folder: &Path,
     provider: &str,
+    enabled: impl Fn() -> bool,
 ) -> Result<(Vec<(String, String)>, std::fs::File), Error> {
+    let gate = operation_gate(root);
+    let _guard = gate
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if !enabled() {
+        return Err(Error::Disabled);
+    }
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     let mut library = loop {
         match storage::Library::open(root) {
@@ -177,6 +214,9 @@ pub(crate) fn launch_environment(
             Err(error) => return Err(error),
         }
     };
+    if !enabled() {
+        return Err(Error::Disabled);
+    }
     let project = library.register(folder)?;
     // Pausing synchronization retains physical project isolation and existing native memories.
     if let Err(error) = library.sync(&project) {
@@ -186,9 +226,135 @@ pub(crate) fn launch_environment(
     Ok((native::environment(&project), lease))
 }
 
+pub(crate) fn contains_session(root: &Path, session: &str) -> bool {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return false;
+    };
+    entries.flatten().any(|entry| {
+        entry.file_type().is_ok_and(|kind| {
+            if kind.is_dir() {
+                contains_session(&entry.path(), session)
+            } else {
+                kind.is_file() && entry.file_name().to_string_lossy().contains(session)
+            }
+        })
+    })
+}
+
+/// Restores only a known saved Codex home while the feature is off. No registration or sync occurs.
+pub(crate) fn resume_codex_environment(
+    root: &Path,
+    folder: &Path,
+    session: &str,
+) -> Result<Option<(PathBuf, std::fs::File)>, Error> {
+    use rusqlite::OptionalExtension;
+    use std::os::fd::AsRawFd;
+    let database = root.join("bindings.sqlite");
+    if !database.is_file() {
+        return Ok(None);
+    }
+    native::safe_path(&database)?;
+    let connection = rusqlite::Connection::open_with_flags(
+        database,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )?;
+    let folder = folder.canonicalize()?;
+    let id: Option<String> = connection
+        .query_row(
+            "SELECT id FROM projects WHERE folder=?",
+            [folder.to_string_lossy().as_ref()],
+            |r| r.get(0),
+        )
+        .optional()?;
+    let Some(id) = id else {
+        return Ok(None);
+    };
+    uuid::Uuid::parse_str(&id).map_err(|_| Error::Conflict)?;
+    let project = root.join("projects").join(id);
+    let home = project.join("native/codex");
+    native::safe_path(&home.join("sessions"))?;
+    native::safe_path(&project.join("native-sessions-codex.lock"))?;
+    if !contains_session(&home.join("sessions"), session) {
+        return Ok(None);
+    }
+    let lease = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(project.join("native-sessions-codex.lock"))?;
+    // SAFETY: the owned descriptor borrows an existing native-session lock, never a memory body.
+    if unsafe { libc::flock(lease.as_raw_fd(), libc::LOCK_SH | libc::LOCK_NB) } != 0 {
+        return Err(Error::NativeActive);
+    }
+    Ok(Some((home, lease)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn disabled_core_request_does_not_register_or_create_memory_storage() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("never-created");
+        let request = Request {
+            folder: temp.path().to_owned(),
+            data_directory: None,
+            action: Action::Sync,
+        };
+        assert!(matches!(
+            execute_guarded(&root, &request, || Ok(false)),
+            Err(Error::Disabled)
+        ));
+        assert!(!root.exists());
+    }
+
+    #[test]
+    fn feature_off_resume_uses_only_the_existing_bound_home_and_rejects_symlinks() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().canonicalize().unwrap();
+        let id = uuid::Uuid::new_v4().to_string();
+        let session = uuid::Uuid::new_v4().to_string();
+        let database = rusqlite::Connection::open(root.join("bindings.sqlite")).unwrap();
+        database
+            .execute_batch("CREATE TABLE projects(id TEXT, folder TEXT);")
+            .unwrap();
+        database
+            .execute(
+                "INSERT INTO projects VALUES(?,?)",
+                rusqlite::params![id, root.to_string_lossy()],
+            )
+            .unwrap();
+        drop(database);
+        let project = root.join("projects").join(&id);
+        let home = project.join("native/codex");
+        std::fs::create_dir_all(home.join("sessions/day")).unwrap();
+        std::fs::write(
+            home.join("sessions/day")
+                .join(format!("rollout-{session}.jsonl")),
+            "native rollout",
+        )
+        .unwrap();
+        std::fs::write(project.join("native-sessions-codex.lock"), "").unwrap();
+        let before = std::fs::read(root.join("bindings.sqlite")).unwrap();
+        let resumed = resume_codex_environment(&root, &root, &session)
+            .unwrap()
+            .unwrap();
+        assert_eq!(resumed.0, home);
+        drop(resumed);
+        assert_eq!(before, std::fs::read(root.join("bindings.sqlite")).unwrap());
+        assert!(
+            resume_codex_environment(&root, &root, "not-saved")
+                .unwrap()
+                .is_none()
+        );
+        let outside = root.join("outside");
+        std::fs::rename(&home, &outside).unwrap();
+        std::os::unix::fs::symlink(&outside, &home).unwrap();
+        assert!(matches!(
+            resume_codex_environment(&root, &root, &session),
+            Err(Error::Conflict)
+        ));
+    }
 
     #[test]
     fn existing_native_bindings_remain_in_their_original_library() {

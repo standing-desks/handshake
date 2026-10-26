@@ -264,17 +264,17 @@ pub struct Application {
 
 impl Application {
     #[cfg_attr(test, allow(clippy::unused_self))]
-    fn attach_memories(&mut self, data_directory: &Path) {
+    fn attach_memories(&mut self, data_directory: &Path, enabled: bool) {
         #[cfg(not(test))]
         {
             let root = crate::memories::handshake::store_directory(data_directory);
-            self.memory_worker = Some(crate::memories::handshake::Worker::start(root));
+            self.memory_worker = Some(crate::memories::handshake::Worker::start(root, enabled));
             for folder in self.restorable_folders().unwrap_or_default() {
                 self.register_memory_project(&folder);
             }
         }
         #[cfg(test)]
-        let _ = data_directory;
+        let _ = (data_directory, enabled);
     }
     fn register_memory_project(&self, folder: &Path) {
         if let Some(worker) = &self.memory_worker {
@@ -288,13 +288,30 @@ impl Application {
         &self,
         request: &crate::memories::handshake::Request,
     ) -> Result<crate::memories::handshake::Snapshot, crate::memories::handshake::Error> {
+        if !self
+            .lock_inner()
+            .map_err(std::io::Error::other)?
+            .config
+            .feature_flags
+            .cross_agent_memory_consolidation
+        {
+            return Err(crate::memories::handshake::Error::Disabled);
+        }
         let root = self
             .memory_worker
             .as_ref()
             .map_or_else(crate::memories::handshake::directory, |w| {
                 w.directory().to_owned()
             });
-        crate::memories::handshake::execute_at(&root, request)
+        crate::memories::handshake::execute_guarded(&root, request, || {
+            Ok(self
+                .lock_inner()
+                .map_err(std::io::Error::other)?
+                .config
+                .feature_flags
+                .cross_agent_memory_consolidation
+                && crate::memories::handshake::feature_enabled())
+        })
     }
     /// Creates the application with production queue limits and the user's config file, keeping
     /// its database in `data_directory`, and reopens the folder that was open when Handshake last quit.
@@ -321,8 +338,9 @@ impl Application {
             &data_directory.join("transcripts"),
         )?);
         let store = Store::open(&database_path(data_directory))?;
+        let memory_enabled = config.feature_flags.cross_agent_memory_consolidation;
         let mut application = Self::with_store(store, config, DEFAULT_EVENT_CAPACITY, transcripts)?;
-        application.attach_memories(data_directory);
+        application.attach_memories(data_directory, memory_enabled);
         Ok(application)
     }
 
@@ -754,6 +772,8 @@ fn rejection(code: &str, error: &dyn std::error::Error) -> CommandDisposition {
 
 #[derive(Debug, Error)]
 pub enum ApplicationError {
+    #[error(transparent)]
+    Memory(#[from] crate::memories::handshake::Error),
     #[error(transparent)]
     ConfigMigration(#[from] crate::config::ConfigMigrationError),
     #[error(transparent)]

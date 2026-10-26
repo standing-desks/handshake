@@ -2,6 +2,7 @@
 
 mod client;
 mod error;
+mod feature_flags;
 mod ffi;
 mod logging;
 mod memories;

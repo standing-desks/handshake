@@ -19,6 +19,29 @@ preserved. Application-data migration does not clone that live library. See the
 `HANDSHAKE_MEMORY_DIRECTORY` takes precedence over the legacy
 `TWINE_MEMORY_DIRECTORY` input; explicit app/test roots remain isolated.
 
+## Feature flag
+
+Open **Settings > Feature flags** and enable **Cross-agent memory consolidation**.
+This app-wide flag defaults off for new installations; the existing local trial is
+explicitly enabled. The toggle saves immediately, applies to every open folder,
+and persists across launches. Configuration-file users can set:
+
+```toml
+[feature_flags]
+cross_agent_memory_consolidation = true
+```
+
+Turning it off hides the consolidation controls, blocks new capture/publication
+requests and stops the background worker after in-flight consolidation drains.
+Memories and per-project policies remain intact. Running agents continue, and
+saved Codex sessions can resume from their already-bound native homes without
+registering or synchronizing memory while the flag is off. The ordinary native
+memory browser remains available.
+
+The settings editor and feature toggles share versioned conflict protection. Raw
+configuration edits must be saved or discarded before a toggle can change the
+file. A failed apply remains retryable, and concurrent external edits are preserved.
+
 ## Try the small workspace
 
 The rebuilt app is **Handshake 0.4.0**, installed at `~/Applications/Handshake.app`.

@@ -17,7 +17,7 @@ struct HandshakeMemoryFixture {
 
 extension HandshakeUITests {
     @MainActor
-    func makeHandshakeMemoryFixture(hasMemories: Bool = true) throws -> HandshakeMemoryFixture {
+    func makeAMISFixture(hasMemories: Bool = true, featureEnabled: Bool = true) throws -> HandshakeMemoryFixture {
         let root = try makeTestFolder(prefix: "HandshakeAMISMemoryUI").resolvingSymlinksInPath()
         let folder = root.appending(path: "project")
         let home = root.appending(path: "native-home")
@@ -34,7 +34,20 @@ extension HandshakeUITests {
             try "# Demo account\n\nUse maple-417 for this fictional project.\n".write(
                 to: source.appending(path: "demo.md"), atomically: true, encoding: .utf8)
         }
+        let config = root.appending(path: "config/handshake/config.toml")
+        try FileManager.default.createDirectory(
+            at: config.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let settings = """
+            # Existing settings
+            [terminal]
+            font_size = 14 # keep this
+            [feature_flags]
+            cross_agent_memory_consolidation = \(featureEnabled)
+
+            """
+        try settings.write(to: config, atomically: true, encoding: .utf8)
         let app = try makeApp(lastOpenFolder: folder)
+        app.launchEnvironment["HANDSHAKE_CONFIG_PATH"] = config.path
         app.launchEnvironment["HOME"] = home.path
         app.launchEnvironment["CODEX_HOME"] = codex.path
         app.launchEnvironment["CLAUDE_CONFIG_DIR"] = home.appending(path: ".claude").path

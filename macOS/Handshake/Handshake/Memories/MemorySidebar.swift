@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct MemorySidebar: View {
+    @Environment(CoreClient.self) private var client
     @State private var showsNativeMemory = false
     @Bindable var model: MemoryModel
     let folder: String
@@ -12,7 +13,7 @@ struct MemorySidebar: View {
         VStack(spacing: 0) {
             MemoryHeader(
                 model: model,
-                openNativeMemory: { showsNativeMemory = true })
+                openNativeMemory: isConsolidationEnabled ? { showsNativeMemory = true } : nil)
             SectionViewport(isExpanded: model.isExpanded, height: contentHeight) {
                 VStack(spacing: 0) {
                     scopeTabs
@@ -23,6 +24,7 @@ struct MemorySidebar: View {
                 }
             }
         }
+        .onChange(of: isConsolidationEnabled) { if !isConsolidationEnabled { showsNativeMemory = false } }
         .onChange(of: model.isExpanded) { if !model.isExpanded { scopesHaveFocus = false } }
         .onChange(of: model.nativeImport.snapshot?.status) {
             if model.nativeImport.snapshot?.status == "imported" { model.refresh() }
@@ -31,6 +33,10 @@ struct MemorySidebar: View {
             HandshakeMemorySheet(model: model.handshakeMemory, folder: folder).appZoom()
         }
 
+    }
+
+    private var isConsolidationEnabled: Bool {
+        client.snapshot?.config.featureFlags.crossAgentMemoryConsolidation == true
     }
 
     private var scopeTabs: some View {

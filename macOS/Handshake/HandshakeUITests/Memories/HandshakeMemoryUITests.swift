@@ -5,7 +5,7 @@ import XCTest
 extension HandshakeUITests {
     @MainActor
     func testHandshakeMemoriesAutomaticallyShareBothDirectionsAndSurviveRelaunch() throws {
-        let fixture = try makeHandshakeMemoryFixture()
+        let fixture = try makeAMISFixture()
         let app = fixture.app
         app.launch()
         defer { app.terminate() }
@@ -50,7 +50,7 @@ extension HandshakeUITests {
 
     @MainActor
     func testHandshakeMemoriesPauseResumeAndReopenWithoutImport() throws {
-        let fixture = try makeHandshakeMemoryFixture(hasMemories: false)
+        let fixture = try makeAMISFixture(hasMemories: false)
         let app = fixture.app
         app.launch()
         defer { app.terminate() }
@@ -73,7 +73,7 @@ extension HandshakeUITests {
 
     @MainActor
     func testHandshakeMemoriesRemainUsableAtMaximumZoom() throws {
-        let fixture = try makeHandshakeMemoryFixture()
+        let fixture = try makeAMISFixture()
         let app = fixture.app
         app.launch()
         defer { app.terminate() }
@@ -104,7 +104,7 @@ extension HandshakeUITests {
     }
     @MainActor
     func testHandshakeMemoriesDeferActiveProfileWithoutReportingFailedSync() throws {
-        let fixture = try makeHandshakeMemoryFixture()
+        let fixture = try makeAMISFixture()
         let app = fixture.app
         app.launch()
         defer { app.terminate() }

@@ -1,4 +1,5 @@
 use crate::harness::{HarnessId, LocatedHarness, steps::StepInbox};
+use crate::memories::handshake::contains_session as contains;
 use std::ffi::OsString;
 use std::io;
 use std::path::Path;
@@ -13,10 +14,10 @@ impl super::Application {
         let Some(worker) = &self.memory_worker else {
             return Ok((Vec::new(), None));
         };
-        if !matches!(harness, HarnessId::Codex | HarnessId::ClaudeCode) {
+        if !worker.is_enabled() || !matches!(harness, HarnessId::Codex | HarnessId::ClaudeCode) {
             return Ok((Vec::new(), None));
         }
-        let (values, lease) = crate::memories::handshake::launch_environment(
+        let result = crate::memories::handshake::launch_environment(
             worker.directory(),
             folder,
             if harness == HarnessId::Codex {
@@ -24,8 +25,13 @@ impl super::Application {
             } else {
                 "claude_code"
             },
-        )
-        .map_err(io::Error::other)?;
+            || worker.is_enabled() && crate::memories::handshake::feature_enabled(),
+        );
+        let (values, lease) = match result {
+            Ok(values) => values,
+            Err(crate::memories::handshake::Error::Disabled) => return Ok((Vec::new(), None)),
+            Err(error) => return Err(io::Error::other(error)),
+        };
         Ok((
             values
                 .into_iter()
@@ -51,6 +57,25 @@ impl super::Application {
             return Ok((environment, lease));
         }
         let Some((_, home)) = environment.iter().find(|(key, _)| key == "CODEX_HOME") else {
+            if let Some(worker) = &self.memory_worker {
+                return crate::memories::handshake::resume_codex_environment(
+                    worker.directory(),
+                    folder,
+                    session,
+                )
+                .map(|result| {
+                    result.map_or_else(
+                        || (Vec::new(), None),
+                        |(home, lease)| {
+                            (
+                                vec![("CODEX_HOME".into(), home.to_string_lossy().into_owned())],
+                                Some(lease),
+                            )
+                        },
+                    )
+                })
+                .map_err(io::Error::other);
+            }
             return Ok((environment, lease));
         };
         if contains(&std::path::PathBuf::from(home).join("sessions"), session) {
@@ -116,21 +141,6 @@ impl super::Application {
         }
         Ok(())
     }
-}
-
-fn contains(root: &Path, session: &str) -> bool {
-    let Ok(entries) = std::fs::read_dir(root) else {
-        return false;
-    };
-    entries.flatten().any(|entry| {
-        entry.file_type().is_ok_and(|kind| {
-            if kind.is_dir() {
-                contains(&entry.path(), session)
-            } else {
-                kind.is_file() && entry.file_name().to_string_lossy().contains(session)
-            }
-        })
-    })
 }
 
 #[cfg(test)]

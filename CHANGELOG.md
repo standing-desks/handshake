@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Add a Feature flags section in Settings, starting with app-wide cross-agent memory consolidation.
+  The flag defaults off, persists in configuration, and applies to open folders without a restart.
+
 - Share project memory automatically between Codex and Claude Code using a local AMIS 0.4 library,
   native memory delivery, receiver-owned policy, provenance and recoverable publication receipts.
 - Inspect sharing status, pause or resume the project policy, and view native profile locations.

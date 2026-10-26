@@ -11,6 +11,11 @@ use toml::de::DeTable;
 
 mod diagnostics;
 mod editing;
+mod features;
+pub use features::{
+    FeatureFlag, FeatureFlagSnapshot, FeatureFlagState, FeatureFlags, read_feature_flags,
+    set_feature_flag,
+};
 mod imports;
 mod migration;
 pub use migration::ConfigMigrationError;
@@ -30,6 +35,7 @@ pub struct Config {
     pub theme: ThemeConfig,
     pub editor: EditorConfig,
     pub traces: TraceConfig,
+    pub feature_flags: FeatureFlags,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

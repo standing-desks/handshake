@@ -67,6 +67,8 @@ nonisolated protocol CoreTransport: Sendable {
     func snapshot() async throws -> CoreSnapshot
     func pollFiles(_ request: FileBrowserRequest) async throws -> FileBrowserSnapshot?
     func saveFile(_ request: FileSaveRequest) async throws -> FileSaveResult
+    func featureFlags() async throws -> FeatureFlagSnapshot
+    func setFeatureFlag(_ id: FeatureFlagID, enabled: Bool, expectedVersion: FileVersion) async throws -> FileSaveResult
     func configFile() async throws -> FilePreview
     func memoryCatalog(_ request: CoreMemoryRequest) async throws -> CoreMemoryCatalog
     func memoryRead(_ request: CoreMemoryRequest) async throws -> CoreMemoryRead
@@ -112,6 +114,13 @@ extension CoreTransport {
     }
 
     func memorySave(_ request: CoreMemorySaveRequest) async throws -> FileSaveResult {
+        throw CoreFailure.unexpectedCommandResult
+    }
+
+    func featureFlags() async throws -> FeatureFlagSnapshot { throw CoreFailure.unexpectedCommandResult }
+    func setFeatureFlag(
+        _ id: FeatureFlagID, enabled: Bool, expectedVersion: FileVersion
+    ) async throws -> FileSaveResult {
         throw CoreFailure.unexpectedCommandResult
     }
 
