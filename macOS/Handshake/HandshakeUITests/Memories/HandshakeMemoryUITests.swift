@@ -238,6 +238,18 @@ extension HandshakeUITests {
         app.launchEnvironment["HANDSHAKE_HARNESS_PATH"] = "\(bin.path):/usr/bin:/bin"
         app.launch()
         defer { app.terminate() }
+        // macOS blocks scripts created by the sandboxed UI runner. Install the executable
+        // through the app's own terminal, as the other native-agent fixtures do.
+        let terminal = app.descendants(matching: .any).matching(identifier: "workflowChoice-Terminal").firstMatch
+        XCTAssertTrue(terminal.waitForExistence(timeout: 10), app.debugDescription)
+        terminal.click()
+        app.typeText("cat memory-prompt-agent.py > bin/claude; chmod +x bin/claude\r")
+        let installed = expectation(
+            for: NSPredicate { _, _ in
+                FileManager.default.isExecutableFile(atPath: bin.appending(path: "claude").path)
+            }, evaluatedWith: nil)
+        wait(for: [installed], timeout: 10)
+        app.buttons["newWorkflow"].click()
         chooseHarness("claudeCode", displayName: "Claude Code", in: app)
         let pidFile = fixture.folder.appending(path: "agent-pid")
         let started = expectation(
@@ -303,7 +315,6 @@ extension HandshakeUITests {
     private func writeMemoryPromptAgent(in folder: URL) throws -> URL {
         let bin = folder.appending(path: "bin")
         try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
-        let program = bin.appending(path: "claude")
         try """
         #!/usr/bin/python3
         import json, os, pathlib, subprocess, sys
@@ -320,8 +331,7 @@ extension HandshakeUITests {
             pathlib.Path('prompt-memory-response.json').write_text(result.stdout)
             sys.stdout.write('Prompt refreshed\\n')
             sys.stdout.flush()
-        """.write(to: program, atomically: true, encoding: .utf8)
-        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: program.path)
+        """.write(to: folder.appending(path: "memory-prompt-agent.py"), atomically: true, encoding: .utf8)
         return bin
     }
 
