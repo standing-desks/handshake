@@ -1,9 +1,10 @@
 import AppKit
 
 /// SwiftUI controls this host; the retained document's visibility belongs to AppKit.
-final class FileContentHost<Content: NSView>: NSView {
+final class RetainedContentHost<Content: NSView>: NSView {
     let content: Content
     var focusesOnShow = true
+    var allowsKeyboardFocus = true
     /// WebKit uses native page zoom and a physical viewport, cancelling the ancestor's scale.
     var viewportScale: CGFloat = 1 {
         didSet {
@@ -84,7 +85,7 @@ final class FileContentHost<Content: NSView>: NSView {
                 if current === content || current.isDescendant(of: content) { window?.makeFirstResponder(nil) }
             }
             content.isHidden = !visible
-            if visible, focusesOnShow, !responder.isHiddenOrHasHiddenAncestor {
+            if visible, focusesOnShow, allowsKeyboardFocus, !responder.isHiddenOrHasHiddenAncestor {
                 window?.makeFirstResponder(responder)
             }
         }
@@ -94,7 +95,7 @@ final class FileContentHost<Content: NSView>: NSView {
         focusTask?.cancel()
         focusTask = Task { [weak self] in
             await Task.yield()
-            guard !Task.isCancelled, let self, requestedVisibility == true,
+            guard !Task.isCancelled, let self, requestedVisibility == true, allowsKeyboardFocus,
                 !responder.isHiddenOrHasHiddenAncestor
             else { return }
             window?.makeFirstResponder(responder)

@@ -24,6 +24,7 @@ final class WorkspaceTabsModel {
         let sessionID: UInt64?
         var workflowIDs: [UInt64] = []
         var file: FileLocation?
+        var browser: BrowserTabsModel.Snapshot?
         var layout: WorkflowLayout?
         let reference: String
         let index: Int
@@ -39,8 +40,6 @@ final class WorkspaceTabsModel {
     private var saved: Saved
     private let defaults: UserDefaults
     private let key: String
-    private(set) var unread: Set<UInt64> = []
-    private var outcomes: [UInt64: CoreWorkflow.Status] = [:]
     private(set) var filesRestored = false
     var showsSwitcher = false
     let dragScope = UUID().uuidString
@@ -52,6 +51,7 @@ final class WorkspaceTabsModel {
     }
 
     static func workflow(_ id: UInt64) -> String { "workflow:\(id)" }
+    static func browser(_ id: UUID) -> String { "browser:\(id)" }
     static func file(_ path: String) -> String { "file:\(path)" }
 
     func arrangement(_ session: UInt64?) -> Arrangement { saved.arrangements[scope(session)] ?? Arrangement() }
@@ -133,19 +133,6 @@ final class WorkspaceTabsModel {
         update(value, session: session)
     }
 
-    func observe(_ workflows: [CoreWorkflow], visibleIDs: Set<UInt64>) {
-        for workflow in workflows {
-            let changed = outcomes[workflow.id].map { $0 != workflow.status } ?? false
-            let ended = [.completed, .failed, .interrupted, .exited, .cancelled].contains(workflow.status)
-            if changed && ended && !visibleIDs.contains(workflow.id) { unread.insert(workflow.id) }
-            outcomes[workflow.id] = workflow.status
-        }
-        unread.subtract(visibleIDs)
-        let ids = Set(workflows.map(\.id))
-        unread.formIntersection(ids)
-        outcomes = outcomes.filter { ids.contains($0.key) }
-    }
-
     func restoreFiles(into tabs: FileTabsModel) {
         guard !filesRestored else { return }
         filesRestored = true
@@ -172,7 +159,7 @@ final class WorkspaceTabsModel {
     }
 
     func recentlyClosed(session: UInt64?) -> [ClosedTab] {
-        saved.closed.filter { $0.file != nil || $0.sessionID == session }
+        saved.closed.filter { $0.file != nil || $0.browser != nil || $0.sessionID == session }
     }
 
     func didReopen(_ tab: ClosedTab, session: UInt64?) {

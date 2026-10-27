@@ -9,8 +9,8 @@ struct ManagedWorkflowTabs: View {
     @Binding var showsSwitcher: Bool
     let select: (String) -> Void
     let close: (WorkspaceTabItem) -> Void
-    let rename: (CoreWorkflow) -> Void
-    let resetName: (CoreWorkflow) -> Void
+    let rename: (WorkspaceTabItem) -> Void
+    let resetName: (WorkspaceTabItem) -> Void
     let pin: (String) -> Void
     let move: (String, Int) -> Void
     let drop: @MainActor @Sendable (String, String, Bool) -> Void
@@ -91,6 +91,7 @@ struct ManagedWorkflowTabs: View {
             Button("New Workflow", systemImage: "plus", action: create)
                 .labelStyle(.iconOnly).buttonStyle(.glass).controlSize(.small)
                 .help("New Workflow (⌘T)").accessibilityIdentifier("newWorkflow")
+            NewBrowserTabButton()
             Spacer(minLength: 0)
             Button {
                 showsSwitcher.toggle()
@@ -113,19 +114,19 @@ struct ManagedWorkflowTabs: View {
         WorkspaceTab(
             name: item.title, symbol: item.pinned ? "pin.fill" : item.symbol,
             tabID: item.accessibilityID,
-            closeID: item.workflow.map { "closeWorkflow-\($0.id)" } ?? "closeFile-\(String(item.id.dropFirst(5)))",
+            closeID: item.closeID,
             helpText: [item.title, item.detail, item.status].compactMap { $0 }.joined(separator: "\n"),
             fill: tabFill(item),
             selectedForeground: item.workflow?.showsTerminalStrip == false ? Color(nsColor: palette.text) : nil,
             isEdited: item.isDirty, statusSymbol: item.statusSymbol, statusColor: item.statusColor,
-            statusDescription: item.status, unread: item.unread, pinned: item.pinned,
-            doubleClick: item.workflow.map { workflow in { rename(workflow) } },
+            statusDescription: item.status, pinned: item.pinned,
+            doubleClick: item.canRename ? { rename(item) } : nil,
             isSelected: item.id == selected, select: { select(item.id) }, close: { close(item) }
         )
         .contextMenu {
-            if let workflow = item.workflow {
-                Button("Rename…", systemImage: "pencil") { rename(workflow) }
-                Button("Reset Name") { resetName(workflow) }.disabled(workflow.customName == nil)
+            if item.canRename {
+                Button("Rename…", systemImage: "pencil") { rename(item) }
+                Button("Reset Name") { resetName(item) }.disabled(item.customName == nil)
             }
             Button(item.pinned ? "Unpin Tab" : "Pin Tab", systemImage: item.pinned ? "pin.slash" : "pin") {
                 pin(item.id)

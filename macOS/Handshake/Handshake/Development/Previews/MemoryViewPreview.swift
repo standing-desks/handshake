@@ -2,7 +2,14 @@ import SwiftUI
 
 struct MemoryViewPreview: View {
     @State private var model = MemoryModel()
-    @State private var tabs = FileTabsModel()
+    @State private var tabs: FileTabsModel
+    @State private var browsers: BrowserTabsModel
+
+    init() {
+        let tabs = FileTabsModel()
+        _tabs = State(initialValue: tabs)
+        _browsers = State(initialValue: BrowserTabsModel(selection: tabs.contentSelection))
+    }
     @State private var client = CoreClient(transport: CoreWorker(dataDirectory: AppPaths.previewDirectory))
 
     var body: some View {
@@ -37,6 +44,7 @@ struct MemoryViewPreview: View {
         .modifier(MemoryLoading(folder: NSHomeDirectory(), model: model))
         .environment(client)
         .environment(tabs)
+        .environment(browsers)
         .frame(width: 1000, height: 650)
     }
 }

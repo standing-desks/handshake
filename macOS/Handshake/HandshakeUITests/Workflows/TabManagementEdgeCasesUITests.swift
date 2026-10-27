@@ -90,7 +90,7 @@ extension HandshakeUITests {
     }
 
     @MainActor
-    func testManagedTabsMarkInactiveAgentExitUnreadUntilSelected() throws {
+    func testManagedTabsHideTopLevelRunningAndExitIndicators() throws {
         let folder = try makeTestFolder(prefix: "HandshakeTabUnread")
         let bin = folder.appending(path: "bin")
         try """
@@ -115,15 +115,17 @@ extension HandshakeUITests {
         chooseHarness("pi", in: app)
         let processID = try writtenProcessID(in: folder.appending(path: "agent.pid"), app: app)
         defer { endProcessIfRunning(processID) }
-        waitForTab(agent, valueContaining: "Running", in: app)
+        XCTAssertFalse((agent.value as? String ?? "").contains("Running"))
         app.typeKey("t", modifierFlags: .command)
         XCTAssertTrue(app.buttons["workflowTab-3"].waitForExistence(timeout: 5))
         app.buttons["workflowChoice-Terminal"].click()
         app.typeText("touch finish-agent\r")
-        waitForTab(agent, valueContaining: "Exited", in: app)
-        waitForTab(agent, valueContaining: "Unseen update", in: app)
+        let exited = expectation(for: NSPredicate { _, _ in kill(processID, 0) != 0 }, evaluatedWith: nil)
+        wait(for: [exited], timeout: 10)
+        XCTAssertFalse((agent.value as? String ?? "").contains("Exited"))
+        XCTAssertFalse((agent.value as? String ?? "").contains("Unseen update"))
         waitForTab(app.buttons["workflowTab-3"], valueContaining: "Selected", in: app)
-        attachScreenshot(of: app, named: "Inactive agent exit with unread tab indicator")
+        attachScreenshot(of: app, named: "Top-level tab omits running and exit indicators")
         agent.click()
         waitForTab(agent, valueContaining: "Selected", in: app)
         let read = expectation(

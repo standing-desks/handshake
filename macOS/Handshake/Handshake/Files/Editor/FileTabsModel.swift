@@ -5,8 +5,21 @@ import Observation
 @Observable
 final class FileTabsModel {
     private(set) var editors: [FileEditorModel] = []
+    let contentSelection: WorkspaceContentSelection
+    private var memorySelectionGeneration = UUID()
     private(set) var selectedID: UUID? {
-        didSet { memoryLinkID = UUID() }
+        get {
+            if case .file(let id) = contentSelection.content { return id }
+            return nil
+        }
+        set {
+            contentSelection.select(newValue.map(WorkspaceContentSelection.Content.file))
+            memoryLinkID = UUID()
+        }
+    }
+
+    init(contentSelection: WorkspaceContentSelection = WorkspaceContentSelection()) {
+        self.contentSelection = contentSelection
     }
     private var memoryLinkID = UUID()
     private(set) var isClosingPresentation = false
@@ -71,6 +84,7 @@ final class FileTabsModel {
         let origin = selectedID
         let linkID = UUID()
         memoryLinkID = linkID
+        memorySelectionGeneration = contentSelection.generation
         let generations = Dictionary(uniqueKeysWithValues: editors.map { ($0.id, $0.generation) })
         do {
             let read = try await client.memoryRead(request)
@@ -86,6 +100,7 @@ final class FileTabsModel {
         guard let origin = selectedID else { return }
         let linkID = UUID()
         memoryLinkID = linkID
+        memorySelectionGeneration = contentSelection.generation
         do {
             let catalog = try await client.memoryCatalog(request)
             guard isCurrentMemoryLink(linkID, origin: origin) else { return }
@@ -130,6 +145,7 @@ final class FileTabsModel {
 
     private func isCurrentMemoryLink(_ linkID: UUID, origin: UUID?) -> Bool {
         !Task.isCancelled && memoryLinkID == linkID && selectedID == origin
+            && memorySelectionGeneration == contentSelection.generation
             && (origin == nil || editors.contains(where: { $0.id == origin }))
     }
 

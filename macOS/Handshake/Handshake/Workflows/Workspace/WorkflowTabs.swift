@@ -4,6 +4,7 @@ import SwiftUI
 struct WorkflowTabs: View {
     @TerminalTheme private var palette
     @Environment(FileTabsModel.self) private var fileTabs
+    @Environment(BrowserTabsModel.self) private var browsers
     let workflows: [CoreWorkflow]
     let selectedID: UInt64?
     let select: (UInt64) -> Void
@@ -22,6 +23,7 @@ struct WorkflowTabs: View {
                 .frame(maxWidth: tabsWidth)
                 .layoutPriority(1)
             createButton
+            NewBrowserTabButton()
             Spacer(minLength: 0)
         }
         .frame(height: WorkflowTabLayout.height, alignment: .bottom)
@@ -36,6 +38,8 @@ struct WorkflowTabs: View {
                     helpText: workflow.name,
                     fill: workflow.showsTerminalStrip ? .workflowTint : Color(nsColor: palette.background),
                     selectedForeground: workflow.showsTerminalStrip ? nil : Color(nsColor: palette.text),
+                    statusSymbol: workflow.status == .completed ? "checkmark.circle" : nil,
+                    statusColor: .green, statusDescription: workflow.status == .completed ? "Done" : nil,
                     isSelected: workflow.id == selectedID,
                     select: { select(workflow.id) },
                     close: { close(workflow.id) }
@@ -60,6 +64,16 @@ struct WorkflowTabs: View {
                     Button("Close File", systemImage: "xmark") { fileTabs.close(editor.id) }
                 }
                 .id(editor.id)
+            }
+            ForEach(browsers.tabs) { tab in
+                WorkspaceTab(
+                    name: tab.title, symbol: "globe", tabID: "browserTab-\(tab.id)",
+                    closeID: "closeBrowser-\(tab.id)", helpText: tab.address.isEmpty ? tab.title : tab.address,
+                    fill: Color(nsColor: .textBackgroundColor), isSelected: browsers.selectedID == tab.id,
+                    select: { browsers.select(tab.id) }, close: { browsers.close(tab.id) }
+                )
+                .contextMenu { Button("Close Browser Tab") { browsers.close(tab.id) } }
+                .id(tab.id)
             }
         }
         .padding(.horizontal, 1)
@@ -94,6 +108,7 @@ struct WorkflowTabs: View {
     }
 
     private var selectedTabID: AnyHashable? {
+        if let id = browsers.selectedID { return AnyHashable(id) }
         if let id = fileTabs.selectedID { return AnyHashable(id) }
         return selectedID.map { AnyHashable($0) }
     }
@@ -124,7 +139,6 @@ struct WorkspaceTab: View {
     var statusSymbol: String?
     var statusColor: Color = .secondary
     var statusDescription: String?
-    var unread = false
     var pinned = false
     var doubleClick: (() -> Void)?
     let isSelected: Bool
@@ -147,7 +161,7 @@ struct WorkspaceTab: View {
         .accessibilityValue(
             [
                 isSelected ? "Selected" : nil, isEdited ? "Edited" : nil, pinned ? "Pinned" : nil,
-                unread ? "Unseen update" : nil, statusDescription,
+                statusDescription,
             ].compactMap { $0 }.joined(separator: ", ")
         )
         .accessibilityIdentifier(tabID)
@@ -199,7 +213,6 @@ struct WorkspaceTab: View {
             if let statusSymbol {
                 Image(systemName: statusSymbol).font(.system(size: 9)).foregroundStyle(statusColor)
             }
-            if unread { Circle().fill(.tint).frame(width: 5, height: 5).accessibilityHidden(true) }
             if isEdited {
                 Circle().fill(.secondary).frame(width: 5, height: 5).accessibilityHidden(true)
             }

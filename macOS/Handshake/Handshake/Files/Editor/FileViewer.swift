@@ -69,7 +69,11 @@ struct FileViewer: View {
                         .accessibilityHidden(showsPreview)
                     if showsPreview {
                         if let diskFile = editor.diskFile {
-                            if diskFile.status == .text, let format = previewFormat {
+                            if let format = previewFormat, format.isNative, supportsNativePreview(diskFile) {
+                                MediaPreview(
+                                    file: diskFile, folder: folder, format: format, isVisible: isVisible,
+                                    allowsAutomaticFocus: allowsAutomaticFocus)
+                            } else if diskFile.status == .text, let format = previewFormat, !format.isNative {
                                 HTMLPreview(
                                     file: diskFile, folder: folder, navigationURL: editor.navigationURL,
                                     isVisible: isVisible, openFile: openFile, format: format,
@@ -126,6 +130,10 @@ struct FileViewer: View {
         }
     }
 
+    private func supportsNativePreview(_ file: FilePreview) -> Bool {
+        [.text, .binary, .tooLarge].contains(file.status)
+    }
+
     private var fileTitle: some View {
         HStack(spacing: 10) {
             Image(systemName: "doc.text").foregroundStyle(.secondary)
@@ -144,7 +152,7 @@ struct FileViewer: View {
     }
 
     @ViewBuilder private var displayControls: some View {
-        if let format = previewFormat {
+        if let format = previewFormat, current?.status == .text {
             Picker("\(format.name) display", selection: $mode) {
                 Text("Preview").tag(Mode.preview)
                 Text("Source").tag(Mode.source)

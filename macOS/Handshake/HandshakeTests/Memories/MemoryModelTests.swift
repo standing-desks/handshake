@@ -171,6 +171,27 @@ struct MemoryModelTests {
         }
     }
 
+    @Test func browserRoundTripInvalidatesPendingMemoryLinks() async throws {
+        let transport = DeferredMemoryTransport()
+        let tabs = FileTabsModel()
+        let origin = tabs.open(path: "/memory/origin.md", folder: "/memory")
+        let source = memorySource(id: "linked.md")
+        let task = Task {
+            try await tabs.openMemoryLink(
+                URL(filePath: source.location), request: .init(folder: nil),
+                client: CoreClient(transport: transport))
+        }
+        try await transport.waitForCatalogs(1)
+        await transport.completeCatalog(0, result: .success(.init(sources: [source], diagnostics: [])))
+        try await transport.waitForReads(1)
+        tabs.contentSelection.select(.browser(UUID()))
+        tabs.select(origin.id)
+        await transport.completeRead(0, result: .success(.init(source: source, text: "stale", message: nil)))
+        try await task.value
+        #expect(tabs.selected === origin)
+        #expect(tabs.editors.count == 1)
+    }
+
     @Test func canceledCatalogFailuresCannotReplaceNewResults() async throws {
         let transport = DeferredMemoryTransport()
         let client = CoreClient(transport: transport)

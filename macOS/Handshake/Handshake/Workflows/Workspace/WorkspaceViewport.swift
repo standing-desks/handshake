@@ -6,6 +6,7 @@ struct WorkspaceViewport<Content: View>: NSViewRepresentable {
     @Environment(CoreClient.self) private var client
     @Environment(WorkflowLayouts.self) private var layouts
     @Environment(FileTabsModel.self) private var tabs
+    @Environment(BrowserTabsModel.self) private var browsers
     @Environment(TraceTerminalNavigation.self) private var navigation
     @Environment(HarnessModelCatalog.self) private var catalog
     @Environment(\.appZoom) private var zoom
@@ -46,7 +47,7 @@ struct WorkspaceViewport<Content: View>: NSViewRepresentable {
 
     private var hostedContent: WorkspaceContent<Content> {
         WorkspaceContent(
-            content: content, client: client, layouts: layouts, tabs: tabs,
+            content: content, client: client, layouts: layouts, tabs: tabs, browsers: browsers,
             navigation: navigation, catalog: catalog, zoom: zoom, laneColors: laneColors)
     }
 
@@ -60,6 +61,7 @@ struct WorkspaceContent<Content: View>: View {
     let client: CoreClient
     let layouts: WorkflowLayouts
     let tabs: FileTabsModel
+    let browsers: BrowserTabsModel
     let navigation: TraceTerminalNavigation
     let catalog: HarnessModelCatalog
     let zoom: AppZoom?
@@ -67,7 +69,7 @@ struct WorkspaceContent<Content: View>: View {
 
     var body: some View {
         content
-            .environment(client).environment(layouts).environment(tabs)
+            .environment(client).environment(layouts).environment(tabs).environment(browsers)
             .environment(navigation).environment(catalog)
             .environment(\.appZoom, zoom).environment(\.traceLaneColors, laneColors)
             .defaultAppStorage(WorkflowLaunchPreferences.defaultStore())

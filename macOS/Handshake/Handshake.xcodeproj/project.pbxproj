@@ -58,6 +58,11 @@
 			path = HandshakeUITests;
 			sourceTree = "<group>";
 		};
+		F3E000013090000100000001 /* TestSupport */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = TestSupport;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -92,6 +97,7 @@
 				F3C000023080000100000001 /* ../../handshake-core/workflows */,
 				F266A3F73068BD6100C1232B /* HandshakeTests */,
 				F266A4013068BD6100C1232B /* HandshakeUITests */,
+				F3E000013090000100000001 /* TestSupport */,
 				F266A3E83068BD6000C1232B /* Products */,
 			);
 			sourceTree = "<group>";
@@ -148,6 +154,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				F266A3F73068BD6100C1232B /* HandshakeTests */,
+				F3E000013090000100000001 /* TestSupport */,
 			);
 			name = HandshakeTests;
 			productName = HandshakeTests;
@@ -169,6 +176,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				F266A4013068BD6100C1232B /* HandshakeUITests */,
+				F3E000013090000100000001 /* TestSupport */,
 			);
 			name = HandshakeUITests;
 			productName = HandshakeUITests;

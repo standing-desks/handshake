@@ -4,6 +4,7 @@ import SwiftUI
 struct WorkspaceTabBar: View {
     @Environment(CoreClient.self) private var client
     @Environment(FileTabsModel.self) private var files
+    @Environment(BrowserTabsModel.self) private var browsers
     @Environment(WorkflowLayouts.self) private var layouts
     @Bindable var model: WorkspaceTabsModel
     let folder: String
@@ -17,12 +18,13 @@ struct WorkspaceTabBar: View {
     let cancel: (UInt64) -> Void
     let create: () -> Void
     let reportFailure: (String) -> Void
-    @State private var renaming: CoreWorkflow?
+    @State private var renaming: WorkspaceTabItem?
     @State private var preparedSession: UInt64?
     @State private var prepared = false
     @State private var reopening = false
 
     private var selected: String? {
+        if let browser = browsers.selected { return WorkspaceTabsModel.browser(browser.id) }
         if let editor = files.selected { return WorkspaceTabsModel.file(editor.path) }
         return selectedRoot.map(WorkspaceTabsModel.workflow)
     }
@@ -37,17 +39,23 @@ struct WorkspaceTabBar: View {
             let detail =
                 ([workflow.name, workflow.harness?.displayName].compactMap { $0 } + Array(Set(harnesses)).sorted())
                 .joined(separator: " · ")
-            let group = layouts.terminalSplit(for: workflow.id, in: folder).ids
             return WorkspaceTabItem(
                 id: id, title: workflowTitles[workflow.id] ?? workflow.name,
                 detail: detail, symbol: workflow.tabSymbol, workflow: workflow,
-                unread: !model.unread.isDisjoint(with: group), pinned: pins.contains(id))
+                pinned: pins.contains(id))
         }
         items += files.editors.map { editor in
             let id = WorkspaceTabsModel.file(editor.path)
             return WorkspaceTabItem(
                 id: id, title: fileTitles[editor.id] ?? editor.displayName, detail: editor.path,
                 symbol: "doc.text", fileID: editor.id, isDirty: editor.isDirty, pinned: pins.contains(id))
+        }
+        let browserTitles = WorkspaceTabItem.browserTitles(browsers.tabs)
+        items += browsers.tabs.map { tab in
+            let id = WorkspaceTabsModel.browser(tab.id)
+            return WorkspaceTabItem(
+                id: id, title: browserTitles[tab.id] ?? tab.title, detail: tab.address, symbol: "globe",
+                browser: tab, pinned: pins.contains(id))
         }
         let lookup = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
         return model.ordered(items.map(\.id), session: sessionID).compactMap { lookup[$0] }
@@ -56,7 +64,7 @@ struct WorkspaceTabBar: View {
     private var selectedItem: WorkspaceTabItem? { items.first { $0.id == selected } }
     private var references: [String] { items.map(\.id) }
     private var visibleIDs: Set<UInt64> {
-        guard files.selected == nil, let selectedRoot else { return [] }
+        guard files.contentSelection.content == nil, let selectedRoot else { return [] }
         return Set(layouts.terminalSplit(for: selectedRoot, in: folder).ids)
     }
 
@@ -64,7 +72,7 @@ struct WorkspaceTabBar: View {
         ManagedWorkflowTabs(
             items: items, selected: selected, dragScope: model.dragScope, showsSwitcher: $model.showsSwitcher,
             select: select, close: closeItem, rename: { renaming = $0 },
-            resetName: { workflow in Task { await rename(workflow, name: nil) } },
+            resetName: { item in Task { await rename(item, name: nil) } },
             pin: { model.togglePin($0, session: sessionID) },
             move: { model.move($0, by: $1, references: references, session: sessionID) },
             drop: { model.place($0, relativeTo: $1, after: $2, references: references, session: sessionID) },
@@ -72,25 +80,31 @@ struct WorkspaceTabBar: View {
             canReopen: !reopening && !model.recentlyClosed(session: sessionID).isEmpty
         )
         .focusedSceneValue(\.tabActions, actions)
-        .sheet(item: $renaming) { workflow in
-            TabRenameSheet(workflow: workflow) { name in
-                try await client.renameWorkflow(workflowID: workflow.id, name: name)
+        .sheet(item: $renaming) { item in
+            TabRenameSheet(name: item.renameValue) { name in
+                if let workflow = item.workflow {
+                    try await client.renameWorkflow(workflowID: workflow.id, name: name)
+                } else if let browser = item.browser {
+                    browser.customName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
             }
             .appZoom()
         }
         .task(id: sessionID) {
             prepared = false
+            browsers.configure(folder: folder, persistenceEnabled: true)
+            prepareBrowsers()
+            let keepsBrowser = browsers.selected != nil
             let savedSelection = model.arrangement(sessionID).selection
             model.restoreFiles(into: files)
-            if let savedSelection, references.contains(savedSelection) {
+            if !keepsBrowser, let savedSelection, references.contains(savedSelection) {
                 select(savedSelection)
-            } else if preparedSession != sessionID {
+            } else if !keepsBrowser && preparedSession != sessionID {
                 files.showWorkflows()
             }
             preparedSession = sessionID
             prepared = true
             model.reconcile(references, session: sessionID)
-            model.observe(workflows, visibleIDs: visibleIDs)
             for editor in files.editors where editor.memoryRequest != nil && editor.baseline == nil {
                 do { try await files.refreshMemory(editor, client: client) } catch {
                     if !Task.isCancelled { reportFailure(error.localizedDescription) }
@@ -107,15 +121,17 @@ struct WorkspaceTabBar: View {
             if prepared && preparedSession == sessionID && !files.isClosingPresentation {
                 model.select(selected, session: sessionID)
             }
-            model.observe(workflows, visibleIDs: visibleIDs)
         }
-        .onChange(of: workflows) { model.observe(workflows, visibleIDs: visibleIDs) }
+        .onChange(of: references) { prepareBrowsers() }
+        .onDisappear { browsers.willClose = nil }
     }
 
     private var actions: TabActions {
         let reopenAction: (() -> Void)? =
             !reopening && !model.recentlyClosed(session: sessionID).isEmpty ? { reopen() } : nil
-        let renameAction: (() -> Void)? = selectedItem?.workflow.map { workflow in { renaming = workflow } }
+        let renameAction: (() -> Void)? = selectedItem.flatMap { item in
+            item.canRename ? { renaming = item } : nil
+        }
         let pinAction: (() -> Void)? = selected.map { reference in { model.togglePin(reference, session: sessionID) } }
         let moveAction: ((Int) -> Void)? = selected.map { reference in
             { (offset: Int) in model.move(reference, by: offset, references: references, session: sessionID) }
@@ -143,16 +159,29 @@ struct WorkspaceTabBar: View {
         if let workflow = item.workflow {
             files.showWorkflows()
             selection.selectedID = workflow.id
+        } else if let browser = item.browser {
+            browsers.select(browser.id)
         } else if let id = item.fileID {
             files.select(id)
         }
     }
 
     private func closeItem(_ item: WorkspaceTabItem) {
-        if let workflow = item.workflow { close(workflow.id) } else if let id = item.fileID { closeFile(id) }
+        if let workflow = item.workflow {
+            close(workflow.id)
+        } else if let browser = item.browser {
+            browsers.close(browser.id)
+        } else if let id = item.fileID {
+            closeFile(id)
+        }
     }
 
-    private func rename(_ workflow: CoreWorkflow, name: String?) async {
+    private func rename(_ item: WorkspaceTabItem, name: String?) async {
+        if let browser = item.browser {
+            browser.customName = name
+            return
+        }
+        guard let workflow = item.workflow else { return }
         do { try await client.renameWorkflow(workflowID: workflow.id, name: name) } catch {
             reportFailure(error.localizedDescription)
         }
@@ -164,7 +193,9 @@ struct WorkspaceTabBar: View {
         Task {
             defer { reopening = false }
             do {
-                if let file = closed.file {
+                if let browser = closed.browser {
+                    browsers.restore(browser)
+                } else if let file = closed.file {
                     let editor = files.restore(
                         path: file.path, folder: file.folder, memoryRequest: file.memoryRequest, source: file.source)
                     files.select(editor.id)
@@ -182,6 +213,21 @@ struct WorkspaceTabBar: View {
                 }
                 model.didReopen(closed, session: sessionID)
             } catch { if contextIsCurrent { reportFailure(error.localizedDescription) } }
+        }
+    }
+
+    private func prepareBrowsers() {
+        browsers.visualOrder = items.compactMap { $0.browser?.id }
+        let session = sessionID
+        browsers.willClose = { [weak model] tab in
+            guard let model else { return }
+            let reference = WorkspaceTabsModel.browser(tab.id)
+            let arrangement = model.arrangement(session)
+            model.rememberClosed(
+                .init(
+                    title: tab.title, sessionID: session, browser: tab.snapshot, reference: reference,
+                    index: arrangement.order.firstIndex(of: reference) ?? arrangement.order.count,
+                    pinned: arrangement.pins.contains(reference)))
         }
     }
 

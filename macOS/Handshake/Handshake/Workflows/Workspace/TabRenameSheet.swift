@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct TabRenameSheet: View {
-    let workflow: CoreWorkflow
     let save: (String) async throws -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var name: String
@@ -9,10 +8,9 @@ struct TabRenameSheet: View {
     @State private var saving = false
     @FocusState private var isFocused: Bool
 
-    init(workflow: CoreWorkflow, save: @escaping (String) async throws -> Void) {
-        self.workflow = workflow
+    init(name: String, save: @escaping (String) async throws -> Void) {
         self.save = save
-        _name = State(initialValue: workflow.customName ?? workflow.name)
+        _name = State(initialValue: name)
     }
 
     var body: some View {

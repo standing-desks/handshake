@@ -36,6 +36,7 @@ final class AppTerminationDelegate: NSObject, NSApplicationDelegate {
         guard fileTabs.allSatisfy({ tabs in tabs.editors.allSatisfy { $0.confirmDiscard() } }) else {
             return .terminateCancel
         }
+        for session in sessions { session.browsers.closeAll(preservingPresentation: true) }
         for tabs in fileTabs { tabs.discardAll(preservingPresentation: true) }
         isTerminating = true
         windows?.isTerminating = true
