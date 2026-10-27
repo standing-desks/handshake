@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Add opt-in experimental tab management with workflow names, drag reordering,
+  pinned tabs, a searchable open-tab list, keyboard navigation, and reopening closed tabs.
 - Add a Feature flags section in Settings, starting with app-wide cross-agent memory consolidation.
   The flag defaults off, persists in configuration, and applies to open folders without a restart.
 
