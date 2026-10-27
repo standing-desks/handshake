@@ -23,6 +23,7 @@ struct ManagedWorkflowTabs: View {
     @State private var insertionAfter = false
     @State private var frames: [String: CGRect] = [:]
     @State private var viewportWidth: CGFloat = 0
+    @State private var tabsWidth: CGFloat?
     @State private var scrollEdge = 0
 
     var body: some View {
@@ -49,7 +50,9 @@ struct ManagedWorkflowTabs: View {
                                     }
                                 }
                         }
-                    }.padding(.horizontal, 1)
+                    }
+                    .padding(.horizontal, 1)
+                    .onGeometryChange(for: CGFloat.self, of: { $0.size.width }, action: { tabsWidth = $0 })
                 }
                 .coordinateSpace(name: dragScope)
                 .onGeometryChange(for: CGFloat.self, of: { $0.size.width }, action: { viewportWidth = $0 })
@@ -83,15 +86,19 @@ struct ManagedWorkflowTabs: View {
                     }
                 }
             }
+            .frame(maxWidth: tabsWidth)
+            .layoutPriority(1)
             Button("New Workflow", systemImage: "plus", action: create)
                 .labelStyle(.iconOnly).buttonStyle(.glass).controlSize(.small)
                 .help("New Workflow (⌘T)").accessibilityIdentifier("newWorkflow")
+            Spacer(minLength: 0)
             Button {
                 showsSwitcher.toggle()
             } label: {
                 Label("\(items.count)", systemImage: "chevron.down")
             }
             .buttonStyle(.glass).controlSize(.small).help("Find an Open Tab (⌘⇧A)")
+            .fixedSize()
             .accessibilityLabel("Find an open tab, \(items.count) tabs")
             .accessibilityIdentifier("tabSwitcher")
             .popover(isPresented: $showsSwitcher) {
