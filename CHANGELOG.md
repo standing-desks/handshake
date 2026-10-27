@@ -7,14 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-10-26
+
 ### Changed
 
+- Default the sidebar to closed and remember its visibility for each folder.
+- Launch Single agent workflows directly from the harness menu with each harness's
+  defaults, and remember the YOLO mode checkbox on the workflow tile.
 - Replace the memory-sharing sheet entry with a compact Share switch and settings gear
   in the Memories header. Keep agent labels and native-profile layouts open to additional
   supported agents while preserving the current adapters and AMIS behavior.
 
 ### Added
 
+- Add opt-in experimental tab management with workflow names, drag reordering,
+  pinned tabs, a searchable open-tab list, keyboard navigation, and reopening closed tabs.
 - Add a Feature flags section in Settings, starting with app-wide cross-agent memory consolidation.
   The flag defaults off, persists in configuration, and applies to open folders without a restart.
 
