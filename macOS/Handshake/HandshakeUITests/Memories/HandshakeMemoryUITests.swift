@@ -208,11 +208,12 @@ extension HandshakeUITests {
         openHandshakeMemory(in: app)
         waitForHandshakeText("1 project memories", identifier: "handshakeMemoryCount", in: app)
         let project = try fixture.projectRoot()
-        let claudeDescriptor = open(project.appending(path: "native-sessions-claude_code.lock").path, O_RDWR)
+        let claudeDescriptor = open(
+            project.appending(path: "native-sessions-claude_code.lock").path, O_CREAT | O_RDWR, 0o600)
         XCTAssertGreaterThanOrEqual(claudeDescriptor, 0)
         defer { close(claudeDescriptor) }
         XCTAssertEqual(flock(claudeDescriptor, LOCK_SH | LOCK_NB), 0)
-        let descriptor = open(project.appending(path: "native-sessions-codex.lock").path, O_RDWR)
+        let descriptor = open(project.appending(path: "native-sessions-codex.lock").path, O_CREAT | O_RDWR, 0o600)
         XCTAssertGreaterThanOrEqual(descriptor, 0)
         defer { close(descriptor) }
         XCTAssertEqual(flock(descriptor, LOCK_SH | LOCK_NB), 0)
