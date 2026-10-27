@@ -18,7 +18,7 @@ notes() {
     mkdir -p "$(dirname "$destination")"
     count="$(awk -v ver="$version" '$1=="##" {h=$2; gsub(/^\[|\]$/, "", h); if(h==ver) n++} END {print n+0}' CHANGELOG.md)"
     [[ "$count" == 1 ]] || fail "expected one CHANGELOG.md section for $version"
-    # Same section extraction as ~/projects/vhrn: stop at the next heading or link references.
+    # Stop section extraction at the next heading or link references.
     awk -v ver="$version" '
         $1=="##" {h=$2; gsub(/^\[|\]$/, "", h); if(h==ver) {cap=1; next} else if(cap) exit}
         cap && /^\[[^][]+\]:/ {exit}

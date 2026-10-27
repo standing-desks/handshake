@@ -26,6 +26,29 @@ For identity, interface design, and compatibility changes, follow the [brand and
 - For Swift app work in `macOS/`, read [macOS/AGENTS.md](macOS/AGENTS.md).
 - For changes spanning components, follow each component's file, and run `make fmt` and `make check` in place of the per-component targets. Give any new component its own `AGENTS.md` when it needs distinct instructions.
 
+## Repository content rules
+
+- **`docs/` is reserved exclusively for the GitHub Pages website.** Only add
+  content and assets intended for the published site. Never use it for scratch
+  documents, development plans, design experiments, trial reports, or agent
+  work notes.
+
+- **Never write details of a real user's or contributor's machine into the
+  repository.** This applies to every tracked file, including comments,
+  examples, links, screenshots, and embedded assets. Exclude personal paths,
+  usernames, hostnames, private checkouts, local launchers, installed-app state,
+  and account configuration or usage. Use repository-relative paths, documented
+  environment variables, or clearly fictional placeholders. Product-default
+  paths may be documented explicitly as defaults.
+
+- **Never check in development artifacts.** Logs, session transcripts,
+  validation receipts, test-run reports, build output, temporary screenshots,
+  and agent progress notes belong in ignored output directories or outside
+  the repository. Summarize verification in the pull request instead of
+  committing its raw artifacts.
+
+Before committing, review changed text and links for violations of these rules.
+
 ## Code style guidelines
 
 - **Rust unit tests:** Unit tests must be inline in a `#[cfg(test)] mod tests` block in the same source file as the code they test.
