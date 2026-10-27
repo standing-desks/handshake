@@ -182,6 +182,26 @@ show an explanation. Text reads are limited to 2 MiB; discovery is bounded to 1,
 directory entries, 32 databases, and 256 recent extraction records per database. Memory trees are
 scanned eight levels deep and folder instructions six levels deep. The checked-locations menu
 shows discovery diagnostics. Return to workflows by clicking the Sessions header.</p>
+<h3 id="cross-agent-memory-sharing">Sharing memories between agents<a class="headerlink" href="#cross-agent-memory-sharing" title="Permanent link">#</a></h3>
+<p>Handshake can automatically share project memories between Codex and Claude Code.
+To enable sharing:</p>
+<ol>
+<li>Open <strong>Settings → Feature flags</strong> and enable <strong>Cross-agent memory consolidation</strong>.
+The flag defaults to off, saves immediately, and applies to every open folder.</li>
+<li>Open your project folder and turn on the <strong>Share</strong> switch beside <strong>Memories</strong>.
+This switch controls sharing for that project and remains available when Memories is collapsed.</li>
+<li>Start a fresh Codex or Claude Code conversation through Handshake to use newly available memories.</li>
+</ol>
+<p>The gear beside <strong>Share</strong> opens <strong>Memory settings</strong>, with sharing status,
+project-memory previews, and storage details. Sharing runs automatically; <strong>Check now</strong>
+requests an immediate check. <strong>Refresh sources</strong> rescans the ordinary memory browser.</p>
+<p>Turn off <strong>Share</strong> to pause sharing for the project while retaining its saved memories.
+Turning off the app-wide feature flag stops new capture and delivery for all folders and hides the
+sharing controls. Ordinary memory browsing remains available.</p>
+<p>Agents load native memories on their own schedule. An active destination session can delay delivery,
+and Codex's native memory generation can wait for its quota guard. Existing conversations can retain
+older context; a delivered file does not guarantee immediate recall. Handshake's local consolidation
+makes no model calls.</p>
 <h2 id="agent-workflows">Agent workflows<a class="headerlink" href="#agent-workflows" title="Permanent link">#</a></h2>
 <p>Choose <strong>Adversarial</strong>, <strong>Coordinator</strong>, or a saved workflow from a new tab.
 Pick a harness for each agent, and optionally its model and effort level, then start it.
