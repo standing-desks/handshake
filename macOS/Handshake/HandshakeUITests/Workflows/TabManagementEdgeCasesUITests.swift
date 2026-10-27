@@ -2,6 +2,46 @@ import XCTest
 
 extension HandshakeUITests {
     @MainActor
+    func testManagedTabsKeepCreateButtonBesideTabsAndReachableDuringOverflow() throws {
+        let folder = try makeTestFolder(prefix: "HandshakeTabCreatePosition")
+        let app = try managedTabApp(folder: folder)
+        app.launch()
+        defer { app.terminate() }
+        let first = app.buttons["workflowTab-1"]
+        XCTAssertTrue(first.waitForExistence(timeout: 10))
+        resizeWindow(app.windows.firstMatch, to: CGSize(width: 1200, height: 800))
+        let create = app.buttons["newWorkflow"]
+        let switcherWidth = app.buttons["tabSwitcher"].frame.width
+        XCTAssertGreaterThanOrEqual(create.frame.minX, first.frame.maxX)
+        XCTAssertLessThan(create.frame.minX - first.frame.maxX, 20)
+        for id in 2...9 {
+            XCTAssertTrue(create.isHittable, app.debugDescription)
+            create.click()
+            let tab = app.buttons["workflowTab-\(id)"]
+            XCTAssertTrue(tab.waitForExistence(timeout: 5))
+            waitForTab(tab, valueContaining: "Selected", in: app)
+        }
+        let last = app.buttons["workflowTab-9"]
+        XCTAssertTrue(last.isHittable, app.debugDescription)
+        XCTAssertTrue(create.isHittable, app.debugDescription)
+        XCTAssertGreaterThanOrEqual(app.buttons["tabSwitcher"].frame.width, switcherWidth - 1)
+        XCTAssertGreaterThanOrEqual(create.frame.minX, last.frame.maxX - 1)
+        attachScreenshot(of: app, named: "Create button remains reachable with overflowing tabs")
+        app.typeKey("1", modifierFlags: .command)
+        waitForTab(first, valueContaining: "Selected", in: app)
+        XCTAssertTrue(first.isHittable, app.debugDescription)
+        XCTAssertTrue(create.isHittable, app.debugDescription)
+        app.typeKey("w", modifierFlags: [.command, .shift])
+        XCTAssertTrue(first.waitForNonExistence(timeout: 5))
+        for _ in 0..<7 { app.typeKey("w", modifierFlags: [.command, .shift]) }
+        XCTAssertTrue(last.waitForExistence(timeout: 5))
+        waitForTab(last, valueContaining: "Selected", in: app)
+        XCTAssertGreaterThanOrEqual(create.frame.minX, last.frame.maxX)
+        XCTAssertLessThan(create.frame.minX - last.frame.maxX, 20)
+        attachScreenshot(of: app, named: "Create button follows the last remaining tab")
+    }
+
+    @MainActor
     func testManagedTabsValidateCancelAndResetNamesAndHandleEmptySearch() throws {
         let folder = try makeTestFolder(prefix: "HandshakeTabNames")
         let app = try managedTabApp(folder: folder)
