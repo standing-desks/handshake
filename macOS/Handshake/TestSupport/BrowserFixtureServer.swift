@@ -54,7 +54,7 @@ final class BrowserFixtureServer {
         <!doctype html><meta charset="utf-8"><title>Page \(name.uppercased())</title>
         <style>body{font:18px system-ui;padding:32px}button,input,a{margin:8px;padding:8px}</style>
         <h1>Page \(name.uppercased())</h1>
-        <input id="note" aria-label="Page note" placeholder="Page note">
+        <input id="note" autofocus aria-label="Page note" placeholder="Page note">
         <button onclick="document.querySelector('#result').textContent=note.value">Keep note</button>
         <a href="/b">Go to B</a><a href="/a">Go to A</a>
         <a href="/popup" target="_blank">Open popup</a>

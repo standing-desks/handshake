@@ -51,7 +51,7 @@ struct FolderSidebar: View {
                                         session: session,
                                         isSelected: fileTabs.selected == nil && selectedSession?.id == session.id,
                                         select: {
-                                            fileTabs.showWorkflows()
+                                            fileTabs.contentSelection.showSession()
                                             run { try await coreClient.selectSession(sessionID: session.id) }
                                         },
                                         rename: { sessionToRename = session }, delete: { pendingDeletion = session })
@@ -147,7 +147,7 @@ struct FolderSidebar: View {
                 isSessionsExpanded = true
                 memories.isExpanded = false
             }
-            fileTabs.showWorkflows()
+            fileTabs.contentSelection.showSession()
         }
     }
 

@@ -50,7 +50,7 @@ enum MediaFixtures {
         writer.add(input)
         guard writer.startWriting() else { throw FixtureError.failed }
         writer.startSession(atSourceTime: .zero)
-        for frame in 0..<90 {
+        for frame in 0..<300 {
             while !input.isReadyForMoreMediaData {
                 guard writer.status == .writing else { throw FixtureError.failed }
                 try await Task.sleep(for: .milliseconds(5))
@@ -61,7 +61,7 @@ enum MediaFixtures {
             else { throw FixtureError.failed }
             CVPixelBufferLockBaseAddress(buffer, [])
             if let bytes = CVPixelBufferGetBaseAddress(buffer) {
-                memset(bytes, Int32(40 + frame), CVPixelBufferGetDataSize(buffer))
+                memset(bytes, Int32(40 + frame % 160), CVPixelBufferGetDataSize(buffer))
             }
             CVPixelBufferUnlockBaseAddress(buffer, [])
             guard adaptor.append(buffer, withPresentationTime: CMTime(value: Int64(frame), timescale: 30)) else {

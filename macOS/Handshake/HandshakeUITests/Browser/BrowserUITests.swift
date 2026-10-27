@@ -28,6 +28,7 @@ extension HandshakeUITests {
         XCTAssertTrue(note.waitForExistence(timeout: 5))
         note.click()
         note.typeText("keep my page state")
+        verifyBrowserSurvivesSessionChanges(in: app)
         app.typeKey("t", modifierFlags: [.command, .option])
         XCTAssertEqual(browserTabs(in: app).count, 2)
         let secondID = try XCTUnwrap(
@@ -78,6 +79,7 @@ extension HandshakeUITests {
         app.typeKey("r", modifierFlags: .command)
         waitForBrowserTitle("Page B", tab: tab, in: app)
         checkNativeWebsiteSheets(in: app)
+        checkNativePopupFocus(in: app)
         app.typeKey(",", modifierFlags: .command)
         XCTAssertTrue(app.buttons["closeSettings"].waitForExistence(timeout: 5))
         app.menuBars.menuBarItems["Browser"].click()
@@ -90,6 +92,29 @@ extension HandshakeUITests {
         XCTAssertTrue(tab.waitForNonExistence(timeout: 5))
         XCTAssertTrue(app.windows.firstMatch.exists)
         XCTAssertTrue(app.buttons["workflowTab-1"].exists)
+    }
+
+    @MainActor
+    private func verifyBrowserSurvivesSessionChanges(in app: XCUIApplication) {
+        setSidebar(open: true, in: app)
+        app.buttons["newSession"].click()
+        XCTAssertTrue(app.buttons["sessionRow-2"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.webViews.textFields["Page note"].value as? String, "keep my page state")
+        app.buttons["sessionRow-1"].click()
+        XCTAssertEqual(app.webViews.textFields["Page note"].value as? String, "keep my page state")
+        setSidebar(open: false, in: app)
+    }
+
+    @MainActor
+    private func checkNativePopupFocus(in app: XCUIApplication) {
+        app.webViews.links["Open popup"].click()
+        let popup = browserTabs(in: app).matching(NSPredicate(format: "label == %@", "Page POPUP")).firstMatch
+        XCTAssertTrue(popup.waitForExistence(timeout: 10))
+        app.typeText("popup keyboard focus")
+        XCTAssertEqual(app.webViews.textFields["Page note"].value as? String, "popup keyboard focus")
+        app.typeKey("w", modifierFlags: .command)
+        XCTAssertTrue(popup.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(browserTabs(in: app).count, 1)
     }
 
     @MainActor

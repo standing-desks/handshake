@@ -33,10 +33,12 @@ final class BrowserTab: NSObject, Identifiable, WKNavigationDelegate, WKUIDelega
     private var isStopped = false
 
     init(
-        id: UUID = UUID(), configuration: WKWebViewConfiguration = WKWebViewConfiguration(), customName: String? = nil
+        id: UUID = UUID(), configuration: WKWebViewConfiguration = WKWebViewConfiguration(), customName: String? = nil,
+        hasNavigated: Bool = false
     ) {
         self.id = id
         self.customName = customName
+        self.hasNavigated = hasNavigated
         webView = WKWebView(frame: .zero, configuration: configuration)
         super.init()
         webView.navigationDelegate = self

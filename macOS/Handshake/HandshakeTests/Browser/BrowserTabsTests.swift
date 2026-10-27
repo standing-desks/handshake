@@ -67,6 +67,35 @@ struct BrowserTabsTests {
         #expect(restored.ordered(["workflow:1", reference], session: 20) == [reference, "workflow:1"])
     }
 
+    @Test func duplicateBrowserNamesRemainDistinctAndPopupContentIsNotAFreshTab() throws {
+        let model = BrowserTabsModel(selection: WorkspaceContentSelection(), configuration: isolated)
+        defer { model.closeAll() }
+        let first = model.create()
+        let second = model.create()
+        first.customName = "Reference"
+        second.customName = "Reference"
+        let titles = WorkspaceTabItem.browserTitles(model.tabs)
+        #expect(titles[first.id] != titles[second.id])
+        #expect(first.hasNavigated == false)
+        let configuration = isolated()
+        let view = try #require(first.popup?(configuration))
+        #expect(model.selected?.webView === view)
+        #expect(model.selected?.hasNavigated == true)
+    }
+
+    @Test func sessionNavigationPreservesBrowserSelectionAndInvalidatesFileRequests() {
+        let selection = WorkspaceContentSelection()
+        let id = UUID()
+        selection.select(.browser(id))
+        let generation = selection.generation
+        selection.showSession()
+        #expect(selection.content == .browser(id))
+        #expect(selection.generation != generation)
+        selection.select(.file(UUID()))
+        selection.showSession()
+        #expect(selection.content == nil)
+    }
+
     private func isolated() -> WKWebViewConfiguration {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()

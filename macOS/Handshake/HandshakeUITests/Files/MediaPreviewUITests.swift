@@ -26,6 +26,7 @@ extension HandshakeUITests {
             XCTAssertFalse(app.staticTexts["File Too Large"].exists)
             XCTAssertFalse(app.descendants(matching: .any)["mediaFailure"].exists)
             XCTAssertFalse(app.buttons["goToLine"].isEnabled)
+            if document == "videoPlayer" { verifyVideoPausesWhenHidden(url: url, in: app) }
             attachScreenshot(of: app, named: "Native \(name) viewer")
         }
         app.buttons["workflowTab-1"].click()
@@ -50,4 +51,17 @@ extension HandshakeUITests {
         XCTAssertTrue(app.descendants(matching: .any)["pdfPreview"].waitForExistence(timeout: 10))
         waitForTab(pdf, valueContaining: "Pinned", in: app)
     }
+    @MainActor
+    private func verifyVideoPausesWhenHidden(url: URL, in app: XCUIApplication) {
+        let play = app.buttons.matching(NSPredicate(format: "label ==[c] %@", "Play")).firstMatch
+        XCTAssertTrue(play.waitForExistence(timeout: 5), app.debugDescription)
+        play.click()
+        XCTAssertTrue(
+            app.buttons.matching(NSPredicate(format: "label ==[c] %@", "Pause")).firstMatch.waitForExistence(timeout: 5)
+        )
+        app.buttons["workflowTab-1"].click()
+        fileTab(url, in: app).click()
+        XCTAssertTrue(play.waitForExistence(timeout: 5), app.debugDescription)
+    }
+
 }

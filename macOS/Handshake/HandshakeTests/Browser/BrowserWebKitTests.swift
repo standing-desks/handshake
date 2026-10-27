@@ -101,6 +101,17 @@ struct BrowserWebKitTests {
         _ = try await child.webView.evaluateJavaScript("window.close(); true")
         try await waitUntil { model.tabs.count == 1 }
         #expect(model.selected === first)
+        _ = try await first.webView.evaluateJavaScript(
+            """
+            window.blank=window.open('');
+            blank.document.write('<title>Scripted child</title><p>Popup content</p>'); true
+            """
+        )
+        try await waitUntil { model.tabs.count == 2 && model.selected?.pageTitle == "Scripted child" }
+        #expect(model.selected?.hasNavigated == true)
+        #expect(
+            try await model.selected?.webView.evaluateJavaScript("document.body.textContent") as? String
+                == "Popup content")
     }
 
     @Test func sharedWebsiteDataHiddenDialogsAndBlockedLocalNavigation() async throws {
