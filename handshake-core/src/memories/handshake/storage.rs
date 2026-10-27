@@ -759,7 +759,9 @@ impl Library {
         };
         let combined =
             format!("{begin}\n- [Handshake current project memories]({name})\n{end}\n\n{rest}");
-        self.publish(
+        // The native startup pointer can wait until idle: live prompts read the
+        // current verified topics directly and must not report stalled sharing.
+        match self.publish(
             project,
             bundle,
             basis,
@@ -767,7 +769,10 @@ impl Library {
             &target,
             &combined,
             "index",
-        )
+        ) {
+            Ok(()) | Err(Error::NativeActive) => Ok(()),
+            Err(error) => Err(error),
+        }
     }
 
     /// Once the native writer is idle and stable outputs are current, retire every
@@ -1132,7 +1137,14 @@ impl Library {
                 }
             }
             if pending && intent["state"] == "pending" {
-                held |= deferred(self.apply_intent(project, bundle, &path, intent))?;
+                let startup_index = intent["provider"] == "claude_code"
+                    && intent["role"] == "index"
+                    && intent["path"].as_str() == project.claude.join("MEMORY.md").to_str();
+                let result = self.apply_intent(project, bundle, &path, intent);
+                held |= match result {
+                    Err(Error::NativeActive) if startup_index => false,
+                    other => deferred(other)?,
+                };
             }
         }
         if held {
@@ -1943,6 +1955,37 @@ mod tests {
         let nested = f.project.folder.join("frontend");
         fs::create_dir(&nested).unwrap();
         assert!(!native::memory_use_enabled(&nested, &config).unwrap());
+    }
+
+    #[test]
+    fn first_memory_shares_live_while_native_startup_index_waits_until_idle() {
+        let mut f = Fixture::new();
+        fs::remove_file(&f.input).unwrap();
+        f.sync();
+        let claude = f.library.session_lease(&f.project, "claude_code").unwrap();
+        let codex = f.library.session_lease(&f.project, "codex").unwrap();
+        fs::write(
+            f.project
+                .codex
+                .join("memories/extensions/ad_hoc/notes/first.md"),
+            "Use the violet receipt check.",
+        )
+        .unwrap();
+        f.library.sync(&f.project).unwrap();
+        f.library.sync(&f.project).unwrap();
+        assert!(!f.project.claude.join("MEMORY.md").exists());
+        assert_eq!(f.library.snapshot(&f.project).unwrap().status, "sharing");
+        for provider in ["claude_code", "codex"] {
+            assert!(
+                f.library
+                    .prompt_context(&f.project, provider)
+                    .unwrap()
+                    .contains("violet receipt")
+            );
+        }
+        drop((claude, codex));
+        f.sync();
+        assert!(f.project.claude.join("MEMORY.md").exists());
     }
 
     #[test]
