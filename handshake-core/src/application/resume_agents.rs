@@ -148,8 +148,17 @@ impl Application {
                 }
             };
         if let Err(error) =
-            Self::append_memory_settings(harness, &memory_environment, &mut arguments).and_then(
-                |()| {
+            Self::append_memory_settings(harness, &memory_environment, &mut arguments)
+                .and_then(|()| {
+                    self.append_memory_context(
+                        harness,
+                        folder,
+                        &memory_environment,
+                        &mut arguments,
+                        hooks.as_ref(),
+                    )
+                })
+                .and_then(|()| {
                     Self::append_agent_instructions(
                         harness,
                         "",
@@ -158,8 +167,7 @@ impl Application {
                         &located,
                         folder,
                     )
-                },
-            )
+                })
         {
             let _ = self.terminals.cancel_reserved_terminal(reserved);
             return Err(crate::StoreError::TracePayload(error).into());

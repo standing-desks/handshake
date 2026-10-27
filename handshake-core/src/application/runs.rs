@@ -572,6 +572,15 @@ impl Application {
                         &mut arguments,
                     )
                     .and_then(|()| {
+                        self.append_memory_context(
+                            agent.harness,
+                            &processes.folder,
+                            &memory_environment,
+                            &mut arguments,
+                            hooks.as_ref(),
+                        )
+                    })
+                    .and_then(|()| {
                         Self::append_agent_instructions(
                             agent.harness,
                             &run.instructions(agent.agent_id, &command),
@@ -3101,6 +3110,107 @@ os.execvp('pi', ['pi', '--append-system-prompt', instructions, '--', prompt])
             assert_eq!(continued.terminal_ids(), completed.terminal_ids());
             assert_eq!(continued.run.as_ref().unwrap().generation, generation + 1);
         }
+    }
+
+    #[test]
+    fn graph_individual_mode_keeps_terminal_follow_ups_out_of_handoffs() {
+        let folder = tempfile::tempdir().unwrap();
+        let bin = tempfile::tempdir().unwrap();
+        let app = application(folder.path(), bin.path(), RECORD_INPUT);
+        let id = launch_graph(
+            &app,
+            folder.path(),
+            &BuiltinType::Adversarial.definition(),
+            "Build checkout",
+        );
+        wait_for(&app, id, |workflow| {
+            workflow.agents[0].terminal_id.value() > 0
+        });
+        let current = app.snapshot().unwrap().workflows.workflows[0].clone();
+        accepted(
+            &app,
+            Command::CompleteWorkflowRole {
+                workflow_id: id,
+                agent_id: current.agents[0].agent_id,
+                generation: current
+                    .run
+                    .as_ref()
+                    .unwrap()
+                    .assignment_generation(current.agents[0].agent_id.0),
+                signal: CompletionSignal {
+                    decision: Decision::Done,
+                    summary: "Checkout ready".into(),
+                    assignments: vec![],
+                    task: String::new(),
+                },
+            },
+        );
+        wait_for(&app, id, |workflow| {
+            workflow.agents[1].terminal_id.value() > 0
+        });
+        let current = app.snapshot().unwrap().workflows.workflows[0].clone();
+        accepted(
+            &app,
+            Command::CompleteWorkflowRole {
+                workflow_id: id,
+                agent_id: current.agents[1].agent_id,
+                generation: current
+                    .run
+                    .as_ref()
+                    .unwrap()
+                    .assignment_generation(current.agents[1].agent_id.0),
+                signal: CompletionSignal {
+                    decision: Decision::Approve,
+                    summary: "Approved checkout".into(),
+                    assignments: vec![],
+                    task: String::new(),
+                },
+            },
+        );
+        let completed = app.snapshot().unwrap().workflows.workflows[0].clone();
+        assert_eq!(completed.status, WorkflowStatus::Completed);
+        let generation = completed.run.as_ref().unwrap().generation;
+        let graph = completed.run.as_ref().unwrap().graph.clone();
+        change_individual_mode(&app, id, true);
+        for agent in &completed.agents {
+            assert!(app.terminals.is_running(agent.terminal_id));
+            app.write_terminal_input(agent.terminal_id, b"Private checkout question\r")
+                .unwrap();
+        }
+        accepted(
+            &app,
+            Command::ContinueWorkflowRun {
+                workflow_id: id,
+                agent_id: completed.agents[0].agent_id,
+                generation,
+                mode_revision: 1,
+            },
+        );
+        let individual = app.snapshot().unwrap().workflows.workflows[0].clone();
+        assert_eq!(individual.status, WorkflowStatus::Completed);
+        assert_eq!(individual.run.as_ref().unwrap().graph, graph);
+        assert_eq!(individual.terminal_ids(), completed.terminal_ids());
+        change_individual_mode(&app, id, false);
+        assert_eq!(
+            app.snapshot().unwrap().workflows.workflows[0].status,
+            WorkflowStatus::Completed
+        );
+        accepted(
+            &app,
+            Command::ContinueWorkflowRun {
+                workflow_id: id,
+                agent_id: completed.agents[0].agent_id,
+                generation,
+                mode_revision: 2,
+            },
+        );
+        let continued = app.snapshot().unwrap().workflows.workflows[0].clone();
+        assert_eq!(continued.status, WorkflowStatus::Running);
+        assert!(continued.run.as_ref().unwrap().generation > generation);
+        assert_eq!(
+            continued.agents[0].terminal_id,
+            completed.agents[0].terminal_id
+        );
     }
 
     #[test]

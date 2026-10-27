@@ -1,4 +1,5 @@
 //! Durable receiver bindings, immutable AMIS history, local policy and recoverable native plans.
+mod archive;
 use super::{Error, Snapshot, Summary, contract as c, native};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::{Value, json};
@@ -85,6 +86,11 @@ impl Library {
         }
     }
     pub fn register(&mut self, folder: &Path) -> Result<Project, Error> {
+        let project = self.register_metadata(folder)?;
+        native::prepare(&project, &self.roots)?;
+        Ok(project)
+    }
+    pub fn register_metadata(&mut self, folder: &Path) -> Result<Project, Error> {
         if !folder.is_absolute() || !folder.is_dir() {
             return Err(Error::InvalidFolder);
         }
@@ -140,7 +146,6 @@ impl Library {
             &project.root.join("project.json"),
             &json!({"id":project.id,"folder":project.folder,"enabled":enabled}),
         )?;
-        native::prepare(&project, &self.roots)?;
         Ok(project)
     }
     pub fn session_lease(&self, project: &Project, provider: &str) -> Result<fs::File, Error> {
@@ -263,6 +268,13 @@ impl Library {
         write_json(&project.root.join("library.amis.json"), bundle)
     }
     pub fn sync(&mut self, project: &Project) -> Result<(), Error> {
+        self.sync_cancellable(project, &|| true)
+    }
+    pub fn sync_cancellable(
+        &mut self,
+        project: &Project,
+        active: &dyn Fn() -> bool,
+    ) -> Result<(), Error> {
         let enabled: bool = self.db.query_row(
             "SELECT enabled FROM projects WHERE id=?",
             [&project.id],
@@ -271,7 +283,7 @@ impl Library {
         if !enabled {
             return Ok(());
         }
-        let result = self.cycle(project);
+        let result = self.cycle(project, active);
         self.db.execute(
             "UPDATE projects SET last_sync=?,error=? WHERE id=?",
             params![
@@ -282,38 +294,63 @@ impl Library {
         )?;
         result
     }
-    fn cycle(&mut self, project: &Project) -> Result<(), Error> {
+    fn cycle(&mut self, project: &Project, active: &dyn Fn() -> bool) -> Result<(), Error> {
+        if !active() {
+            return Err(Error::Busy);
+        }
         native::prepare(project, &self.roots)?;
+        native::ensure_codex_memory_layout(&project.folder, &project.codex.join("config.toml"))?;
         let mut bundle = self.load(project)?;
         self.recover(project, &bundle, false)?;
+        self.recover_restoration(project, &bundle)?;
         let candidates = native::capture(project, &self.roots)?;
-        let mut changed = false;
-        for candidate in candidates {
-            changed |= self.accept(project, &mut bundle, &candidate)?;
+        let mut changed = self.retire_relocated_sources(project, &mut bundle, &candidates)?;
+        for candidate in &candidates {
+            if !active() {
+                return Err(Error::Busy);
+            }
+            changed |= self.accept(project, &mut bundle, candidate)?;
         }
         if changed || !project.root.join("library.amis.json").exists() {
             Self::save(project, &mut bundle)?;
         }
-        let records = self.consolidate(project, &mut bundle)?;
+        let mut records = self.consolidate(project, &mut bundle)?;
         Self::save(project, &mut bundle)?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|_| Error::Conflict)?;
+        if self.archive_missing(project, &mut bundle, &records, now)? {
+            records = self.consolidate(project, &mut bundle)?;
+            Self::save(project, &mut bundle)?;
+        }
         let mut held = deferred(self.recover(project, &bundle, true))?;
         for record in &records {
+            if !active() {
+                return Err(Error::Busy);
+            }
             held |= deferred(self.publish_record(project, &bundle, record))?;
         }
         let mut q = self
             .db
             .prepare("SELECT revision FROM views WHERE project=? AND active=0")?;
         for revision in q.query_map([&project.id], |r| r.get::<_, String>(0))? {
+            if !active() {
+                return Err(Error::Busy);
+            }
             let revision = revision?;
             let record = c::find(&bundle, &revision).ok_or(Error::Conflict)?;
             held |= deferred(self.publish_record(project, &bundle, record))?;
         }
-        if let Some(record) = records
-            .first()
-            .or_else(|| bundle["records"].as_array().and_then(|r| r.last()))
-        {
+        let inactive = self.db.query_row("SELECT revision FROM views WHERE project=? AND active=0 ORDER BY rowid DESC LIMIT 1",[&project.id],|row|row.get::<_,String>(0)).optional()?;
+        let basis = records.first().or_else(|| {
+            inactive
+                .as_deref()
+                .and_then(|revision| c::find(&bundle, revision))
+        });
+        if let Some(record) = basis {
             held |= deferred(self.publish_index(project, &bundle, &records, record))?;
         }
+        self.retire_live_projections(project, &bundle)?;
         if held {
             return Err(Error::NativeActive);
         }
@@ -352,6 +389,18 @@ impl Library {
             }
             let base = c::find(bundle, &revision)
                 .ok_or_else(|| Error::Contract("Missing delivery base".into()))?;
+            if role == "source"
+                && (base["status"] != "active" || withheld_lineage(bundle, base)?)
+                && !candidate.text.contains("AMIS memory ")
+                && !candidate.text.contains("<!-- twine:")
+            {
+                // Reusing a native filename for a new raw memory does not restore its old claim.
+                self.db.execute(
+                    "DELETE FROM projections WHERE project=? AND path=?",
+                    params![project.id, candidate.path.to_string_lossy()],
+                )?;
+                return self.accept(project, bundle, candidate);
+            }
             if base["status"] != "active" {
                 return Err(Error::Conflict);
             }
@@ -396,7 +445,9 @@ impl Library {
             .as_ref()
             .and_then(|v| c::find(bundle, &v.1))
             .cloned();
-        if parent.as_ref().is_some_and(|p| p["status"] == "withdrawn") {
+        if parent.as_ref().is_some_and(|p| {
+            p["status"] == "withdrawn" && p["withdrawal"]["reason"] == "user_request"
+        }) {
             return Err(Error::Contract(
                 "A withdrawn identity requires explicit restoration.".into(),
             ));
@@ -497,7 +548,7 @@ impl Library {
         for revision in revisions {
             let record = c::find(bundle, &revision)
                 .ok_or_else(|| Error::Contract("Missing source head".into()))?;
-            if record["status"] == "active" {
+            if record["status"] == "active" && !withheld_lineage(bundle, record)? {
                 ensure_auto_validity(record)?;
                 groups
                     .entry(
@@ -514,7 +565,6 @@ impl Library {
         let mut group_keys = Vec::new();
         for (text, inputs) in groups {
             let group = c::hash(text.as_bytes());
-            group_keys.push(group.clone());
             let previous = self
                 .db
                 .query_row(
@@ -524,6 +574,13 @@ impl Library {
                 )
                 .optional()?;
             let parent = previous.as_ref().and_then(|p| c::find(bundle, &p.1));
+            if let Some(parent) = parent
+                && withheld_lineage(bundle, parent)?
+            {
+                // A new file is not explicit permission to restore a withdrawn identity.
+                continue;
+            }
+            group_keys.push(group.clone());
             let refs: Vec<Value> = inputs.iter().map(c::reference).collect();
             if let Some(p) = parent
                 && p["status"] == "active"
@@ -590,29 +647,8 @@ impl Library {
     ) -> Result<(), Error> {
         let id = record["id"].as_str().ok_or(Error::Conflict)?;
         let active = record["status"] == "active";
-        let body = if active {
-            format!(
-                "{}\n<!-- twine:body -->\n{}",
-                native::body(
-                    &json!({"id":record["id"],"revision":record["revision"],"body":{"text":""}}),
-                    project
-                ),
-                record["body"]["text"].as_str().unwrap_or_default()
-            )
-        } else {
-            format!(
-                "Handshake memory {id} is withdrawn for project {}. Do not retain its previous claim as current.\n<!-- twine:withdrawn -->\n",
-                project.folder.display()
-            )
-        };
-        let claude = if active {
-            format!(
-                "---\nname: {}\ndescription: Shared current project memory from Handshake\ntype: project\n---\n\n{body}",
-                serde_json::to_string(&title(record["body"]["text"].as_str().unwrap_or_default()))?
-            )
-        } else {
-            body.clone()
-        };
+        let body = projection_body(record, project, "codex")?;
+        let claude = projection_body(record, project, "claude_code")?;
         let mut held = deferred(self.publish(
             project,
             bundle,
@@ -682,7 +718,15 @@ impl Library {
                         params![project.id, source_memory],
                         |r| r.get::<_, String>(0),
                     )?;
-                    if c::find(bundle, &source_revision).is_none_or(|r| r["status"] != "withdrawn")
+                    if source_revision != input["revision_id"].as_str().unwrap_or_default()
+                        && c::find(bundle, &source_revision)
+                            .is_none_or(|r| r["status"] != "withdrawn")
+                    {
+                        continue;
+                    }
+                    if record["withdrawal"]["reason"] != "user_request"
+                        && c::find(bundle, &source_revision)
+                            .is_none_or(|r| r["status"] != "withdrawn")
                     {
                         continue;
                     }
@@ -760,7 +804,9 @@ impl Library {
         };
         let combined =
             format!("{begin}\n- [Handshake current project memories]({name})\n{end}\n\n{rest}");
-        self.publish(
+        // The native startup pointer can wait until idle: live prompts read the
+        // current verified topics directly and must not report stalled sharing.
+        match self.publish(
             project,
             bundle,
             basis,
@@ -768,7 +814,86 @@ impl Library {
             &target,
             &combined,
             "index",
-        )
+        ) {
+            Ok(()) | Err(Error::NativeActive) => Ok(()),
+            Err(error) => Err(error),
+        }
+    }
+
+    /// Once the native writer is idle and stable outputs are current, retire every
+    /// immutable live sibling so a native loader cannot resurrect its old claim.
+    fn retire_live_projections(&self, project: &Project, bundle: &Value) -> Result<(), Error> {
+        let mut query = self.db.prepare("SELECT path,provider,record_revision FROM projections WHERE project=? AND role IN ('topic','note','index') AND path LIKE '%.revision-%'")?;
+        let rows = query
+            .query_map([&project.id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        for (name, provider, revision) in rows {
+            let path = PathBuf::from(&name);
+            let stem = path
+                .file_stem()
+                .and_then(|name| name.to_str())
+                .ok_or(Error::Conflict)?;
+            let Some((base, _)) = stem.split_once(".revision-") else {
+                continue;
+            };
+            let stable = path.with_file_name(format!("{base}.md"));
+            let idle = native::lease(project, &provider, true)
+                .and_then(|lease| native::quiescent(project, &provider).map(|()| lease));
+            match idle {
+                Ok(lease) => drop(lease),
+                Err(Error::NativeActive) => continue,
+                Err(error) => return Err(error),
+            }
+            let original = c::find(bundle, &revision).ok_or(Error::Conflict)?;
+            let heads = c::heads(bundle, original["id"].as_str().ok_or(Error::Conflict)?);
+            let current = heads
+                .first()
+                .and_then(|head| c::find(bundle, head["revision_id"].as_str()?))
+                .ok_or(Error::Conflict)?;
+            if !base.starts_with("twine-index-") && current["status"] != "active" {
+                let retired = projection_body(current, project, &provider)?;
+                match self.publish(
+                    project, bundle, current, &provider, &path, &retired, "retired",
+                ) {
+                    Ok(()) | Err(Error::NativeActive) => {}
+                    Err(error) => return Err(error),
+                }
+                continue;
+            }
+            let stable_binding = self.db.query_row("SELECT output_hash,record_revision FROM projections WHERE project=? AND path=?",params![project.id,stable.to_string_lossy()],|row|Ok((row.get::<_,String>(0)?,row.get::<_,String>(1)?))).optional()?;
+            let Some((hash, stable_revision)) = stable_binding else {
+                continue;
+            };
+            let current = c::find(bundle, &stable_revision).ok_or(Error::Conflict)?;
+            if (!base.starts_with("twine-index-") && original["id"] != current["id"])
+                || c::heads(bundle, current["id"].as_str().ok_or(Error::Conflict)?)
+                    != vec![c::reference(current)]
+                || native::read(&stable)?
+                    .as_deref()
+                    .map(|text| c::hash(text.as_bytes()))
+                    .as_deref()
+                    != Some(hash.as_str())
+            {
+                continue;
+            }
+            let retired = format!(
+                "Superseded native memory snapshot. Its previous claim is not current. The current project memory is represented at {}.\n<!-- twine:superseded -->\n",
+                stable.display()
+            );
+            match self.publish(
+                project, bundle, current, &provider, &path, &retired, "retired",
+            ) {
+                Ok(()) | Err(Error::NativeActive) => {}
+                Err(error) => return Err(error),
+            }
+        }
+        Ok(())
     }
     #[expect(
         clippy::too_many_arguments,
@@ -786,6 +911,13 @@ impl Library {
     ) -> Result<(), Error> {
         native::safe_path(path)?;
         let before = native::read(path)?;
+        // Absence already satisfies withdrawal. Keep history without recreating a deleted file
+        // or inventing a receipt for a write that did not happen.
+        if before.is_none()
+            && ((record["status"] != "active" && role != "index") || role == "source")
+        {
+            return Ok(());
+        }
         let before_hash = before.as_deref().map(|v| c::hash(v.as_bytes()));
         let after_hash = c::hash(after.as_bytes());
         let owned = self
@@ -814,7 +946,29 @@ impl Library {
         } else if before.is_some() && role != "index" && role != "source" {
             return Err(Error::Conflict);
         }
-        drop(native::lease(project, provider, true)?);
+        if before_hash.as_deref() != Some(after_hash.as_str())
+            && (before.is_some() || !native::managed_projection(project, path, role))
+        {
+            let idle = native::lease(project, provider, true)
+                .and_then(|lease| native::quiescent(project, provider).map(|()| lease));
+            match idle {
+                Ok(lease) => drop(lease),
+                Err(Error::NativeActive) if native::managed_projection(project, path, role) => {
+                    let stem = path
+                        .file_stem()
+                        .and_then(|name| name.to_str())
+                        .ok_or(Error::Conflict)?;
+                    if stem.contains(".revision-") {
+                        return Err(Error::Conflict);
+                    }
+                    let revision = record["revision"]["id"].as_str().ok_or(Error::Conflict)?;
+                    let live =
+                        path.with_file_name(format!("{stem}.revision-{revision}-{after_hash}.md"));
+                    return self.publish(project, bundle, record, provider, &live, after, role);
+                }
+                Err(error) => return Err(error),
+            }
+        }
         let record_ref = c::reference(record);
         let binding_digest =
             c::hash(format!("{}:{provider}:{}", project.id, project.folder.display()).as_bytes());
@@ -828,7 +982,7 @@ impl Library {
             provider,
             &native::configuration(&self.roots, project, provider)?,
         )?;
-        let fidelity:Vec<Value>=record.as_object().ok_or(Error::Conflict)?.keys().map(|key|json!({"pointer":format!("/{key}"),"outcome":if key=="body"&&record["status"]=="active"{"verbatim"}else if key=="scope"{"mapped"}else{"sidecar"},"detail":"Native project profile carries body and scope; immutable AMIS history retains every field and source snapshot."})).collect();
+        let fidelity:Vec<Value>=record.as_object().ok_or(Error::Conflict)?.keys().map(|key|json!({"pointer":format!("/{key}"),"outcome":if key=="body"&&record["status"]=="active"&&matches!(role,"source"|"topic"|"note"){"verbatim"}else if key=="scope"{"mapped"}else{"sidecar"},"detail":"Native project profile carries body and scope; immutable AMIS history retains every field and source snapshot."})).collect();
         let expiry = c::expiry();
         let mut plan = json!({"format":"amis.plan","version":"0.4.0","id":c::id(),"record":record_ref,"expected_heads":[record_ref],"target":{"provider":provider,"profile":format!("com.twine.{provider}.project-native.v1"),"binding_id":project.id,"binding_digest":binding_digest,"adapter":"com.twine.memories@0.1.0","capabilities_digest":capabilities["integrity"]["digest"]},"created_at":c::now(),"expires_at":expiry,"coordination":"cooperative_lock","mutations":[{"resource_ref":resource,"before":before_state,"after":after_state,"role":role}],"fidelity":fidelity,"blockers":[]});
         c::seal(&mut plan)?;
@@ -842,17 +996,7 @@ impl Library {
             .as_array()
             .filter(|v| v.len() == 1)
             .and_then(|v| v[0]["memory_id"].as_str());
-        for bytes in before
-            .iter()
-            .map(String::as_str)
-            .chain(std::iter::once(after))
-        {
-            let hash = c::hash(bytes.as_bytes());
-            let blob = project.root.join("blobs").join(hash);
-            if !blob.exists() {
-                native::atomic_write(&blob, bytes.as_bytes(), None)?;
-            }
-        }
+        save_projection_blobs(project, before.as_deref(), after)?;
         let source_memory = if role == "source" {
             self.db
                 .query_row(
@@ -931,6 +1075,11 @@ impl Library {
         )
         .ok_or(Error::Conflict)?;
         if record["status"] == "active" {
+            if withheld_lineage(bundle, record)? {
+                intent["state"] = json!("superseded");
+                write_json(journal, &intent)?;
+                return Ok(());
+            }
             for input in record["derivation"]["inputs"]
                 .as_array()
                 .into_iter()
@@ -983,8 +1132,18 @@ impl Library {
         let actual = native::read(&path)?;
         if actual.as_deref().map(|t| c::hash(t.as_bytes())).as_deref() != Some(after_hash.as_str())
         {
-            let _exclusive = native::lease(project, provider, true)?;
-            native::quiescent(project, provider)?;
+            let _exclusive = if actual.is_some()
+                || !native::managed_projection(
+                    project,
+                    &path,
+                    intent["role"].as_str().ok_or(Error::Conflict)?,
+                ) {
+                let exclusive = native::lease(project, provider, true)?;
+                native::quiescent(project, provider)?;
+                Some(exclusive)
+            } else {
+                None
+            };
             native::atomic_write(
                 &path,
                 after.as_bytes(),
@@ -1050,7 +1209,14 @@ impl Library {
                 }
             }
             if pending && intent["state"] == "pending" {
-                held |= deferred(self.apply_intent(project, bundle, &path, intent))?;
+                let startup_index = intent["provider"] == "claude_code"
+                    && intent["role"] == "index"
+                    && intent["path"].as_str() == project.claude.join("MEMORY.md").to_str();
+                let result = self.apply_intent(project, bundle, &path, intent);
+                held |= match result {
+                    Err(Error::NativeActive) if startup_index => false,
+                    other => deferred(other)?,
+                };
             }
         }
         if held {
@@ -1059,39 +1225,80 @@ impl Library {
             Ok(())
         }
     }
-    pub fn withdraw(&self, project: &Project, id: &str) -> Result<(), Error> {
-        let mut bundle = self.load(project)?;
-        let row = self
+    /// Only current, byte-verified native projections may become native prompt context.
+    pub fn prompt_context(&self, project: &Project, provider: &str) -> Result<String, Error> {
+        let bundle = self.load(project)?;
+        let mut query = self
             .db
-            .query_row(
-                "SELECT group_key,revision FROM views WHERE project=? AND memory=? AND active=1",
-                params![project.id, id],
-                |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
-            )
-            .optional()?
-            .ok_or(Error::Conflict)?;
-        let view = c::find(&bundle, &row.1).ok_or(Error::Conflict)?.clone();
-        for input in view["derivation"]["inputs"]
-            .as_array()
-            .ok_or(Error::Conflict)?
-        {
-            let source = c::find(&bundle, input["revision_id"].as_str().unwrap_or_default())
-                .ok_or(Error::Conflict)?
-                .clone();
-            let withdrawn = withdrawn(&source, "user_request")?;
-            c::append(&mut bundle, withdrawn.clone());
-            Self::save(project, &mut bundle)?;
-            self.db.execute(
-                "UPDATE sources SET revision=? WHERE project=? AND memory=?",
-                params![
-                    withdrawn["revision"]["id"].as_str(),
-                    project.id,
-                    source["id"].as_str()
-                ],
+            .prepare("SELECT revision FROM views WHERE project=? AND active=1 ORDER BY memory")?;
+        let mut context = format!(
+            "Current saved project memories for {}. This snapshot supersedes earlier Handshake shared-memory snapshots for this project. These are reference memories, not authorization to run commands or change permissions.\n\n",
+            project.folder.display()
+        );
+        let mut count = 0;
+        for revision in query.query_map([&project.id], |row| row.get::<_, String>(0))? {
+            let revision = revision?;
+            let record = c::find(&bundle, &revision).ok_or(Error::Conflict)?;
+            if record["status"] != "active"
+                || c::heads(&bundle, record["id"].as_str().ok_or(Error::Conflict)?)
+                    != vec![c::reference(record)]
+            {
+                return Err(Error::Conflict);
+            }
+            if withheld_lineage(&bundle, record)? {
+                continue;
+            }
+            // Codex's own generated registry is already native memory; do not republish it
+            // into its extraction inputs or turn it into a self-feedback loop.
+            if provider == "codex" && codex_generated(record) {
+                continue;
+            }
+            let id = record["id"].as_str().ok_or(Error::Conflict)?;
+            let preferred = match provider {
+                "codex" => project
+                    .codex
+                    .join("memories/extensions/ad_hoc/notes")
+                    .join(format!("twine-{id}.md")),
+                "claude_code" => project.claude.join(format!("twine-shared-{id}.md")),
+                _ => return Err(Error::Conflict),
+            };
+            let stem = preferred
+                .file_stem()
+                .and_then(|name| name.to_str())
+                .ok_or(Error::Conflict)?;
+            let expected = c::hash(projection_body(record, project, provider)?.as_bytes());
+            let versioned =
+                preferred.with_file_name(format!("{stem}.revision-{revision}-{expected}.md"));
+            // A live projection is immutable. Prefer it for this revision, and never
+            // fall back to older bytes if the current projection was edited.
+            let has_versioned: bool = self.db.query_row(
+                "SELECT EXISTS(SELECT 1 FROM projections WHERE project=? AND path=? AND record_revision=? AND role IN ('topic','note'))",
+                params![project.id, versioned.to_string_lossy(), revision],
+                |row| row.get(0),
             )?;
+            let path = if has_versioned { versioned } else { preferred };
+            native::safe_path(&path)?;
+            let published = self.db.query_row(
+                "SELECT output_hash,record_revision FROM projections WHERE project=? AND path=?",
+                params![project.id, path.to_string_lossy()],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+            ).optional()?.ok_or(Error::NativeActive)?;
+            let text = native::read(&path)?.ok_or(Error::NativeActive)?;
+            if published.1 != revision
+                || published.0 != expected
+                || published.0 != c::hash(text.as_bytes())
+            {
+                return Err(Error::Conflict);
+            }
+            writeln!(context, "Native memory: {}\n{text}\n", path.display()).expect("String write");
+            count += 1;
         }
-        Ok(())
+        if count == 0 {
+            context.push_str("No active imported project memories in this snapshot.\n");
+        }
+        Ok(context)
     }
+
     pub fn snapshot(&self, project: &Project) -> Result<Snapshot, Error> {
         let bundle = self.load(project)?;
         let mut q = self
@@ -1133,7 +1340,7 @@ impl Library {
         } else {
             "sharing"
         };
-        let message=error.unwrap_or_else(||if enabled {"AMIS memories are consolidated locally and delivered to native project profiles. Codex builds its own startup memory during conversations when quota allows.".into()} else {"Automatic sharing is paused.".into()});
+        let message=error.unwrap_or_else(||if enabled {"AMIS memories are consolidated locally and delivered to native project profiles. Shared memories refresh at the next prompt in supported agents started with this feature enabled; older sessions keep their original memory profile. Native startup generation follows each agent’s schedule and quota.".into()} else {"Automatic sharing is paused.".into()});
         Ok(Snapshot {
             enabled,
             folder: project.folder.clone(),
@@ -1142,11 +1349,100 @@ impl Library {
             claude_path: project.claude.clone(),
             codex_path: project.codex.clone(),
             records,
+            archived_records: self.archived_summaries(project, &bundle)?,
+            archive_detail: None,
             status: status.into(),
             message,
             last_sync,
             model_calls: 0,
         })
+    }
+}
+fn codex_generated(record: &Value) -> bool {
+    record["sources"].as_array().is_some_and(|sources| {
+        !sources.is_empty()
+            && sources.iter().all(|source| {
+                source["provider"] == "codex"
+                    && source["source_id"]
+                        .as_str()
+                        .is_some_and(|key| key.starts_with("codex-task-group:"))
+            })
+    })
+}
+
+/// An explicit withdrawal suppresses known derived claims as well as its own view.
+/// Historical/obsolete inputs remain valid provenance for ordinary native edits.
+fn withheld_lineage(bundle: &Value, record: &Value) -> Result<bool, Error> {
+    let mut pending = vec![record];
+    let mut visited = HashSet::new();
+    while let Some(ancestor) = pending.pop() {
+        let revision = ancestor["revision"]["id"].as_str().ok_or(Error::Conflict)?;
+        if !visited.insert(revision) {
+            continue;
+        }
+        let id = ancestor["id"].as_str().ok_or(Error::Conflict)?;
+        for head in c::heads(bundle, id) {
+            let current = c::find(bundle, head["revision_id"].as_str().ok_or(Error::Conflict)?)
+                .ok_or(Error::Conflict)?;
+            if current["status"] == "withdrawn" && current["withdrawal"]["reason"] == "user_request"
+            {
+                return Ok(true);
+            }
+        }
+        for input in ancestor["derivation"]["inputs"]
+            .as_array()
+            .into_iter()
+            .flatten()
+        {
+            pending.push(
+                c::find(
+                    bundle,
+                    input["revision_id"].as_str().ok_or(Error::Conflict)?,
+                )
+                .ok_or(Error::Conflict)?,
+            );
+        }
+    }
+    Ok(false)
+}
+
+fn save_projection_blobs(
+    project: &Project,
+    before: Option<&str>,
+    after: &str,
+) -> Result<(), Error> {
+    for bytes in before.into_iter().chain(std::iter::once(after)) {
+        let blob = project.root.join("blobs").join(c::hash(bytes.as_bytes()));
+        if !blob.exists() {
+            native::atomic_write(&blob, bytes.as_bytes(), None)?;
+        }
+    }
+    Ok(())
+}
+
+fn projection_body(record: &Value, project: &Project, provider: &str) -> Result<String, Error> {
+    let id = record["id"].as_str().ok_or(Error::Conflict)?;
+    if record["status"] != "active" {
+        return Ok(format!(
+            "Handshake memory {id} is withdrawn for project {}. Do not retain its previous claim as current.\n<!-- twine:withdrawn -->\n",
+            project.folder.display()
+        ));
+    }
+    let body = format!(
+        "{}\n<!-- twine:body -->\n{}",
+        native::body(
+            &json!({"id":record["id"],"revision":record["revision"],"body":{"text":""}}),
+            project
+        ),
+        record["body"]["text"].as_str().unwrap_or_default()
+    );
+    if provider == "claude_code" {
+        Ok(format!(
+            "---\nname: {}\ndescription: Shared current project memory from Handshake\ntype: project\n---\n\n{body}",
+            serde_json::to_string(&title(record["body"]["text"].as_str().unwrap_or_default()))?
+        ))
+    } else {
+        Ok(body)
     }
 }
 fn deferred(result: Result<(), Error>) -> Result<bool, Error> {
@@ -1350,11 +1646,13 @@ mod tests {
         assert_eq!(f.library.snapshot(&f.project).unwrap().records.len(), 1);
     }
     #[test]
-    fn missing_source_is_not_a_withdrawal_and_explicit_withdrawal_is_durable() {
+    fn unconfirmed_absence_preserves_memory_and_explicit_archive_is_durable() {
         let mut f = Fixture::new();
         f.sync();
         fs::remove_file(&f.input).unwrap();
-        f.sync();
+        assert!(
+            matches!(f.library.sync(&f.project), Err(Error::Contract(message)) if message.contains("Confirming removal"))
+        );
         let snap = f.library.snapshot(&f.project).unwrap();
         assert_eq!(snap.records.len(), 1);
         f.library.withdraw(&f.project, &snap.records[0].id).unwrap();
@@ -1693,10 +1991,7 @@ mod tests {
             .codex
             .join("memories/extensions/ad_hoc/notes/new.md");
         fs::write(&new, "A new native fact.\n").unwrap();
-        assert!(matches!(
-            f.library.sync(&f.project),
-            Err(Error::NativeActive)
-        ));
+        f.library.sync(&f.project).unwrap();
         let snapshot = f.library.snapshot(&f.project).unwrap();
         let new = snapshot
             .records
@@ -1710,12 +2005,499 @@ mod tests {
                 .join(format!("twine-{}.md", new.id))
                 .exists()
         );
-        drop(lease);
-        f.sync();
         assert!(
             fs::read_to_string(f.project.claude.join(format!("twine-shared-{}.md", new.id)))
                 .unwrap()
                 .contains("new native fact")
         );
+        drop(lease);
+    }
+
+    #[test]
+    fn native_memory_use_opt_out_does_not_confuse_generation_with_loading() {
+        let f = Fixture::new();
+        let config = f.project.codex.join("config.toml");
+        fs::write(
+            &config,
+            "[memories]\ngenerate_memories = false\nuse_memories = true\n",
+        )
+        .unwrap();
+        assert!(native::memory_use_enabled(&f.project.folder, &config).unwrap());
+        fs::write(&config, "[memories]\nuse_memories = false\n").unwrap();
+        assert!(!native::memory_use_enabled(&f.project.folder, &config).unwrap());
+        fs::write(&config, "[memories]\nuse_memories = true\n").unwrap();
+        let local = f.project.folder.join(".codex");
+        fs::create_dir(&local).unwrap();
+        fs::write(
+            local.join("config.toml"),
+            "[memories]\nuse_memories = false\n",
+        )
+        .unwrap();
+        assert!(!native::memory_use_enabled(&f.project.folder, &config).unwrap());
+        let nested = f.project.folder.join("frontend");
+        fs::create_dir(&nested).unwrap();
+        assert!(!native::memory_use_enabled(&nested, &config).unwrap());
+    }
+
+    #[test]
+    fn index_fidelity_does_not_claim_to_preserve_a_body_that_only_topics_carry() {
+        let mut f = Fixture::new();
+        f.sync();
+        let bundle = f.library.load(&f.project).unwrap();
+        for entry in fs::read_dir(f.project.root.join("journal")).unwrap() {
+            let intent: Value =
+                serde_json::from_slice(&fs::read(entry.unwrap().path()).unwrap()).unwrap();
+            let record = c::find(
+                &bundle,
+                intent["plan"]["record"]["revision_id"].as_str().unwrap(),
+            )
+            .unwrap();
+            let body = record["body"]["text"].as_str().unwrap();
+            let fidelity = intent["plan"]["fidelity"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|field| field["pointer"] == "/body")
+                .unwrap();
+            if intent["role"] == "index" {
+                assert!(!intent["after"].as_str().unwrap().contains(body));
+                assert_eq!(fidelity["outcome"], "sidecar");
+            } else {
+                assert!(intent["after"].as_str().unwrap().contains(body));
+                assert_eq!(fidelity["outcome"], "verbatim");
+            }
+        }
+    }
+
+    #[test]
+    fn explicit_withdrawals_suppress_generated_descendants_before_and_after_capture() {
+        for generated_first in [false, true] {
+            let mut f = Fixture::new();
+            f.sync();
+            let id = f.library.snapshot(&f.project).unwrap().records[0]
+                .id
+                .clone();
+            let recap = f.project.codex.join("memories/MEMORY.md");
+            if generated_first {
+                fs::write(
+                    &recap,
+                    "# Task Group: Native recap\nUse maple-417 for this project only.\n",
+                )
+                .unwrap();
+                f.sync();
+                assert_eq!(f.library.snapshot(&f.project).unwrap().records.len(), 2);
+            }
+            f.library.withdraw(&f.project, &id).unwrap();
+            // Even before reconciliation updates the views, live context fails closed.
+            assert!(
+                !f.library
+                    .prompt_context(&f.project, "claude_code")
+                    .unwrap()
+                    .contains("maple-417")
+            );
+            if !generated_first {
+                fs::write(
+                    &recap,
+                    "# Task Group: Native recap\nUse maple-417 for this project only.\n",
+                )
+                .unwrap();
+            }
+            f.sync();
+            f.sync();
+            assert!(f.library.snapshot(&f.project).unwrap().records.is_empty());
+            for provider in ["claude_code", "codex"] {
+                assert!(
+                    !f.library
+                        .prompt_context(&f.project, provider)
+                        .unwrap()
+                        .contains("maple-417")
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn new_identical_native_source_cannot_implicitly_restore_a_withdrawn_identity() {
+        for reconcile_first in [false, true] {
+            let mut f = Fixture::new();
+            f.sync();
+            let id = f.library.snapshot(&f.project).unwrap().records[0]
+                .id
+                .clone();
+            let body = fs::read(&f.input).unwrap();
+            f.library.withdraw(&f.project, &id).unwrap();
+            if reconcile_first {
+                f.sync();
+            }
+            fs::write(
+                f.project
+                    .codex
+                    .join("memories/extensions/ad_hoc/notes/recollection.md"),
+                body,
+            )
+            .unwrap();
+            f.sync();
+            assert!(f.library.snapshot(&f.project).unwrap().records.is_empty());
+            let bundle = f.library.load(&f.project).unwrap();
+            assert!(c::heads(&bundle, &id).iter().all(|head| {
+                c::find(&bundle, head["revision_id"].as_str().unwrap()).unwrap()["status"]
+                    == "withdrawn"
+            }));
+        }
+    }
+
+    #[test]
+    fn withdrawal_supersedes_pending_descendant_delivery_without_recreating_native_bytes() {
+        let mut f = Fixture::new();
+        f.sync();
+        let id = f.library.snapshot(&f.project).unwrap().records[0]
+            .id
+            .clone();
+        fs::write(
+            f.project.codex.join("memories/MEMORY.md"),
+            "# Task Group: Native recap\nUse maple-417.\n",
+        )
+        .unwrap();
+        f.sync();
+        let generated = f
+            .library
+            .snapshot(&f.project)
+            .unwrap()
+            .records
+            .into_iter()
+            .find(|record| record.preview.contains("Native recap"))
+            .unwrap();
+        let mut delivery = fs::read_dir(f.project.root.join("journal"))
+            .unwrap()
+            .find_map(|entry| {
+                let path = entry.ok()?.path();
+                let value: Value = serde_json::from_slice(&fs::read(&path).ok()?).ok()?;
+                (value["role"] == "topic" && value["plan"]["record"]["memory_id"] == generated.id)
+                    .then_some(value)
+            })
+            .unwrap();
+        let target = PathBuf::from(delivery["path"].as_str().unwrap());
+        f.library.withdraw(&f.project, &id).unwrap();
+        fs::remove_file(&target).unwrap();
+        delivery["state"] = json!("pending");
+        let journal = f.project.root.join("journal/replayed-descendant.json");
+        write_json(&journal, &delivery).unwrap();
+        let bundle = f.library.load(&f.project).unwrap();
+        f.library
+            .apply_intent(&f.project, &bundle, &journal, delivery)
+            .unwrap();
+        assert!(!target.exists());
+        let result: Value = serde_json::from_slice(&fs::read(journal).unwrap()).unwrap();
+        assert_eq!(result["state"], "superseded");
+    }
+
+    #[test]
+    fn withdrawn_index_is_cleared_after_idle_even_when_last_capture_is_withheld() {
+        let mut f = Fixture::new();
+        f.sync();
+        let id = f.library.snapshot(&f.project).unwrap().records[0]
+            .id
+            .clone();
+        let index = f
+            .project
+            .claude
+            .join(format!("twine-index-{}.md", f.project.id));
+        assert!(fs::read_to_string(&index).unwrap().contains("Demo account"));
+        let lease = f.library.session_lease(&f.project, "claude_code").unwrap();
+        f.library.withdraw(&f.project, &id).unwrap();
+        let _ = f.library.sync(&f.project);
+        fs::write(
+            f.project.codex.join("memories/MEMORY.md"),
+            "# Task Group: Later recap\nUse maple-417.\n",
+        )
+        .unwrap();
+        let _ = f.library.sync(&f.project);
+        drop(lease);
+        f.sync();
+        assert!(f.library.snapshot(&f.project).unwrap().records.is_empty());
+        assert!(!fs::read_to_string(&index).unwrap().contains("Demo account"));
+    }
+
+    #[test]
+    fn unsupported_codex_layout_is_reported_instead_of_silent_empty_sharing() {
+        let mut f = Fixture::new();
+        fs::write(
+            f.project.codex.join("config.toml"),
+            "[features]\nmemories=true\n[memories]\nversion=\"v2\"\n",
+        )
+        .unwrap();
+        assert!(
+            matches!(f.library.sync(&f.project),Err(Error::Contract(message)) if message.contains("v1 memory layout"))
+        );
+        assert_eq!(f.library.snapshot(&f.project).unwrap().status, "held");
+        f.library.set_enabled(&f.project, false).unwrap();
+        f.library.sync(&f.project).unwrap();
+        assert!(!f.library.snapshot(&f.project).unwrap().enabled);
+    }
+
+    #[test]
+    fn claude_project_and_environment_opt_outs_are_preserved() {
+        let f = Fixture::new();
+        let root = &f.library.roots.claude;
+        assert!(native::claude_memory_use_enabled(&f.project.folder, root, None).unwrap());
+        assert!(
+            !native::claude_memory_use_enabled(
+                &f.project.folder,
+                root,
+                Some(std::ffi::OsStr::new("1"))
+            )
+            .unwrap()
+        );
+        let local = f.project.folder.join(".claude");
+        fs::create_dir(&local).unwrap();
+        fs::write(
+            local.join("settings.local.json"),
+            r#"{"env":{"CLAUDE_CODE_DISABLE_AUTO_MEMORY":"1"}}"#,
+        )
+        .unwrap();
+        assert!(!native::claude_memory_use_enabled(&f.project.folder, root, None).unwrap());
+        fs::write(
+            local.join("settings.local.json"),
+            r#"{"autoMemoryEnabled":false}"#,
+        )
+        .unwrap();
+        assert!(!native::claude_memory_use_enabled(&f.project.folder, root, None).unwrap());
+        let nested = f.project.folder.join("frontend");
+        fs::create_dir(&nested).unwrap();
+        assert!(!native::claude_memory_use_enabled(&nested, root, None).unwrap());
+    }
+
+    #[test]
+    fn first_memory_shares_live_while_native_startup_index_waits_until_idle() {
+        let mut f = Fixture::new();
+        fs::remove_file(&f.input).unwrap();
+        f.sync();
+        let claude = f.library.session_lease(&f.project, "claude_code").unwrap();
+        let codex = f.library.session_lease(&f.project, "codex").unwrap();
+        fs::write(
+            f.project
+                .codex
+                .join("memories/extensions/ad_hoc/notes/first.md"),
+            "Use the violet receipt check.",
+        )
+        .unwrap();
+        f.library.sync(&f.project).unwrap();
+        f.library.sync(&f.project).unwrap();
+        assert!(!f.project.claude.join("MEMORY.md").exists());
+        assert_eq!(f.library.snapshot(&f.project).unwrap().status, "sharing");
+        for provider in ["claude_code", "codex"] {
+            assert!(
+                f.library
+                    .prompt_context(&f.project, provider)
+                    .unwrap()
+                    .contains("violet receipt")
+            );
+        }
+        drop((claude, codex));
+        f.sync();
+        assert!(f.project.claude.join("MEMORY.md").exists());
+    }
+
+    #[test]
+    fn both_live_harnesses_receive_new_memories_without_replacing_existing_native_files() {
+        let mut f = Fixture::new();
+        f.sync();
+        let _claude = f.library.session_lease(&f.project, "claude_code").unwrap();
+        let _codex = f.library.session_lease(&f.project, "codex").unwrap();
+        let old_index = fs::read(f.project.claude.join("MEMORY.md")).unwrap();
+        fs::write(
+            f.project.claude.join("nickname.md"),
+            "The preferred nickname is river-moth.\n",
+        )
+        .unwrap();
+        f.library.sync(&f.project).unwrap();
+        for provider in ["claude_code", "codex"] {
+            let context = f.library.prompt_context(&f.project, provider).unwrap();
+            assert!(context.contains("river-moth"));
+            assert!(context.contains("Native memory:"));
+        }
+        assert_eq!(
+            fs::read(f.project.claude.join("MEMORY.md")).unwrap(),
+            old_index
+        );
+        fs::write(
+            f.project
+                .codex
+                .join("memories/extensions/ad_hoc/notes/format.md"),
+            "Use day-first dates.\n",
+        )
+        .unwrap();
+        f.library.sync(&f.project).unwrap();
+        assert!(
+            f.library
+                .prompt_context(&f.project, "claude_code")
+                .unwrap()
+                .contains("day-first")
+        );
+    }
+
+    #[test]
+    fn live_revision_siblings_preserve_previous_bytes_and_do_not_hide_native_edits() {
+        let mut f = Fixture::new();
+        f.sync();
+        let _codex = f.library.session_lease(&f.project, "codex").unwrap();
+        let snapshot = f.library.snapshot(&f.project).unwrap();
+        let id = &snapshot.records[0].id;
+        let original = f
+            .project
+            .codex
+            .join("memories/extensions/ad_hoc/notes")
+            .join(format!("twine-{id}.md"));
+        let before = fs::read(&original).unwrap();
+        // A second identical source changes the derived revision and its provenance,
+        // while retaining the same consolidated memory identity.
+        fs::write(
+            f.project.claude.join("duplicate.md"),
+            fs::read(&f.input).unwrap(),
+        )
+        .unwrap();
+        f.library.sync(&f.project).unwrap();
+        assert_eq!(fs::read(&original).unwrap(), before);
+        let files: Vec<_> = fs::read_dir(original.parent().unwrap())
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|p| {
+                p.file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .contains(".revision-")
+            })
+            .collect();
+        assert_eq!(files.len(), 1);
+        let live = &files[0];
+        assert!(
+            f.library
+                .prompt_context(&f.project, "codex")
+                .unwrap()
+                .contains(live.to_str().unwrap())
+        );
+        fs::write(live, "An independent native edit.\n").unwrap();
+        assert!(matches!(
+            f.library.prompt_context(&f.project, "codex"),
+            Err(Error::Conflict)
+        ));
+        assert_eq!(
+            fs::read_to_string(live).unwrap(),
+            "An independent native edit.\n"
+        );
+        fs::remove_file(live).unwrap();
+        assert!(matches!(
+            f.library.prompt_context(&f.project, "codex"),
+            Err(Error::NativeActive)
+        ));
+    }
+
+    #[test]
+    fn live_context_excludes_withdrawn_memories_while_source_replacement_waits() {
+        let mut f = Fixture::new();
+        fs::write(
+            f.project.claude.join("source.md"),
+            fs::read(&f.input).unwrap(),
+        )
+        .unwrap();
+        fs::remove_file(&f.input).unwrap();
+        f.sync();
+        let id = f.library.snapshot(&f.project).unwrap().records[0]
+            .id
+            .clone();
+        let _claude = f.library.session_lease(&f.project, "claude_code").unwrap();
+        let _codex = f.library.session_lease(&f.project, "codex").unwrap();
+        f.library.withdraw(&f.project, &id).unwrap();
+        assert!(matches!(
+            f.library.sync(&f.project),
+            Err(Error::NativeActive)
+        ));
+        for provider in ["claude_code", "codex"] {
+            let context = f.library.prompt_context(&f.project, provider).unwrap();
+            assert!(!context.contains("maple-417"));
+            assert!(context.contains("No active imported project memories"));
+        }
+    }
+
+    #[test]
+    fn retired_live_siblings_cannot_reintroduce_a_withdrawn_claim_after_sessions_end() {
+        let mut f = Fixture::new();
+        f.sync();
+        let lease = f.library.session_lease(&f.project, "codex").unwrap();
+        fs::write(
+            f.project.claude.join("duplicate.md"),
+            fs::read(&f.input).unwrap(),
+        )
+        .unwrap();
+        f.library.sync(&f.project).unwrap();
+        let notes = f.project.codex.join("memories/extensions/ad_hoc/notes");
+        let live: Vec<_> = fs::read_dir(&notes)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| {
+                path.file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .contains(".revision-")
+            })
+            .map(|path| {
+                let bytes = fs::read(&path).unwrap();
+                (path, bytes)
+            })
+            .collect();
+        assert_eq!(live.len(), 1);
+        let id = f.library.snapshot(&f.project).unwrap().records[0]
+            .id
+            .clone();
+        f.library.withdraw(&f.project, &id).unwrap();
+        f.library.sync(&f.project).unwrap();
+        for (path, bytes) in &live {
+            assert_eq!(fs::read(path).unwrap(), *bytes);
+        }
+        for provider in ["claude_code", "codex"] {
+            assert!(
+                !f.library
+                    .prompt_context(&f.project, provider)
+                    .unwrap()
+                    .contains("maple-417")
+            );
+        }
+        drop(lease);
+        // Process discovery can still conservatively defer retirement while another native
+        // process exits. Retry reconciliation as the worker does; every old claim must go.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            let result = f.library.sync(&f.project);
+            assert!(
+                matches!(result, Ok(()) | Err(Error::NativeActive)),
+                "retirement failed: {result:?}"
+            );
+            let stale: Vec<_> = fs::read_dir(&notes)
+                .unwrap()
+                .map(|entry| entry.unwrap().path())
+                .filter(|path| fs::read_to_string(path).unwrap().contains("maple-417"))
+                .collect();
+            if stale.is_empty() {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "stale claims: {stale:?}"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        let count = f.library.load(&f.project).unwrap()["records"]
+            .as_array()
+            .unwrap()
+            .len();
+        f.sync();
+        assert_eq!(
+            f.library.load(&f.project).unwrap()["records"]
+                .as_array()
+                .unwrap()
+                .len(),
+            count
+        );
+        assert!(f.library.snapshot(&f.project).unwrap().records.is_empty());
     }
 }

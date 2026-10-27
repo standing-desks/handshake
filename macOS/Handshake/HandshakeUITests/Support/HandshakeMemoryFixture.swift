@@ -51,6 +51,7 @@ extension HandshakeUITests {
         app.launchEnvironment["HOME"] = home.path
         app.launchEnvironment["CODEX_HOME"] = codex.path
         app.launchEnvironment["CLAUDE_CONFIG_DIR"] = home.appending(path: ".claude").path
+        app.launchEnvironment["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = "0"
         app.launchEnvironment["HANDSHAKE_MEMORY_DIRECTORY"] = store.path
         app.launchEnvironment["SHELL"] = "/bin/bash"
         app.launchEnvironment["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin"

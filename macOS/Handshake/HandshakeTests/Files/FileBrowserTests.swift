@@ -94,21 +94,22 @@ struct FileBrowserTests {
         request.revision = initial.revision
         #expect(try await worker.pollFiles(request) == nil)
         try "changed".write(to: file, atomically: true, encoding: .utf8)
-        let changed = try #require(try await pollSnapshot(worker, request: request))
+        let changed = try #require(try await pollSnapshot(worker, request: request) { $0.file?.text == "changed" })
         #expect(changed.file?.text == "changed")
         try FileManager.default.removeItem(at: file)
         request.revision = changed.revision
-        let deleted = try #require(try await pollSnapshot(worker, request: request))
+        let deleted = try #require(try await pollSnapshot(worker, request: request) { $0.file?.status == .missing })
         #expect(deleted.file?.status == .missing)
         #expect(deleted.directories[0].entries.isEmpty)
         await worker.close()
     }
     private func pollSnapshot(
-        _ worker: CoreWorker, request: FileBrowserRequest
+        _ worker: CoreWorker, request: FileBrowserRequest,
+        matching: (FileBrowserSnapshot) -> Bool = { _ in true }
     ) async throws -> FileBrowserSnapshot? {
         for _ in 0..<200 {
             // Initial Git discovery also advances the file-browser revision.
-            if let snapshot = try await worker.pollFiles(request), snapshot.git?.scanning == false {
+            if let snapshot = try await worker.pollFiles(request), snapshot.git?.scanning == false, matching(snapshot) {
                 return snapshot
             }
             try await Task.sleep(for: .milliseconds(10))

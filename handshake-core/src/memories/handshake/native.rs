@@ -46,6 +46,15 @@ pub(super) fn environment(project: &Project) -> Vec<(String, String)> {
 pub(super) fn prepare(project: &Project, roots: &Roots) -> Result<(), Error> {
     safe_path(&project.claude)?;
     safe_path(&project.codex)?;
+    if project.root.join("library.amis.json").exists()
+        && (!project.claude.is_dir()
+            || !project
+                .codex
+                .join("memories/extensions/ad_hoc/notes")
+                .is_dir())
+    {
+        return Err(Error::Contract("A native memory profile is missing. Restore its directory before reconciling; its memories have not been archived.".into()));
+    }
     fs::create_dir_all(&project.claude)?;
     fs::create_dir_all(project.codex.join("memories/extensions/ad_hoc/notes"))?;
     for name in [
@@ -289,7 +298,115 @@ pub(super) fn safe_path(path: &Path) -> Result<(), Error> {
     }
     Ok(())
 }
-/// Refuse publication while the native process could be writing the project profile.
+/// Only new managed files are safe to publish beside a live native writer.
+pub(super) fn managed_projection(project: &Project, path: &Path, role: &str) -> bool {
+    matches!(role, "topic" | "note" | "index") && path != project.claude.join("MEMORY.md")
+}
+
+/// Codex's Use memories setting is independent of generation eligibility.
+/// The native /memories UI persists it to config; `threads.memory_mode` only controls
+/// generation, so a use-only conversation must still receive saved context.
+pub(super) fn memory_use_enabled(folder: &Path, config: &Path) -> Result<bool, Error> {
+    let layers = std::iter::once(config.to_owned()).chain(
+        folder
+            .ancestors()
+            .map(|parent| parent.join(".codex/config.toml")),
+    );
+    // Preserve explicit opt-outs conservatively, including ancestor project layers.
+    for path in layers {
+        let source = match fs::read_to_string(path) {
+            Ok(source) => source,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error.into()),
+        };
+        let settings: toml::Value =
+            toml::from_str(&source).map_err(|e| Error::Contract(e.to_string()))?;
+        if !codex_scope_use_enabled(&settings) {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+fn codex_scope_use_enabled(settings: &toml::Value) -> bool {
+    for (section, key) in [("features", "memories"), ("memories", "use_memories")] {
+        if settings
+            .get(section)
+            .and_then(|v| v.get(key))
+            .and_then(toml::Value::as_bool)
+            == Some(false)
+        {
+            return false;
+        }
+    }
+    true
+}
+
+/// Unsupported native layouts must be reported during sync, without blocking
+/// status inspection or the user's ability to pause sharing.
+pub(super) fn ensure_codex_memory_layout(folder: &Path, config: &Path) -> Result<(), Error> {
+    for path in std::iter::once(config.to_owned()).chain(
+        folder
+            .ancestors()
+            .map(|parent| parent.join(".codex/config.toml")),
+    ) {
+        let source = match fs::read_to_string(path) {
+            Ok(source) => source,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error.into()),
+        };
+        let settings: toml::Value =
+            toml::from_str(&source).map_err(|e| Error::Contract(e.to_string()))?;
+        let version = settings
+            .get("memories")
+            .and_then(|v| v.get("version"))
+            .and_then(toml::Value::as_str);
+        if version.is_some_and(|version| version != "v1") {
+            return Err(Error::Contract("Cross-agent memory currently supports the Codex v1 memory layout. The selected native memory version is unsupported; automatic sharing is held.".into()));
+        }
+    }
+    Ok(())
+}
+
+/// Honor native user/project/local opt-outs before supplying additional context.
+pub(super) fn claude_memory_use_enabled(
+    folder: &Path,
+    root: &Path,
+    disabled: Option<&std::ffi::OsStr>,
+) -> Result<bool, Error> {
+    if disabled
+        .and_then(std::ffi::OsStr::to_str)
+        .is_some_and(|value| value == "1" || value.eq_ignore_ascii_case("true"))
+    {
+        return Ok(false);
+    }
+    let layers =
+        std::iter::once(root.join("settings.json")).chain(folder.ancestors().flat_map(|parent| {
+            [
+                parent.join(".claude/settings.json"),
+                parent.join(".claude/settings.local.json"),
+            ]
+        }));
+    for path in layers {
+        let bytes = match fs::read(path) {
+            Ok(bytes) => bytes,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error.into()),
+        };
+        let settings: Value = serde_json::from_slice(&bytes)?;
+        let disabled = settings
+            .get("env")
+            .and_then(|env| env.get("CLAUDE_CODE_DISABLE_AUTO_MEMORY"))
+            .and_then(Value::as_str)
+            .is_some_and(|value| value == "1" || value.eq_ignore_ascii_case("true"));
+        if settings.get("autoMemoryEnabled") == Some(&json!(false)) || disabled {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+/// Refuse native-owned file replacement while the process could be writing it.
 /// Process inspection failure holds delivery. Handshake's receiver lock alone is insufficient.
 pub(super) fn quiescent(project: &Project, provider: &str) -> Result<(), Error> {
     let output = std::process::Command::new("/bin/ps")
@@ -319,7 +436,11 @@ pub(super) fn quiescent(project: &Project, provider: &str) -> Result<(), Error> 
             .args(["-a", "-p", pid, "-d", "cwd", "-Fn"])
             .output()?;
         if !cwd.status.success() {
-            return Err(Error::NativeActive);
+            // The global process list is a snapshot: an unrelated agent can exit before lsof.
+            // Only confirmed disappearance permits progress; permission errors and live/reused
+            // PIDs still hold native replacement conservatively.
+            confirm_process_exit(pid)?;
+            continue;
         }
         if String::from_utf8_lossy(&cwd.stdout)
             .lines()
@@ -330,6 +451,22 @@ pub(super) fn quiescent(project: &Project, provider: &str) -> Result<(), Error> 
         }
     }
     Ok(())
+}
+
+fn confirm_process_exit(pid: &str) -> Result<(), Error> {
+    let pid = pid
+        .parse::<libc::pid_t>()
+        .map_err(|_| Error::NativeActive)?;
+    if pid <= 0 {
+        return Err(Error::NativeActive);
+    }
+    // SAFETY: signal zero probes a positive PID without sending a signal or modifying it.
+    let result = unsafe { libc::kill(pid, 0) };
+    if result == -1 && std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH) {
+        Ok(())
+    } else {
+        Err(Error::NativeActive)
+    }
 }
 
 /// Shared lifetime lease for Handshake-launched native processes; an exclusive lease protects apply.
@@ -375,4 +512,28 @@ pub(super) fn configuration(
         ]
         .concat(),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn failed_cwd_probe_only_releases_a_confirmed_exited_process() {
+        let mut child = std::process::Command::new("/usr/bin/true").spawn().unwrap();
+        let pid = child.id().to_string();
+        child.wait().unwrap();
+        confirm_process_exit(&pid).unwrap();
+        for pid in [
+            std::process::id().to_string(),
+            "0".into(),
+            "-1".into(),
+            "unknown".into(),
+        ] {
+            assert!(matches!(
+                confirm_process_exit(&pid),
+                Err(Error::NativeActive)
+            ));
+        }
+    }
 }

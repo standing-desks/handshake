@@ -45,15 +45,7 @@ fn hook_arguments(command: &str) -> Vec<OsString> {
     for (event, key) in EVENTS {
         // Codex fingerprints normalized TOML as JSON with recursively sorted object keys.
         // serde_json's default Map is sorted. Absent optional TOML fields are omitted.
-        let identity = json!({"event_name": key, "hooks": [handler.clone()]});
-        let hex_digest = Sha256::digest(identity.to_string().as_bytes()).iter().fold(
-            String::new(),
-            |mut acc, b| {
-                let _ = write!(acc, "{b:02x}");
-                acc
-            },
-        );
-        let hash = format!("sha256:{hex_digest}");
+        let hash = trusted_hash(key, &handler);
         let state_key = format!("/<session-flags>/config.toml:{key}:0:0");
         hooks.insert(event.into(), json!([group.clone()]));
         states.insert(state_key, json!({"trusted_hash": hash}));
@@ -65,6 +57,52 @@ fn hook_arguments(command: &str) -> Vec<OsString> {
         OsString::from("-c"),
         OsString::from(format!("hooks={}", toml_literal(&Value::Object(hooks)))),
     ]
+}
+
+fn trusted_hash(event: &str, handler: &Value) -> String {
+    let identity = json!({"event_name": event, "hooks": [handler]});
+    let hex_digest = Sha256::digest(identity.to_string().as_bytes()).iter().fold(
+        String::new(),
+        |mut acc, byte| {
+            let _ = write!(acc, "{byte:02x}");
+            acc
+        },
+    );
+    format!("sha256:{hex_digest}")
+}
+
+/// Add a synchronous native memory hook without changing user hooks or observer policy.
+pub(crate) fn append_prompt_context(arguments: &mut [OsString], command: &str) -> io::Result<()> {
+    let index = arguments
+        .windows(2)
+        .position(|pair| pair[0] == "-c" && pair[1].to_string_lossy().starts_with("hooks="))
+        .ok_or_else(|| io::Error::other("Missing native Codex hook configuration"))?;
+    let source: toml::Value =
+        toml::from_str(&arguments[index + 1].to_string_lossy()).map_err(io::Error::other)?;
+    let mut config = serde_json::to_value(source).map_err(io::Error::other)?;
+    let hooks = config["hooks"]
+        .as_object_mut()
+        .ok_or_else(|| io::Error::other("Invalid native Codex hooks"))?;
+    let handler = json!({"type":"command","command":command,"async":false,"timeout":5});
+    let groups = hooks
+        .get_mut("UserPromptSubmit")
+        .and_then(Value::as_array_mut)
+        .ok_or_else(|| io::Error::other("Missing native prompt hooks"))?;
+    let group = groups.len();
+    groups.push(json!({"hooks":[handler.clone()]}));
+    let state = hooks
+        .get_mut("state")
+        .and_then(Value::as_object_mut)
+        .ok_or_else(|| io::Error::other("Missing native hook trust state"))?;
+    state.insert(
+        format!("/<session-flags>/config.toml:user_prompt_submit:{group}:0"),
+        json!({"trusted_hash":trusted_hash("user_prompt_submit", &handler)}),
+    );
+    arguments[index + 1] = OsString::from(format!(
+        "hooks={}",
+        toml_literal(&Value::Object(hooks.clone()))
+    ));
+    Ok(())
 }
 
 fn toml_literal(value: &Value) -> String {
@@ -302,6 +340,30 @@ fn tool_action(tool: &str, input: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn live_memory_hook_is_synchronous_and_preserves_observer_trust() {
+        let mut arguments = hook_arguments("observe-only");
+        append_prompt_context(&mut arguments, "load-native-memory").unwrap();
+        let config: toml::Value = toml::from_str(arguments[1].to_str().unwrap()).unwrap();
+        assert_eq!(
+            config["hooks"]["UserPromptSubmit"][0]["hooks"][0]["async"].as_bool(),
+            Some(true)
+        );
+        let handler = &config["hooks"]["UserPromptSubmit"][1]["hooks"][0];
+        assert_eq!(handler["command"].as_str(), Some("load-native-memory"));
+        assert_eq!(handler["async"].as_bool(), Some(false));
+        assert_eq!(handler["timeout"].as_integer(), Some(5));
+        assert_eq!(
+            config["hooks"]["state"].as_table().unwrap().len(),
+            EVENTS.len() + 1
+        );
+        assert!(
+            config["hooks"]["state"]
+                .get("/<session-flags>/config.toml:user_prompt_submit:1:0")
+                .is_some()
+        );
+    }
 
     #[test]
     fn captures_session_identity_before_any_prompt() {

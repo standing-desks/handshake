@@ -10,6 +10,7 @@ struct MemorySharingSettings: View {
     let refreshSources: () -> Void
     @State private var showsMemories = false
     @State private var showsStorage = false
+    @State private var showsArchive = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -30,6 +31,7 @@ struct MemorySharingSettings: View {
                         }.font(.caption).foregroundStyle(.secondary)
                         Text(snapshot.sharingStatus).font(.caption).foregroundStyle(.secondary)
                             .accessibilityIdentifier("handshakeMemoryStatus")
+                            .help("Live refresh applies to agents started with this feature enabled.")
                         if snapshot.status == "held" {
                             Text(snapshot.message).font(.caption).foregroundStyle(.secondary)
                                 .textSelection(.enabled)
@@ -41,6 +43,12 @@ struct MemorySharingSettings: View {
                         if showsMemories {
                             memories(snapshot.records)
                         }
+                        if let archived = snapshot.archivedRecords, !archived.isEmpty {
+                            disclosure(
+                                "Archived memories (\(archived.count))", expanded: $showsArchive,
+                                id: "handshakeMemoryArchive")
+                            if showsArchive { archive(archived, enabled: snapshot.enabled) }
+                        }
                         disclosure(
                             "Storage and native profiles", expanded: $showsStorage, id: "handshakeMemoryDetails")
                         if showsStorage {
@@ -51,8 +59,9 @@ struct MemorySharingSettings: View {
                                 }
                                 Text(
                                     """
-                                    Agents load native memories on their own schedule and quota.
-                                    Start a fresh conversation to use updates.
+                                    Shared memories refresh at each prompt in agents started with this feature enabled.
+                                    Older sessions keep their original memory profile.
+                                    Native startup memory generation follows each agent’s schedule and quota.
                                     Local consolidation makes no model calls.
                                     """
                                 ).font(.caption).foregroundStyle(.secondary)
@@ -85,7 +94,9 @@ struct MemorySharingSettings: View {
     }
 
     private var viewportHeight: CGFloat {
-        let preferred: CGFloat = showsStorage ? 320 : showsMemories ? 220 : 130
+        let preferred: CGFloat =
+            showsStorage || (showsArchive && model.snapshot?.archivedRecords?.isEmpty == false)
+            ? 320 : showsMemories ? 220 : (model.snapshot?.archivedRecords?.isEmpty == false ? 166 : 130)
         return min(preferred, max(0, maximumSize.height - 110))
     }
 
@@ -118,8 +129,43 @@ struct MemorySharingSettings: View {
                         Text(record.sharingPreview).font(.caption).foregroundStyle(.secondary).lineLimit(3)
                     }
                 }
+                .contextMenu {
+                    Button("Archive for this project") { perform(.withdraw(record.id)) }
+                        .disabled(model.isUpdating)
+                }
             }
         }.frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8)
+    }
+
+    private func archive(_ records: [HandshakeMemorySummary], enabled: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Kept here for retrieval. No longer shared with your agents.")
+                .font(.caption).foregroundStyle(.secondary)
+            ForEach(records) { record in
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(record.title).font(.caption.bold())
+                    HStack {
+                        Button("View") { perform(.readArchive(record.id)) }
+                            .accessibilityIdentifier("viewArchivedMemory-\(record.id)")
+                        Button("Restore") { perform(.restore(record.id)) }
+                            .disabled(!enabled)
+                            .help(
+                                enabled
+                                    ? "Share this memory with your project agents again" : "Enable sharing to restore"
+                            )
+                            .accessibilityIdentifier("restoreArchivedMemory-\(record.id)")
+                    }.controlSize(.small).disabled(model.isUpdating)
+                    if let detail = model.archiveDetail, detail.id == record.id {
+                        Text(detail.text).font(.caption).textSelection(.enabled)
+                            .accessibilityIdentifier("archivedMemoryText")
+                    }
+                }
+            }
+        }.padding(.top, 8)
+    }
+
+    private func perform(_ action: HandshakeMemoryAction) {
+        Task { await model.perform(client: client, folder: folder, action: action) }
     }
 
     private func path(_ name: String, _ value: String, id: String) -> some View {

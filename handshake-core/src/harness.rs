@@ -25,6 +25,7 @@ pub(crate) mod launch;
 pub(crate) mod models;
 pub(crate) mod opencode;
 pub(crate) mod pi;
+mod prompt_context;
 pub(crate) mod resume;
 pub(crate) mod steps;
 

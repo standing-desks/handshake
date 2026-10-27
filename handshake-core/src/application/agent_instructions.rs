@@ -6,6 +6,56 @@ use std::path::Path;
 
 type MemoryEnvironment = (Vec<(String, String)>, Option<std::fs::File>);
 impl super::Application {
+    /// Bind a native turn hook to the launcher's project, not caller-supplied paths.
+    pub(super) fn append_memory_context(
+        &self,
+        harness: HarnessId,
+        folder: &Path,
+        memory_environment: &[(String, String)],
+        arguments: &mut [OsString],
+        hooks: Option<&StepInbox>,
+    ) -> io::Result<()> {
+        let Some(worker) = &self.memory_worker else {
+            return Ok(());
+        };
+        if !worker.is_enabled() || !matches!(harness, HarnessId::Codex | HarnessId::ClaudeCode) {
+            return Ok(());
+        }
+        // Legacy resumes can retain a different native home. Without the bound
+        // profile we cannot verify that conversation's native memory opt-out.
+        let profile_key = if harness == HarnessId::Codex {
+            "CODEX_HOME"
+        } else {
+            "HANDSHAKE_CLAUDE_MEMORY_DIRECTORY"
+        };
+        if !memory_environment.iter().any(|(key, _)| key == profile_key) {
+            return Ok(());
+        }
+        let hooks =
+            hooks.ok_or_else(|| io::Error::other("Native memory prompt hooks are unavailable"))?;
+        let provider = if harness == HarnessId::Codex {
+            "codex"
+        } else {
+            "claude_code"
+        };
+        let native_config = memory_environment
+            .iter()
+            .find(|(key, _)| key == "CODEX_HOME")
+            .map(|(_, home)| std::path::PathBuf::from(home).join("config.toml"));
+        let reader = worker.prompt_context(folder.to_owned(), provider, native_config);
+        hooks.set_prompt_context(std::sync::Arc::new(move |cancelled, session| {
+            reader(cancelled, session).map_err(io::Error::other)
+        }))?;
+        let command = hooks.prompt_context_command();
+        match harness {
+            HarnessId::Codex => crate::harness::codex::append_prompt_context(arguments, &command),
+            HarnessId::ClaudeCode => {
+                crate::harness::claude::append_prompt_context(arguments, &command)
+            }
+            _ => Ok(()),
+        }
+    }
+
     pub(super) fn memory_environment(
         &self,
         harness: HarnessId,
