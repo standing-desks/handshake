@@ -44,6 +44,7 @@ struct FolderCommands: Commands {
     @FocusedBinding(\.isChoosingFolder) private var isChoosingFolder
     @FocusedBinding(\.newWorkflowType) private var newWorkflowType
     @FocusedValue(\.workflowActions) private var workflowActions
+    @FocusedValue(\.tabActions) private var tabActions
     @FocusedValue(\.openFilePath) private var openFilePath
     @FocusedValue(\.saveAction) private var saveAction
 
@@ -126,6 +127,8 @@ struct FolderCommands: Commands {
             Button(closeTitle) {
                 if showsSettings {
                     settings?.close()
+                } else if openFilePath != nil, let close = tabActions?.closeTab {
+                    close()
                 } else if openFilePath != nil {
                     if let tabs = session?.tabs, let selected = tabs.selected { tabs.close(selected.id) }
                 } else if let close = workflowActions?.close {
@@ -142,6 +145,7 @@ struct FolderCommands: Commands {
     private var closeTitle: String {
         if settings?.isPresented == true && settings?.presentedWindowID == session?.id { return "Close Settings" }
         if openFilePath != nil { return "Close File" }
+        if let tabActions, workflowActions?.close != nil { return tabActions.closeTitle }
         return workflowActions?.close == nil ? "Close Window" : "Close Workflow"
     }
 }

@@ -65,6 +65,8 @@ pub(super) struct WireWorkflow<'a> {
     workflow_id: u64,
     session_id: u64,
     name: &'a str,
+    custom_name: Option<&'a str>,
+    archived: bool,
     kind: &'static str,
     harness: Option<&'static str>,
     terminal_id: u64,
@@ -105,6 +107,8 @@ impl<'a> From<&'a Workflow> for WireWorkflow<'a> {
             workflow_id: workflow.workflow_id.0,
             session_id: workflow.session_id.0,
             name: &workflow.name,
+            custom_name: workflow.custom_name.as_deref(),
+            archived: workflow.archived,
             kind: match workflow.kind {
                 WorkflowKind::Draft => "draft",
                 WorkflowKind::Terminal => "terminal",
@@ -277,6 +281,7 @@ pub(super) fn decode_command(command_type: &str, raw: &Value) -> Result<Command,
                 workflow_id: WorkflowId(command.workflow_id),
             })
         }
+        "renameWorkflow" | "reopenWorkflow" => decode_tab_command(command_type, raw),
         "nameDraftWorkflow" => {
             let command: RawDraftName =
                 serde_json::from_value(raw.clone()).map_err(|_| BridgeError::MalformedCommand)?;
@@ -310,6 +315,23 @@ pub(super) fn decode_command(command_type: &str, raw: &Value) -> Result<Command,
         }
         _ => Err(BridgeError::MalformedCommand),
     }
+}
+
+fn decode_tab_command(command_type: &str, raw: &Value) -> Result<Command, BridgeError> {
+    let workflow_id = WorkflowId(
+        raw.get("workflowId")
+            .and_then(Value::as_u64)
+            .ok_or(BridgeError::MalformedCommand)?,
+    );
+    if command_type == "reopenWorkflow" {
+        return Ok(Command::ReopenWorkflow { workflow_id });
+    }
+    let name = match raw.get("name") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(name)) => Some(name.clone()),
+        _ => return Err(BridgeError::MalformedCommand),
+    };
+    Ok(Command::RenameWorkflow { workflow_id, name })
 }
 
 fn decode_start_agent(raw: &Value) -> Result<Command, BridgeError> {
@@ -358,6 +380,8 @@ mod tests {
             status,
             started_at: 1,
             ended_at: None,
+            custom_name: None,
+            archived: false,
             restored: false,
             terminal_history: Vec::new(),
             run: None,
@@ -405,6 +429,29 @@ mod tests {
 
     fn create_workflow(command: &Value) -> Result<Command, BridgeError> {
         decode_command("createWorkflow", command)
+    }
+
+    #[test]
+    fn tab_commands_decode_custom_names_resets_and_reopen_ids() {
+        assert!(
+            matches!(decode_command("renameWorkflow", &json!({"workflowId": 7, "name": "API fix"})).unwrap(),
+            Command::RenameWorkflow { workflow_id: WorkflowId(7), name: Some(name) } if name == "API fix")
+        );
+        assert!(matches!(
+            decode_command("renameWorkflow", &json!({"workflowId": 7})).unwrap(),
+            Command::RenameWorkflow {
+                workflow_id: WorkflowId(7),
+                name: None
+            }
+        ));
+        assert!(matches!(
+            decode_command("reopenWorkflow", &json!({"workflowId": 7})).unwrap(),
+            Command::ReopenWorkflow {
+                workflow_id: WorkflowId(7)
+            }
+        ));
+        assert!(decode_command("renameWorkflow", &json!({"workflowId": 7, "name": 4})).is_err());
+        assert!(decode_command("reopenWorkflow", &json!({})).is_err());
     }
 
     #[test]
@@ -464,6 +511,8 @@ mod tests {
             status: WorkflowStatus::Running,
             started_at: 10,
             ended_at: None,
+            custom_name: None,
+            archived: false,
             restored: true,
             terminal_history: Vec::new(),
             run: None,
@@ -472,6 +521,8 @@ mod tests {
             serde_json::to_value(WireWorkflow::from(&workflow)).unwrap(),
             json!({
                 "restored": true,
+                "customName": null,
+                "archived": false,
                 "terminalHistory": [],
                 "run": null,
                 "workflowId": 3,

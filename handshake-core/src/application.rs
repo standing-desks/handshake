@@ -29,6 +29,7 @@ mod resume_agents;
 mod run_inputs;
 mod runs;
 mod sessions;
+mod tabs;
 mod terminals;
 mod traces;
 mod windows;
@@ -116,6 +117,13 @@ pub enum Command {
     NameDraftWorkflow {
         workflow_id: WorkflowId,
         name: String,
+    },
+    RenameWorkflow {
+        workflow_id: WorkflowId,
+        name: Option<String>,
+    },
+    ReopenWorkflow {
+        workflow_id: WorkflowId,
     },
     CloseWorkflow {
         workflow_id: WorkflowId,
@@ -459,6 +467,12 @@ impl Application {
             .commands
             .lock()
             .map_err(|_| ApplicationError::Poisoned)?;
+        if let Some(disposition) = self.archived_command_rejection(&command)? {
+            return Ok(CommandReceipt {
+                request_id,
+                disposition,
+            });
+        }
         self.lock_inner()?.retry_trace_endings();
         self.poll_harness_steps()?;
         self.poll_shell_observations()?;
@@ -530,6 +544,12 @@ impl Application {
             }
             Command::NameDraftWorkflow { workflow_id, name } => {
                 self.name_draft_workflow(workflow_id, &name)?
+            }
+            Command::RenameWorkflow { workflow_id, name } => {
+                self.rename_workflow(workflow_id, name.as_deref())?
+            }
+            Command::ReopenWorkflow { workflow_id } => {
+                self.reopen_workflow(request_id, workflow_id)?
             }
             Command::CloseWorkflow { workflow_id } => {
                 self.close_workflow(request_id, workflow_id)?

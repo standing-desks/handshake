@@ -33,7 +33,10 @@ final class AppTerminationDelegate: NSObject, NSApplicationDelegate {
         let clients = sessions.map(\.coreClient) + (coreClient.map { [$0] } ?? [])
         let fileTabs = sessions.map(\.tabs) + (tabs.map { [$0] } ?? [])
         guard settings?.confirmDiscard() != false else { return .terminateCancel }
-        guard fileTabs.allSatisfy({ $0.closeAll() }) else { return .terminateCancel }
+        guard fileTabs.allSatisfy({ tabs in tabs.editors.allSatisfy { $0.confirmDiscard() } }) else {
+            return .terminateCancel
+        }
+        for tabs in fileTabs { tabs.discardAll(preservingPresentation: true) }
         isTerminating = true
         windows?.isTerminating = true
         Task {

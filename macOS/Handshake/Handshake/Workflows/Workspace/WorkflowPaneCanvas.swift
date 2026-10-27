@@ -39,8 +39,12 @@ struct WorkflowPaneCanvas: View {
                     VStack(spacing: 0) {
                         if tiled {
                             HStack {
-                                Label(workflow.name, systemImage: workflow.kind == .singleAgent ? "person" : "terminal")
-                                    .lineLimit(1)
+                                Label(
+                                    coreClient.snapshot?.config.featureFlags.tabManagement == true
+                                        ? workflow.customName ?? workflow.name : workflow.name,
+                                    systemImage: workflow.kind == .singleAgent ? "person" : "terminal"
+                                )
+                                .lineLimit(1)
                                 Spacer()
                                 Button {
                                     closePane(workflow.id)
@@ -59,7 +63,22 @@ struct WorkflowPaneCanvas: View {
                         }
                         WorkflowTerminalSurface(
                             folder: folder, workflow: workflow, isSelected: focused, isVisible: shown, isTiled: tiled,
-                            didFocus: { selection.selectedID = workflow.id }, reportFailure: reportFailure)
+                            didFocus: {
+                                guard isVisible, selection.selectedID.map(root) == root(workflow.id) else { return }
+                                selection.selectedID = workflow.id
+                            }, reportFailure: reportFailure,
+                            startNewTerminal: {
+                                Task {
+                                    do {
+                                        let id = try await coreClient.createWorkflow(
+                                            folder: folder, sessionID: workflow.sessionID, kind: .terminal)
+                                        guard coreClient.snapshot?.folders.openFolder == folder,
+                                            coreClient.snapshot?.workflows.session?.id == workflow.sessionID
+                                        else { return }
+                                        selection.selectedID = id
+                                    } catch { reportFailure(error.localizedDescription) }
+                                }
+                            })
                     }
                     .frame(width: frame.width, height: frame.height)
                     .bentoPane(isTiled: tiled, isFocused: focused)

@@ -25,6 +25,8 @@ nonisolated enum CoreCommand: Sendable {
         size: CoreTerminalSize)
     case activateWorkflow(workflowID: UInt64)
     case nameDraftWorkflow(workflowID: UInt64, name: String)
+    case renameWorkflow(workflowID: UInt64, name: String?)
+    case reopenWorkflow(workflowID: UInt64)
     case closeWorkflow(workflowID: UInt64)
     /// The agent starts without a prompt and waits for the user in its terminal.
     case startAgent(workflowID: UInt64, choice: HarnessChoice, size: CoreTerminalSize)
@@ -173,6 +175,7 @@ nonisolated enum CoreCommandResult: Equatable, Sendable {
     case sessionDeleted(sessionID: UInt64)
     case workflowCreated(workflowID: UInt64)
     case workflowActivated(workflowID: UInt64)
+    case workflowReopened(workflowID: UInt64)
     case workflowClosed(workflowID: UInt64)
     case agentStarted(workflowID: UInt64)
     case agentCancelled(workflowID: UInt64)
@@ -289,6 +292,7 @@ nonisolated private struct CommandResultPayload: Decodable {
         case pong, workflowTypeValidated, workflowTypeSaved, workflowTypeDeleted
         case workflowCreated
         case workflowActivated
+        case workflowReopened
         case workflowClosed
         case agentStarted
         case agentCancelled
@@ -300,6 +304,7 @@ nonisolated private struct CommandResultPayload: Decodable {
         switch type {
         case .workflowCreated: .workflowCreated(workflowID: workflowID)
         case .workflowActivated: .workflowActivated(workflowID: workflowID)
+        case .workflowReopened: .workflowReopened(workflowID: workflowID)
         case .workflowClosed: .workflowClosed(workflowID: workflowID)
         case .agentStarted: .agentStarted(workflowID: workflowID)
         case .agentCancelled: .agentCancelled(workflowID: workflowID)
@@ -339,7 +344,7 @@ nonisolated private struct CommandResultPayload: Decodable {
             result = .sessionSelected(sessionID: try container.decode(UInt64.self, forKey: .sessionID))
         case .sessionDeleted:
             result = .sessionDeleted(sessionID: try container.decode(UInt64.self, forKey: .sessionID))
-        case .workflowCreated, .workflowActivated, .workflowClosed, .agentStarted, .agentCancelled:
+        case .workflowCreated, .workflowActivated, .workflowReopened, .workflowClosed, .agentStarted, .agentCancelled:
             result = try Self.workflowResult(type, workflowID: try container.decode(UInt64.self, forKey: .workflowID))
         case .workflowTypeValidated, .workflowTypeSaved, .workflowTypeDeleted:
             result = try Self.workflowTypeResult(type, values: container)

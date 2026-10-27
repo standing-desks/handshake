@@ -77,6 +77,29 @@ struct MetalTerminalViewTests {
         try await waitUntil { !terminal.isHidden }
     }
 
+    @Test @MainActor func deferredFocusIgnoresBlurredAndHiddenViewsButKeepsVisiblePaneClicks() async throws {
+        let blurred = MetalTerminalView(frame: .zero)
+        let hidden = MetalTerminalView(frame: .zero)
+        let pane = MetalTerminalView(frame: .zero)
+        for view in [blurred, hidden, pane] { view.automaticallyFocuses = false }
+        var blurredNotifications = 0
+        var hiddenNotifications = 0
+        var paneNotifications = 0
+        blurred.didFocus = { blurredNotifications += 1 }
+        hidden.didFocus = { hiddenNotifications += 1 }
+        pane.didFocus = { paneNotifications += 1 }
+        blurred.hasFocus = true
+        blurred.hasFocus = false
+        hidden.hasFocus = true
+        hidden.setVisible(false)
+        pane.isSelected = false
+        pane.setVisible(true)
+        pane.hasFocus = true
+        try await waitUntil { paneNotifications == 1 }
+        #expect(blurredNotifications == 0)
+        #expect(hiddenNotifications == 0)
+    }
+
     @Test @MainActor func terminalEnablesMetalWhenAvailable() throws {
         guard MTLCreateSystemDefaultDevice() != nil else { return }
 

@@ -173,6 +173,8 @@ impl Application {
             status: WorkflowStatus::Running,
             started_at: timestamp(),
             ended_at: None,
+            custom_name: None,
+            archived: false,
             restored: false,
             terminal_history: Vec::new(),
             run: None,
@@ -291,6 +293,10 @@ impl Application {
                 .append(EventKind::State(StateEvent::WorkflowChanged(workflow)))?;
             terminal_ids
         };
+        self.run_processes
+            .lock()
+            .map_err(|_| ApplicationError::Poisoned)?
+            .remove(&workflow_id);
         self.terminals.close_all(&terminal_ids)?;
         self.lock_inner()?
             .events
@@ -328,6 +334,9 @@ impl Application {
         let reserved: Vec<_> = stored
             .iter()
             .map(|workflow| {
+                if workflow.archived {
+                    return Vec::new();
+                }
                 let shells = match workflow.kind {
                     WorkflowKind::Draft | WorkflowKind::Terminal => 1,
                     // Harnesses restore their archive first, then attempt exact-session resume below.
@@ -354,6 +363,13 @@ impl Application {
         let mut failed_terminals = Vec::new();
         for (stored, reserved) in stored.into_iter().zip(reserved) {
             let terminal_history = inner.folders.store().terminal_history(stored.workflow_id)?;
+            if stored.archived {
+                inner
+                    .workflows
+                    .workflows
+                    .push(super::tabs::archived_workflow(stored, terminal_history));
+                continue;
+            }
             let mut reserved = reserved.into_iter();
             let mut restart = || match reserved
                 .next()
@@ -422,6 +438,8 @@ impl Application {
                 status: WorkflowStatus::Running,
                 started_at: timestamp(),
                 ended_at: None,
+                custom_name: stored.custom_name,
+                archived: false,
                 restored: true,
                 terminal_history,
                 run: stored.run,

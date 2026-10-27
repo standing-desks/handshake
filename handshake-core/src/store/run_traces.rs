@@ -395,6 +395,8 @@ mod tests {
             status: WorkflowStatus::Running,
             started_at: 1,
             ended_at: None,
+            custom_name: None,
+            archived: false,
             restored: false,
             terminal_history: Vec::new(),
             run: Some(Box::new(run)),

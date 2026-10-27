@@ -54,6 +54,9 @@ nonisolated struct CoreWorkflow: Decodable, Equatable, Identifiable, Sendable {
     let workflowID: UInt64
     let sessionID: UInt64
     let name: String
+    var customName: String?
+    var archived: Bool?
+    var isArchived: Bool { archived == true }
     let kind: Kind
     var harness: CoreHarness?
     /// The workflow's own shell. Zero when it couldn't restart, and for agents workflows, whose agents
@@ -78,6 +81,7 @@ nonisolated struct CoreWorkflow: Decodable, Equatable, Identifiable, Sendable {
 
     /// The workflow's live shells: its agents' in an agents workflow, and otherwise its own.
     var terminalIDs: [UInt64] {
+        guard !isArchived else { return [] }
         return (kind == .agents ? agents.map(\.terminalID) : [terminalID]).filter { id in
             id != 0
                 && (!restored || !(kind == .singleAgent || run != nil)
@@ -106,7 +110,8 @@ nonisolated struct CoreWorkflow: Decodable, Equatable, Identifiable, Sendable {
         case workflowID = "workflowId"
         case sessionID = "sessionId"
         case terminalID = "terminalId"
-        case name, kind, harness, agents, status, startedAt, endedAt, restored, run, terminalHistory
+        case name, customName, archived, kind, harness, agents, status, startedAt, endedAt, restored, run,
+            terminalHistory
     }
 }
 

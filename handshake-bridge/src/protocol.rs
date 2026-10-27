@@ -275,6 +275,9 @@ enum WireCommandResult {
     WorkflowActivated {
         workflow_id: u64,
     },
+    WorkflowReopened {
+        workflow_id: u64,
+    },
     WorkflowClosed {
         workflow_id: u64,
     },
@@ -321,6 +324,9 @@ impl From<&CommandResult> for WireCommandResult {
                 workflow_id: workflow_id.0,
             },
             CommandResult::WorkflowActivated { workflow_id } => Self::WorkflowActivated {
+                workflow_id: workflow_id.0,
+            },
+            CommandResult::WorkflowReopened { workflow_id } => Self::WorkflowReopened {
                 workflow_id: workflow_id.0,
             },
             CommandResult::WorkflowClosed { workflow_id } => Self::WorkflowClosed {
@@ -393,8 +399,8 @@ pub(crate) fn decode_command(bytes: &[u8]) -> Result<CommandEnvelope, BridgeErro
             })
         }
         "createSession" | "renameSession" | "selectSession" | "deleteSession"
-        | "createWorkflow" | "activateWorkflow" | "nameDraftWorkflow" | "closeWorkflow"
-        | "startAgent" | "resumeAgent" | "cancelAgent" => {
+        | "createWorkflow" | "activateWorkflow" | "nameDraftWorkflow" | "renameWorkflow"
+        | "reopenWorkflow" | "closeWorkflow" | "startAgent" | "resumeAgent" | "cancelAgent" => {
             known(workflows::decode_command(command_type, &raw.command)?)
         }
         "startTerminal" => {
@@ -685,7 +691,7 @@ mod tests {
                     "appearance": { "color_scheme": "dark" },
                     "theme": { "light": "handshake_light", "dark": "handshake_dark" },
                     "terminal": { "font_family": "Menlo", "font_size": 15.5, "cursor_style": "block", "cursor_blink": true, "colors": {}, "palettes": handshake_core::config::TerminalPalettes::default() },
-                    "feature_flags": {"cross_agent_memory_consolidation": false},
+                    "feature_flags": {"cross_agent_memory_consolidation": false, "tab_management": false},
                     "traces": {"detail_budget_mb":512,"retention_days":90},
                     "editor": { "autosave": false, "autosave_delay_ms": 2000 }
                 },

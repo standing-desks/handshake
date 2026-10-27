@@ -13,6 +13,8 @@ pub(crate) struct StoredWorkflow {
     pub workflow_id: WorkflowId,
     pub session_id: SessionId,
     pub name: String,
+    pub custom_name: Option<String>,
+    pub archived: bool,
     pub kind: WorkflowKind,
     pub harness: Option<HarnessId>,
     /// How a single agent last ended, or that it was still running.
@@ -164,72 +166,94 @@ impl Store {
     }
 
     pub(crate) fn workflows(&self, folder: &Path) -> Result<Vec<StoredWorkflow>, StoreError> {
+        self.load_workflows(folder, None)
+    }
+
+    pub(crate) fn load_workflows(
+        &self,
+        folder: &Path,
+        closed: Option<WorkflowId>,
+    ) -> Result<Vec<StoredWorkflow>, StoreError> {
         let folder = folder.to_string_lossy();
         let mut agents = HashMap::<WorkflowId, Vec<StoredAgent>>::new();
         let mut statement = self.connection.prepare(
             "SELECT a.id, a.workflow_id, a.role FROM agents a
              JOIN workflows w ON w.id = a.workflow_id JOIN sessions s ON s.id = w.session_id
-             WHERE s.folder = ?1 AND w.closed_at IS NULL ORDER BY a.id",
+             WHERE s.folder = ?1 AND ((?2 IS NULL AND w.closed_at IS NULL) OR (w.id = ?2 AND w.closed_at IS NOT NULL)) ORDER BY a.id",
         )?;
-        for agent in statement.query_map([folder.as_ref()], |row| {
-            Ok((
-                WorkflowId(unsigned_column(row, 1)?),
-                StoredAgent {
-                    agent_id: AgentId(unsigned_column(row, 0)?),
-                    role: row.get(2)?,
-                },
-            ))
-        })? {
+        for agent in statement.query_map(
+            params![
+                folder.as_ref(),
+                closed.map(|id| sql_integer(id.0)).transpose()?
+            ],
+            |row| {
+                Ok((
+                    WorkflowId(unsigned_column(row, 1)?),
+                    StoredAgent {
+                        agent_id: AgentId(unsigned_column(row, 0)?),
+                        role: row.get(2)?,
+                    },
+                ))
+            },
+        )? {
             let (workflow_id, agent) = agent?;
             agents.entry(workflow_id).or_default().push(agent);
         }
         let mut statement = self.connection.prepare(
-            "SELECT w.id, w.session_id, w.name, w.kind, w.harness_id, w.lifecycle_status, r.state FROM workflows w
+            "SELECT w.id, w.session_id, w.name, w.kind, w.harness_id, w.lifecycle_status, r.state, w.custom_name, w.archived FROM workflows w
              LEFT JOIN workflow_runs r ON r.workflow_id = w.id
-             JOIN sessions s ON s.id = w.session_id WHERE s.folder = ?1 AND w.closed_at IS NULL ORDER BY w.id",
+             JOIN sessions s ON s.id = w.session_id WHERE s.folder = ?1 AND ((?2 IS NULL AND w.closed_at IS NULL) OR (w.id = ?2 AND w.closed_at IS NOT NULL)) ORDER BY w.id",
         )?;
         Ok(statement
-            .query_map([folder.as_ref()], |row| {
-                let workflow_id = WorkflowId(unsigned_column(row, 0)?);
-                let kind: String = row.get(3)?;
-                let harness: Option<String> = row.get(4)?;
-                let agent_status: Option<String> = row.get(5)?;
-                Ok(StoredWorkflow {
-                    workflow_id,
-                    session_id: SessionId(unsigned_column(row, 1)?),
-                    name: row.get(2)?,
-                    kind: match kind.as_str() {
-                        "draft" => WorkflowKind::Draft,
-                        "terminal" => WorkflowKind::Terminal,
-                        "single_agent" => WorkflowKind::SingleAgent,
-                        "agents" => WorkflowKind::Agents,
-                        _ => {
-                            return Err(rusqlite::Error::FromSqlConversionFailure(
-                                3,
-                                rusqlite::types::Type::Text,
-                                format!("unknown workflow kind {kind:?}").into(),
-                            ));
-                        }
-                    },
-                    harness: harness.as_deref().and_then(harness_from_name),
-                    agent_status: agent_status.as_deref().and_then(status_from_name),
-                    agents: agents.remove(&workflow_id).unwrap_or_default(),
-                    run: row
-                        .get::<_, Option<String>>(6)?
-                        .map(|value| {
-                            crate::WorkflowRun::from_stored_json(&value)
-                                .map(Box::new)
-                                .map_err(|error| {
-                                    rusqlite::Error::FromSqlConversionFailure(
-                                        6,
-                                        rusqlite::types::Type::Text,
-                                        Box::new(error),
-                                    )
-                                })
-                        })
-                        .transpose()?,
-                })
-            })?
+            .query_map(
+                params![
+                    folder.as_ref(),
+                    closed.map(|id| sql_integer(id.0)).transpose()?
+                ],
+                |row| {
+                    let workflow_id = WorkflowId(unsigned_column(row, 0)?);
+                    let kind: String = row.get(3)?;
+                    let harness: Option<String> = row.get(4)?;
+                    let agent_status: Option<String> = row.get(5)?;
+                    Ok(StoredWorkflow {
+                        workflow_id,
+                        session_id: SessionId(unsigned_column(row, 1)?),
+                        name: row.get(2)?,
+                        custom_name: row.get(7)?,
+                        archived: row.get(8)?,
+                        kind: match kind.as_str() {
+                            "draft" => WorkflowKind::Draft,
+                            "terminal" => WorkflowKind::Terminal,
+                            "single_agent" => WorkflowKind::SingleAgent,
+                            "agents" => WorkflowKind::Agents,
+                            _ => {
+                                return Err(rusqlite::Error::FromSqlConversionFailure(
+                                    3,
+                                    rusqlite::types::Type::Text,
+                                    format!("unknown workflow kind {kind:?}").into(),
+                                ));
+                            }
+                        },
+                        harness: harness.as_deref().and_then(harness_from_name),
+                        agent_status: agent_status.as_deref().and_then(status_from_name),
+                        agents: agents.remove(&workflow_id).unwrap_or_default(),
+                        run: row
+                            .get::<_, Option<String>>(6)?
+                            .map(|value| {
+                                crate::WorkflowRun::from_stored_json(&value)
+                                    .map(Box::new)
+                                    .map_err(|error| {
+                                        rusqlite::Error::FromSqlConversionFailure(
+                                            6,
+                                            rusqlite::types::Type::Text,
+                                            Box::new(error),
+                                        )
+                                    })
+                            })
+                            .transpose()?,
+                    })
+                },
+            )?
             .collect::<Result<_, _>>()?)
     }
 
@@ -293,6 +317,26 @@ impl Store {
         self.connection.execute(
             "UPDATE workflows SET lifecycle_status = ?2 WHERE id = ?1",
             params![sql_integer(id.0)?, status_name(status)],
+        )?;
+        Ok(())
+    }
+
+    pub(crate) fn rename_workflow(
+        &self,
+        id: WorkflowId,
+        name: Option<&str>,
+    ) -> Result<(), StoreError> {
+        self.connection.execute(
+            "UPDATE workflows SET custom_name = ?2 WHERE id = ?1",
+            params![sql_integer(id.0)?, name],
+        )?;
+        Ok(())
+    }
+
+    pub(crate) fn reopen_workflow(&self, id: WorkflowId) -> Result<(), StoreError> {
+        self.connection.execute(
+            "UPDATE workflows SET closed_at = NULL, archived = 1 WHERE id = ?1",
+            [sql_integer(id.0)?],
         )?;
         Ok(())
     }

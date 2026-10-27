@@ -82,6 +82,9 @@ impl Application {
     pub(super) fn resume_restored_agents(&self, folder: &Path) -> Result<(), ApplicationError> {
         let workflows = self.lock_inner()?.workflows.workflows.clone();
         for workflow in workflows {
+            if workflow.archived {
+                continue;
+            }
             if workflow.run.is_some() {
                 if let Err(error) = self.resume_workflow_run(&workflow, folder) {
                     tracing::warn!(%error, "couldn't resume workflow agent sessions");
@@ -183,6 +186,7 @@ impl Application {
         )?;
         let mut workflow = saved.clone();
         workflow.restored = true;
+        workflow.archived = false;
         workflow.terminal_history = history;
         workflow.terminal_id = id;
         workflow.status = WorkflowStatus::Running;

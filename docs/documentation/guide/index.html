@@ -386,6 +386,33 @@ agent terminals, Bento panes, saved output, and minimaps.</p>
 use the complete defaults; unknown keys are ignored with a warning. Diagnostics include the file, line, and
 key (or <code>&lt;document&gt;</code> when a syntax error has no identifiable key). They appear in macOS
 Console under the <code>com.twineproject.Twine</code> subsystem, without logging config values.</p>
+<h3 id="experimental-tab-management">Experimental tab management</h3>
+<p>In <strong>Settings → Feature flags</strong>, enable <strong>Tab management</strong> to try custom
+workflow names, drag reordering, pinned tabs, a searchable open-tab list, lifecycle indicators,
+and reopening closed tabs. The flag defaults to off and applies immediately to all folder windows.
+The equivalent configuration is:</p>
+<pre class="highlight"><code class="language-toml">[feature_flags]
+tab_management = true</code></pre>
+<p>Double-click a workflow tab or choose <strong>Rename…</strong> from its context menu. Choose
+<strong>Reset Name</strong> to return to its automatic name. File tabs keep their filenames; duplicate
+filenames show enough parent folders to distinguish them. Drag tabs to reorder, or use
+<strong>Move Left/Right</strong> in the context menu. Pinned tabs stay at the leading edge.
+Names, order, pins, open files, and the selected tab are remembered across relaunch.</p>
+<table><thead><tr><th>Action</th><th>Shortcut</th></tr></thead><tbody>
+<tr><td>Next / previous tab</td><td>Control-Tab / Control-Shift-Tab</td></tr>
+<tr><td>Select tab 1–9</td><td>⌘1–⌘9</td></tr>
+<tr><td>Find an open tab</td><td>⌘⇧A</td></tr>
+<tr><td>Rename workflow tab</td><td>⌘⇧I</td></tr>
+<tr><td>Pin or unpin tab</td><td>⌘⇧P</td></tr>
+<tr><td>Move tab left / right</td><td>⌘⌥⇧← / ⌘⌥⇧→</td></tr>
+<tr><td>Close focused pane / entire tab</td><td>⌘W / ⌘⇧W</td></tr>
+<tr><td>Reopen most recently closed tab</td><td>⌘⇧T</td></tr>
+</tbody></table>
+<p>Closing a running agent asks for confirmation. Reopening a workflow shows retained output and
+trace history without restarting processes, including after relaunch. <strong>New Terminal</strong>
+starts a fresh shell; a single-agent workflow also offers an explicit <strong>Resume Session…</strong>
+action. Recently closed history keeps up to 20 entries. Saved output remains subject to transcript
+retention. Reopening a file reloads its saved content; discarded edits are not restored.</p>
 <h2 id="terminal-panes">Terminal panes<a class="headerlink" href="#terminal-panes" title="Permanent link">#</a></h2>
 <p>Use the two buttons at the top right, <strong>⌘D</strong> to split right, or <strong>⇧⌘D</strong> to split down.
 Each split starts a shell in the same folder; run any command or coding agent there.

@@ -56,13 +56,13 @@ final class CoreClient {
             switch command {
             case .validateWorkflowType, .saveWorkflowType, .deleteWorkflowType, .ping, .startTerminal, .closeTerminal,
                 .createWorkflow,
-                .activateWorkflow, .closeWorkflow,
+                .activateWorkflow, .reopenWorkflow, .closeWorkflow,
                 .startAgent, .resumeAgent, .cancelAgent, .createSession, .renameSession, .selectSession, .deleteSession:
                 if commandResults.removeValue(forKey: receipt.requestID) == nil {
                     ignoredCommandResults.insert(receipt.requestID)
                 }
             case .reloadConfig, .openFolder, .restoreFolder, .closeFolder, .closeFolderIfOpen, .removeRecentFolder,
-                .nameDraftWorkflow,
+                .nameDraftWorkflow, .renameWorkflow,
                 .refreshGitBranch, .startWorkflowRun, .submitWorkflowTask, .chooseWorkflowResult,
                 .completeWorkflowRole, .continueWorkflowRun,
                 .setWorkflowIndividualMode, .cancelWorkflowRun:
@@ -225,7 +225,7 @@ final class CoreClient {
         case .terminalClosed(let terminalID):
             markTerminalClosed(terminalID, in: &snapshot)
         case .workflowTypeValidated, .workflowTypeSaved, .workflowTypeDeleted, .pong, .workflowCreated,
-            .workflowActivated, .workflowClosed,
+            .workflowActivated, .workflowReopened, .workflowClosed,
             .agentStarted, .agentCancelled,
             .sessionCreated, .sessionRenamed, .sessionSelected, .sessionDeleted:
             break

@@ -15,6 +15,7 @@ struct FolderView: View {
     private let sidebarPreferences = SidebarPreferences()
     @State private var sidebarVisibility: NavigationSplitViewVisibility
     @State private var selection = WorkflowTabSelection()
+    @State private var tabManagement: WorkspaceTabsModel
     @State private var files = FileBrowserModel()
     @State private var traceNavigation = TraceTerminalNavigation()
     @State private var isTracesExpanded = false
@@ -27,6 +28,7 @@ struct FolderView: View {
 
     init(path: String) {
         self.path = path
+        _tabManagement = State(initialValue: WorkspaceTabsModel(folder: path))
         _sidebarVisibility = State(initialValue: sidebarPreferences.isOpen(in: path) ? .all : .detailOnly)
         let model = MemoryModel(folder: path)
         _memories = State(initialValue: model)
@@ -70,7 +72,7 @@ struct FolderView: View {
                     spacing: Spacing.windowSections * scale, showsTraces: showsTraces
                 ) {
                     WorkflowWorkspace(
-                        folder: path, selection: $selection, files: files,
+                        folder: path, tabManagement: tabManagement, selection: $selection, files: files,
                         contentHeight: workflowHeight,
                         designerVisibilityChanged: {
                             designerWorkflowIDs = $0

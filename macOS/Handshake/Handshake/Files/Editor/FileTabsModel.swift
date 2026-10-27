@@ -9,6 +9,7 @@ final class FileTabsModel {
         didSet { memoryLinkID = UUID() }
     }
     private var memoryLinkID = UUID()
+    private(set) var isClosingPresentation = false
 
     var selected: FileEditorModel? { editors.first { $0.id == selectedID } }
     var isDirty: Bool { editors.contains { $0.isDirty } }
@@ -25,6 +26,18 @@ final class FileTabsModel {
         }
         if let navigationURL { editor.navigate(to: navigationURL) }
         selectedID = editor.id
+        return editor
+    }
+
+    @discardableResult
+    func restore(
+        path: String, folder: String,
+        memoryRequest: CoreMemoryRequest? = nil, source: CoreMemorySource? = nil
+    ) -> FileEditorModel {
+        if let existing = editors.first(where: { $0.path == path }) { return existing }
+        let editor = FileEditorModel(path: path, folder: folder, memoryRequest: memoryRequest)
+        if let memoryRequest { editor.useMemorySource(memoryRequest, source: source) }
+        editors.append(editor)
         return editor
     }
 
@@ -142,8 +155,9 @@ final class FileTabsModel {
         return true
     }
 
-    func discardAll() {
+    func discardAll(preservingPresentation: Bool = false) {
         guard !isSaving else { return }
+        isClosingPresentation = preservingPresentation
         editors.removeAll()
         selectedID = nil
     }
