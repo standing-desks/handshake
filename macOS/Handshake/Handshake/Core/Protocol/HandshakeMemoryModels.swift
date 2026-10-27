@@ -4,6 +4,8 @@ nonisolated enum HandshakeMemoryAction: Encodable, Sendable, Equatable {
     case status, sync
     case setEnabled(Bool)
     case withdraw(String)
+    case readArchive(String)
+    case restore(String)
 
     private enum CodingKeys: String, CodingKey { case type, enabled, id }
     func encode(to encoder: any Encoder) throws {
@@ -16,6 +18,12 @@ nonisolated enum HandshakeMemoryAction: Encodable, Sendable, Equatable {
             try values.encode(enabled, forKey: .enabled)
         case .withdraw(let id):
             try values.encode("withdraw", forKey: .type)
+            try values.encode(id, forKey: .id)
+        case .readArchive(let id):
+            try values.encode("readArchive", forKey: .type)
+            try values.encode(id, forKey: .id)
+        case .restore(let id):
+            try values.encode("restore", forKey: .type)
             try values.encode(id, forKey: .id)
         }
     }
@@ -39,6 +47,14 @@ nonisolated struct HandshakeMemorySnapshot: Decodable, Sendable {
     let message: String
     let lastSync: String?
     let modelCalls: UInt64
+    var archivedRecords: [HandshakeMemorySummary]?
+    var archiveDetail: HandshakeMemoryArchiveDetail?
+}
+
+nonisolated struct HandshakeMemoryArchiveDetail: Decodable, Identifiable, Sendable {
+    let id: String
+    let title: String
+    let text: String
 }
 
 nonisolated struct HandshakeMemorySummary: Decodable, Identifiable, Sendable {

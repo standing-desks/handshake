@@ -52,6 +52,8 @@ pub enum Action {
     Sync,
     SetEnabled { enabled: bool },
     Withdraw { id: String },
+    ReadArchive { id: String },
+    Restore { id: String },
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -64,6 +66,8 @@ pub struct Snapshot {
     pub claude_path: PathBuf,
     pub codex_path: PathBuf,
     pub records: Vec<Summary>,
+    pub archived_records: Vec<Summary>,
+    pub archive_detail: Option<ArchiveDetail>,
     pub status: String,
     pub message: String,
     pub last_sync: Option<String>,
@@ -77,6 +81,14 @@ pub struct Summary {
     pub title: String,
     pub sources: usize,
     pub preview: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArchiveDetail {
+    pub id: String,
+    pub title: String,
+    pub text: String,
 }
 
 fn override_path(
@@ -175,19 +187,24 @@ pub(crate) fn execute_guarded(
 }
 
 fn execute_library(library: &mut storage::Library, request: &Request) -> Result<Snapshot, Error> {
-    let project = library.register(&request.folder)?;
+    let project = library.register_metadata(&request.folder)?;
     match &request.action {
         Action::SetEnabled { enabled } => library.set_enabled(&project, *enabled)?,
         Action::Withdraw { id } => library.withdraw(&project, id)?,
-        Action::Status | Action::Sync => {}
+        Action::Restore { id } => library.restore(&project, id)?,
+        Action::Status | Action::Sync | Action::ReadArchive { .. } => {}
     }
-    if !matches!(request.action, Action::Status) {
+    if !matches!(request.action, Action::Status | Action::ReadArchive { .. }) {
         match library.sync(&project) {
             Ok(()) | Err(Error::NativeActive) => {}
             Err(error) => return Err(error),
         }
     }
-    library.snapshot(&project)
+    let mut snapshot = library.snapshot(&project)?;
+    if let Action::ReadArchive { id } = &request.action {
+        snapshot.archive_detail = Some(library.read_archive(&project, id)?);
+    }
+    Ok(snapshot)
 }
 
 /// Each profile contains only this project's native memory; global credentials/settings are reused.

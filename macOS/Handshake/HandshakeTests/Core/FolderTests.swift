@@ -35,7 +35,8 @@ struct FolderTests {
             #expect(failure?.isGitBranchReadFailure == true)
             let afterFailure = try await worker.snapshot()
             #expect(afterFailure.folders == beforeFailure.folders)
-            #expect(afterFailure.sequence == beforeFailure.sequence)
+            try await Self.expectNoFolderChanges(
+                after: beforeFailure.sequence, through: afterFailure.sequence, worker: worker)
             #expect(client.snapshot?.folders.currentBranch == "feature")
 
             try FileManager.default.createDirectory(at: folder.url, withIntermediateDirectories: true)
@@ -54,6 +55,22 @@ struct FolderTests {
             await client.stop()
             throw error
         }
+    }
+
+    /// Other subsystems may append events while the async Git read is in flight.
+    private static func expectNoFolderChanges(
+        after start: UInt64,
+        through end: UInt64,
+        worker: CoreWorker
+    ) async throws {
+        let limit = try #require(UInt32(exactly: max(1, end - start)))
+        let events = try await worker.events(after: start, limit: limit)
+        #expect(
+            !events.contains { event in
+                guard event.sequence <= end else { return false }
+                if case .foldersChanged = event.event { return true }
+                return false
+            })
     }
 
     /// Retry only explicit Git read failures under load, then check both core and client state.

@@ -263,6 +263,40 @@ extension HandshakeUITests {
         waitForHandshakeText("1 project memories", identifier: "handshakeMemoryCount", in: app)
         waitForHandshakeText("Sharing automatically", identifier: "handshakeMemoryStatus", in: app)
         attachScreenshot(of: app, named: "Running agent refreshed at its next prompt")
+        try checkLiveArchiveAndRestore(project: project, notes: notes, response: response, in: app)
+        XCTAssertEqual(try String(contentsOf: pidFile, encoding: .utf8), pid)
+        XCTAssertNotEqual(kill(Int32(pid) ?? 0, 0), -1)
+    }
+
+    @MainActor
+    private func checkLiveArchiveAndRestore(project: URL, notes: URL, response: URL, in app: XCUIApplication) throws {
+        let memoryID = try XCTUnwrap(activeMemoryID(in: project, containing: "violet receipt check"))
+        try FileManager.default.removeItem(at: notes.appending(path: "receipt-check.md"))
+        waitForHandshakeText("0 project memories", identifier: "handshakeMemoryCount", in: app)
+        let archive = app.buttons["handshakeMemoryArchive"]
+        XCTAssertTrue(archive.waitForExistence(timeout: 10))
+        archive.click()
+        let view = app.buttons["viewArchivedMemory-\(memoryID)"]
+        revealHandshakeDetail(view, in: app)
+        view.click()
+        let archivedText = app.staticTexts["archivedMemoryText"]
+        XCTAssertTrue(archivedText.waitForExistence(timeout: 10))
+        XCTAssertTrue(staticTextValue(archivedText).contains("violet receipt check"))
+        attachScreenshot(of: app, named: "Archived memory remains retrievable")
+        app.typeKey(.escape, modifierFlags: [])
+        app.typeText("Which project check applies now?\r")
+        waitForFile(response, containing: "No active imported project memories", in: app)
+        openHandshakeMemory(in: app)
+        app.buttons["handshakeMemoryArchive"].click()
+        let restore = app.buttons["restoreArchivedMemory-\(memoryID)"]
+        revealHandshakeDetail(restore, in: app)
+        restore.click()
+        waitForHandshakeText("1 project memories", identifier: "handshakeMemoryCount", in: app)
+        XCTAssertTrue(app.buttons["handshakeMemoryArchive"].waitForNonExistence(timeout: 10))
+        XCTAssertLessThanOrEqual(app.scrollViews["handshakeMemoryViewport"].frame.height, 134)
+        app.typeKey(.escape, modifierFlags: [])
+        app.typeText("Which project check is restored?\r")
+        waitForFile(response, containing: "violet receipt check", in: app)
     }
 
     private func writeMemoryPromptAgent(in folder: URL) throws -> URL {

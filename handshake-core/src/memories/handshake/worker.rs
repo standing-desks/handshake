@@ -88,6 +88,15 @@ impl Worker {
             {
                 return Ok(None);
             }
+            if provider == "claude_code"
+                && !super::native::claude_memory_use_enabled(
+                    &folder,
+                    &super::native::Roots::live().claude,
+                    std::env::var_os("CLAUDE_CODE_DISABLE_AUTO_MEMORY").as_deref(),
+                )?
+            {
+                return Ok(None);
+            }
             let mut library = Library::open(&root)?;
             if !active() {
                 return Ok(None);

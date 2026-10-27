@@ -46,6 +46,15 @@ pub(super) fn environment(project: &Project) -> Vec<(String, String)> {
 pub(super) fn prepare(project: &Project, roots: &Roots) -> Result<(), Error> {
     safe_path(&project.claude)?;
     safe_path(&project.codex)?;
+    if project.root.join("library.amis.json").exists()
+        && (!project.claude.is_dir()
+            || !project
+                .codex
+                .join("memories/extensions/ad_hoc/notes")
+                .is_dir())
+    {
+        return Err(Error::Contract("A native memory profile is missing. Restore its directory before reconciling; its memories have not been archived.".into()));
+    }
     fs::create_dir_all(&project.claude)?;
     fs::create_dir_all(project.codex.join("memories/extensions/ad_hoc/notes"))?;
     for name in [
@@ -312,15 +321,86 @@ pub(super) fn memory_use_enabled(folder: &Path, config: &Path) -> Result<bool, E
         };
         let settings: toml::Value =
             toml::from_str(&source).map_err(|e| Error::Contract(e.to_string()))?;
-        for (section, key) in [("features", "memories"), ("memories", "use_memories")] {
-            if settings
-                .get(section)
-                .and_then(|v| v.get(key))
-                .and_then(toml::Value::as_bool)
-                == Some(false)
-            {
-                return Ok(false);
-            }
+        if !codex_scope_use_enabled(&settings) {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+fn codex_scope_use_enabled(settings: &toml::Value) -> bool {
+    for (section, key) in [("features", "memories"), ("memories", "use_memories")] {
+        if settings
+            .get(section)
+            .and_then(|v| v.get(key))
+            .and_then(toml::Value::as_bool)
+            == Some(false)
+        {
+            return false;
+        }
+    }
+    true
+}
+
+/// Unsupported native layouts must be reported during sync, without blocking
+/// status inspection or the user's ability to pause sharing.
+pub(super) fn ensure_codex_memory_layout(folder: &Path, config: &Path) -> Result<(), Error> {
+    for path in std::iter::once(config.to_owned()).chain(
+        folder
+            .ancestors()
+            .map(|parent| parent.join(".codex/config.toml")),
+    ) {
+        let source = match fs::read_to_string(path) {
+            Ok(source) => source,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error.into()),
+        };
+        let settings: toml::Value =
+            toml::from_str(&source).map_err(|e| Error::Contract(e.to_string()))?;
+        let version = settings
+            .get("memories")
+            .and_then(|v| v.get("version"))
+            .and_then(toml::Value::as_str);
+        if version.is_some_and(|version| version != "v1") {
+            return Err(Error::Contract("Cross-agent memory currently supports the Codex v1 memory layout. The selected native memory version is unsupported; automatic sharing is held.".into()));
+        }
+    }
+    Ok(())
+}
+
+/// Honor native user/project/local opt-outs before supplying additional context.
+pub(super) fn claude_memory_use_enabled(
+    folder: &Path,
+    root: &Path,
+    disabled: Option<&std::ffi::OsStr>,
+) -> Result<bool, Error> {
+    if disabled
+        .and_then(std::ffi::OsStr::to_str)
+        .is_some_and(|value| value == "1" || value.eq_ignore_ascii_case("true"))
+    {
+        return Ok(false);
+    }
+    let layers =
+        std::iter::once(root.join("settings.json")).chain(folder.ancestors().flat_map(|parent| {
+            [
+                parent.join(".claude/settings.json"),
+                parent.join(".claude/settings.local.json"),
+            ]
+        }));
+    for path in layers {
+        let bytes = match fs::read(path) {
+            Ok(bytes) => bytes,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error.into()),
+        };
+        let settings: Value = serde_json::from_slice(&bytes)?;
+        let disabled = settings
+            .get("env")
+            .and_then(|env| env.get("CLAUDE_CODE_DISABLE_AUTO_MEMORY"))
+            .and_then(Value::as_str)
+            .is_some_and(|value| value == "1" || value.eq_ignore_ascii_case("true"));
+        if settings.get("autoMemoryEnabled") == Some(&json!(false)) || disabled {
+            return Ok(false);
         }
     }
     Ok(true)

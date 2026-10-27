@@ -4,6 +4,7 @@ import Observation
 @Observable
 final class HandshakeMemoryModel {
     private(set) var snapshot: HandshakeMemorySnapshot?
+    private(set) var archiveDetail: HandshakeMemoryArchiveDetail?
     private(set) var failure: String?
     private(set) var isUpdating = false
     @ObservationIgnored private var failureIsAction = false
@@ -13,6 +14,7 @@ final class HandshakeMemoryModel {
         let token = UUID()
         generation = token
         snapshot = nil
+        archiveDetail = nil
         failure = nil
         failureIsAction = false
         while !Task.isCancelled, generation == token {
@@ -37,6 +39,11 @@ final class HandshakeMemoryModel {
             let snapshot = try await client.handshakeMemories(folder: folder, action: action)
             guard !Task.isCancelled, generation == token else { return }
             self.snapshot = snapshot
+            if let detail = snapshot.archiveDetail {
+                archiveDetail = detail
+            } else if !((snapshot.archivedRecords ?? []).contains { $0.id == archiveDetail?.id }) {
+                archiveDetail = nil
+            }
             if action != .status || !failureIsAction {
                 failure = nil
                 failureIsAction = false

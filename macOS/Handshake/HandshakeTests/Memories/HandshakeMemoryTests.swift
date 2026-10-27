@@ -49,4 +49,24 @@ struct HandshakeMemoryTests {
             claudePath: "/claude/memory", codexPath: "/codex", records: [], status: "sharing",
             message: "Native bytes delivered.", lastSync: nil, modelCalls: 0)
     }
+
+    @Test func archiveDetailSurvivesPollingAndClearsAfterRestore() async throws {
+        let transport = DeferredMemoryTransport()
+        let client = CoreClient(transport: transport)
+        let model = HandshakeMemoryModel()
+        var archived = snapshot()
+        archived.archivedRecords = [.init(id: "archive", title: "Checkout", sources: 1, preview: "Short preview")]
+        archived.archiveDetail = .init(id: "archive", title: "Checkout", text: "Full retained checkout memory")
+        await transport.setHandshakeResult(.success(archived))
+        await model.perform(client: client, folder: "/project", action: .readArchive("archive"))
+        #expect(model.archiveDetail?.text == "Full retained checkout memory")
+        archived.archiveDetail = nil
+        await transport.setHandshakeResult(.success(archived))
+        await model.perform(client: client, folder: "/project", action: .status)
+        #expect(model.archiveDetail?.text == "Full retained checkout memory")
+        await transport.setHandshakeResult(.success(snapshot()))
+        await model.perform(client: client, folder: "/project", action: .restore("archive"))
+        #expect(model.archiveDetail == nil)
+        #expect(await transport.receivedHandshakeActions() == [.readArchive("archive"), .status, .restore("archive")])
+    }
 }
