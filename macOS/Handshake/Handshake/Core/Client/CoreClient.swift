@@ -40,6 +40,8 @@ final class CoreClient {
         self.transport = transport
     }
 
+    func keepAwake(_ enabled: Bool? = nil) async throws -> Bool { try await transport.keepAwake(enabled) }
+
     func start() {
         guard eventTask == nil, !isStopping, !isTerminating else { return }
 

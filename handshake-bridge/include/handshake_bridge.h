@@ -50,6 +50,10 @@ HandshakeStatus handshake_migrate_data(
 // user config file can be saved. Output ownership follows handshake_buffer_release.
 // Save input is bounded to 12 MiB + 16 KiB; pointer/length rules match handshake_client_save_file.
 HandshakeStatus handshake_config_file(HandshakeBuffer *out_file);
+// App-wide Keep Awake: operation 0 reads, 1 enables, 2 disables. No folder client is needed.
+// Returns {enabled:bool,error:null} or {error:string}. Release output with handshake_buffer_release.
+// Disable during normal app shutdown; the core also ties the child to this process's lifetime.
+HandshakeStatus handshake_keep_awake(uint32_t operation, HandshakeBuffer *out_result);
 // Read {type:"read"}, or set {type:"set",id,enabled,expectedVersion}.
 // No folder runtime is required; config-file versions and output ownership are preserved.
 HandshakeStatus handshake_feature_flags(const uint8_t *bytes, size_t length, HandshakeBuffer *out_result);

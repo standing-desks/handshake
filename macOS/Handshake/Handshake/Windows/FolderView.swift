@@ -14,6 +14,7 @@ struct FolderView: View {
     @Environment(\.appZoom) private var zoom
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let path: String
+    private weak var window: NSWindow?
     private let sidebarPreferences = SidebarPreferences()
     @State private var sidebarVisibility: NavigationSplitViewVisibility
     @State private var selection = WorkflowTabSelection()
@@ -28,8 +29,9 @@ struct FolderView: View {
     @State private var memories = MemoryModel()
     private var scale: CGFloat { zoom?.scale ?? 1 }
 
-    init(path: String) {
+    init(path: String, window: NSWindow?) {
         self.path = path
+        self.window = window
         _tabManagement = State(initialValue: WorkspaceTabsModel(folder: path))
         _sidebarVisibility = State(initialValue: sidebarPreferences.isOpen(in: path) ? .all : .detailOnly)
         let model = MemoryModel(folder: path)
@@ -117,9 +119,11 @@ struct FolderView: View {
                     }
                     .lineLimit(1)
                     .padding(.leading, 6)
+                    .frame(maxWidth: 320, alignment: .leading)
                     .help(path)
                 }
                 .sharedBackgroundVisibility(.hidden)
+                KeepAwakeToolbar(window: window)
             }
         }
         .modifier(MemoryLoading(folder: path, model: memories))

@@ -49,15 +49,17 @@ struct HandshakeApp: App {
                 case .ready(let presentation):
                     FolderWindowRoot(id: id.wrappedValue ?? initialWindowID, windows: presentation.windows)
                         .environment(presentation.settings)
+                        .environment(presentation.keepAwake)
                         .defaultAppStorage(WorkflowLaunchPreferences.defaultStore())
                         .environment(presentation.layouts)
                         .environment(presentation.harnessModels)
                         .environment(\.appZoom, presentation.zoom)
                         .task {
+                            presentation.keepAwake.start()
                             presentation.zoom.installKeyboardShortcuts()
                             terminationDelegate.attach(
                                 windows: presentation.windows, layouts: presentation.layouts,
-                                settings: presentation.settings)
+                                settings: presentation.settings, keepAwake: presentation.keepAwake)
                         }
                 }
             }

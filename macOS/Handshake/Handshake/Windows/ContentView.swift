@@ -80,7 +80,7 @@ struct ContentView: View {
             .appZoom()
         case .folder(let path):
             // A new identity per folder, so the folder's views, such as its terminal, start fresh.
-            FolderView(path: path)
+            FolderView(path: path, window: session.window)
                 .id(path)
         }
     }

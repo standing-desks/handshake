@@ -212,7 +212,10 @@ extension HandshakeUITests {
         let titleBar = window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0))
             .withOffset(CGVector(dx: 0, dy: 20))
         let positionTarget = titleBar.withOffset(CGVector(dx: 0, dy: 30 - window.frame.minY))
-        titleBar.click(forDuration: 0.2, thenDragTo: positionTarget)
+        // Avoid clicking a toolbar control when the window is already at the target position.
+        if abs(window.frame.minY - 30) > 2 {
+            titleBar.click(forDuration: 0.2, thenDragTo: positionTarget)
+        }
         // Use straight edges: the extreme corner falls outside macOS's rounded window shape.
         let rightEdge = window.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5))
             .withOffset(CGVector(dx: -1, dy: 0))

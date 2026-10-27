@@ -4,6 +4,7 @@ mod client;
 mod error;
 mod feature_flags;
 mod ffi;
+mod keep_awake;
 mod logging;
 mod memories;
 mod migration;
