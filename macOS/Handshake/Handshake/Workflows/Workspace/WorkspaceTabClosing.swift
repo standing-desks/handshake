@@ -7,6 +7,7 @@ struct WorkspaceTabClosing {
     let layouts: WorkflowLayouts
     let tabManagement: WorkspaceTabsModel
     let fileTabs: FileTabsModel
+    let browsers: BrowserTabsModel
     let folder: String
     let sessionID: UInt64?
     let workflows: [CoreWorkflow]
@@ -37,10 +38,15 @@ struct WorkspaceTabClosing {
             workflows.filter { layouts.splitRoot(for: $0.id, in: folder, workflows: workflows) == $0.id }.map {
                 WorkspaceTabsModel.workflow($0.id)
             }
-                + fileTabs.editors.map { WorkspaceTabsModel.file($0.path) }, session: sessionID)
+                + fileTabs.editors.map { WorkspaceTabsModel.file($0.path) }
+                + browsers.tabs.map { WorkspaceTabsModel.browser($0.id) }, session: sessionID)
     }
 
     private func selectTabReference(_ reference: String?) {
+        if let browser = browsers.tabs.first(where: { WorkspaceTabsModel.browser($0.id) == reference }) {
+            browsers.select(browser.id)
+            return
+        }
         let editor = fileTabs.editors.first { WorkspaceTabsModel.file($0.path) == reference }
         if let editor {
             fileTabs.select(editor.id)
@@ -50,8 +56,7 @@ struct WorkspaceTabClosing {
         }
     }
 
-    func closeWorkflows(_ ids: [UInt64], root: UInt64) {
-        guard let workflow = workflows.first(where: { $0.id == root }) else { return }
+    private func confirmClosing(_ ids: [UInt64]) -> Bool {
         if workflows.contains(where: { ids.contains($0.id) && $0.isRunningAgent }) {
             let alert = NSAlert()
             alert.messageText = ids.count > 1 ? "Close this tab and its panes?" : "Close this tab?"
@@ -59,8 +64,14 @@ struct WorkspaceTabClosing {
                 "Running agents will stop. You can reopen saved history, but processes will not restart automatically."
             alert.addButton(withTitle: "Close and Stop Agents")
             alert.addButton(withTitle: "Cancel")
-            guard alert.runModal() == .alertFirstButtonReturn else { return }
+            return alert.runModal() == .alertFirstButtonReturn
         }
+        return true
+    }
+
+    func closeWorkflows(_ ids: [UInt64], root: UInt64) {
+        guard let workflow = workflows.first(where: { $0.id == root }) else { return }
+        guard confirmClosing(ids) else { return }
         let reference = WorkspaceTabsModel.workflow(root)
         let arrangement = tabManagement.arrangement(sessionID)
         let targetSession = sessionID
@@ -68,7 +79,8 @@ struct WorkspaceTabClosing {
         let groupRoot = layouts.splitRoot(for: root, in: folder, workflows: workflows)
         let promoted =
             groupRoot == root ? layouts.terminalSplit(for: root, in: folder).ids.first { !ids.contains($0) } : nil
-        if fileTabs.selectedID == nil, let selected = selection.wrappedValue.selectedID, ids.contains(selected) {
+        let selected = selection.wrappedValue.selectedID
+        if fileTabs.contentSelection.content == nil, let selected, ids.contains(selected) {
             let splitRoot = layouts.splitRoot(for: selected, in: folder, workflows: workflows)
             if let sibling = layouts.terminalSplit(for: splitRoot, in: folder).ids.first(where: { !ids.contains($0) }) {
                 selection.wrappedValue.selectedID = sibling

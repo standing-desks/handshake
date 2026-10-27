@@ -30,20 +30,14 @@ struct WorkspaceTabsTests {
         #expect(restored.ordered([ids[0], ids[2], "workflow:3"], session: 10) == [ids[2], ids[0], "workflow:3"])
     }
 
-    @Test func onlyUnseenOutcomeChangesBecomeUnread() throws {
-        let model = WorkspaceTabsModel(folder: "/tmp/first", defaults: try store())
-        var workflow = makeWorkflow(id: 1)
-        model.observe([workflow], visibleIDs: [])
-        #expect(model.unread.isEmpty)
-        workflow = makeWorkflow(id: 1, status: .completed)
-        model.observe([workflow], visibleIDs: [])
-        #expect(model.unread == [1])
-        model.observe([workflow], visibleIDs: [1])
-        #expect(model.unread.isEmpty)
-        model.observe([makeWorkflow(id: 1, status: .failed)], visibleIDs: [1])
-        #expect(model.unread.isEmpty)
-        model.observe([], visibleIDs: [])
-        #expect(model.unread.isEmpty)
+    @Test func onlyCompletionHasATopLevelTabIndicator() {
+        for status in [CoreWorkflow.Status.running, .completed, .failed, .interrupted, .cancelled, .exited, .closed] {
+            let item = WorkspaceTabItem(
+                id: "workflow:1", title: "Terminal", detail: "", symbol: "terminal",
+                workflow: makeWorkflow(id: 1, status: status))
+            #expect(item.status == (status == .completed ? "Done" : nil))
+            #expect(item.statusSymbol == (status == .completed ? "checkmark.circle" : nil))
+        }
     }
 
     @Test func duplicateTitlesUseStableIDsAndShortestDistinctPaths() {

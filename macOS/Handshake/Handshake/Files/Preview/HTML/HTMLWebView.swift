@@ -22,13 +22,13 @@ struct HTMLWebView: NSViewRepresentable {
         return coordinator
     }
 
-    func makeNSView(context: Context) -> FileContentHost<WKWebView> {
+    func makeNSView(context: Context) -> RetainedContentHost<WKWebView> {
         let view = WKWebView(frame: .zero, configuration: Self.configuration(for: format, location: location))
         view.pageZoom = zoom?.scale ?? 1
         view.navigationDelegate = context.coordinator
         view.setAccessibilityIdentifier("\(format.accessibilityPrefix)Preview")
         view.setAccessibilityLabel("\(format.name) preview")
-        let host = FileContentHost(content: view, responder: view)
+        let host = RetainedContentHost(content: view, responder: view)
         host.viewportScale = zoom?.scale ?? 1
         return host
     }
@@ -48,7 +48,7 @@ struct HTMLWebView: NSViewRepresentable {
         return configuration
     }
 
-    func updateNSView(_ host: FileContentHost<WKWebView>, context: Context) {
+    func updateNSView(_ host: RetainedContentHost<WKWebView>, context: Context) {
         let view = host.content
         let pageZoom = zoom?.scale ?? 1
         host.viewportScale = pageZoom
@@ -76,14 +76,16 @@ struct HTMLWebView: NSViewRepresentable {
         }
     }
 
-    static func dismantleNSView(_ host: FileContentHost<WKWebView>, coordinator: Coordinator) {
+    static func dismantleNSView(_ host: RetainedContentHost<WKWebView>, coordinator: Coordinator) {
         let view = host.content
         coordinator.stop()
         view.stopLoading()
         view.navigationDelegate = nil
     }
 
-    func sizeThatFits(_ proposal: ProposedViewSize, nsView: FileContentHost<WKWebView>, context: Context) -> CGSize? {
+    func sizeThatFits(
+        _ proposal: ProposedViewSize, nsView: RetainedContentHost<WKWebView>, context: Context
+    ) -> CGSize? {
         proposal.replacingUnspecifiedDimensions()
     }
 

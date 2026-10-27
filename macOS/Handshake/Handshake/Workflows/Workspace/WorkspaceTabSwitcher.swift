@@ -44,7 +44,6 @@ struct WorkspaceTabSwitcher: View {
                                         Text(item.detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                                     }
                                     Spacer()
-                                    if item.unread { Image(systemName: "circle.fill").font(.system(size: 6)) }
                                     if let status = item.status {
                                         Text(status).font(.caption).foregroundStyle(item.statusColor)
                                     }

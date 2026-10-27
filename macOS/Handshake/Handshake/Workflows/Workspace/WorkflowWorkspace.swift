@@ -9,6 +9,7 @@ struct WorkflowWorkspace: View {
     @Environment(CoreClient.self) private var coreClient
     @Environment(WorkflowLayouts.self) private var layouts
     @Environment(FileTabsModel.self) private var fileTabs
+    @Environment(BrowserTabsModel.self) private var browsers
     @Environment(\.appZoom) private var zoom
     let folder: String
     let tabManagement: WorkspaceTabsModel
@@ -21,7 +22,7 @@ struct WorkflowWorkspace: View {
     @State private var isSplitting = false
     private var scale: CGFloat { zoom?.scale ?? 1 }
 
-    private var isVisible: Bool { isPresented && fileTabs.selected == nil }
+    private var isVisible: Bool { isPresented && fileTabs.contentSelection.content == nil }
 
     private var allWorkflows: [CoreWorkflow] {
         guard coreClient.snapshot?.folders.openFolder == folder else { return [] }
@@ -87,6 +88,9 @@ struct WorkflowWorkspace: View {
             .terminalPanelShadow()
             .accessibilityIdentifier("workspaceViewport")
         }
+        .onChange(of: enhancedTabs, initial: true) {
+            browsers.configure(folder: folder, persistenceEnabled: enhancedTabs)
+        }
         .task {
             selection.reconcile(sessionID: sessionID, current: workflows.map(\.id))
             if coreClient.snapshot?.workflows.sessionsInitialized == false { await create() }
@@ -124,6 +128,8 @@ struct WorkflowWorkspace: View {
                 folder: folder, workflows: allWorkflows, sessionID: sessionID,
                 selection: $selection, isVisible: isVisible, reportFailure: { failureMessage = $0 },
                 closePane: close)
+            BrowserTabsSurface(
+                isPresented: isPresented, allowsAutomaticFocus: !enhancedTabs || !tabManagement.showsSwitcher)
             FileTabsSurface(
                 folder: folder, failure: files.failure, isPresented: isPresented,
                 allowsAutomaticFocus: !enhancedTabs || !tabManagement.showsSwitcher,
@@ -215,7 +221,7 @@ struct WorkflowWorkspace: View {
     private var tabClosing: WorkspaceTabClosing {
         WorkspaceTabClosing(
             coreClient: coreClient, layouts: layouts, tabManagement: tabManagement,
-            fileTabs: fileTabs, folder: folder, sessionID: sessionID, workflows: workflows,
+            fileTabs: fileTabs, browsers: browsers, folder: folder, sessionID: sessionID, workflows: workflows,
             selection: $selection, reportFailure: { failureMessage = $0 })
     }
 

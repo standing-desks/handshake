@@ -75,6 +75,7 @@ struct HandshakeApp: App {
             UpdateCommands()
             if case .ready(let presentation) = startup.state {
                 FolderCommands(windows: presentation.windows, settings: presentation.settings)
+                BrowserCommands(settings: presentation.settings)
                 TabCommands(settings: presentation.settings)
                 AppZoomCommands(zoom: presentation.zoom)
             }

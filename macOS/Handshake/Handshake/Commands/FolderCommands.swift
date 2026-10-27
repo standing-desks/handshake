@@ -92,6 +92,7 @@ struct FolderCommands: Commands {
             .disabled(session != nil && !isRunning)
             Button("Close Folder") {
                 guard let session, session.tabs.closeAll() else { return }
+                session.browsers.closeAll()
                 Task { await session.coreClient.perform(.closeFolder) }
             }
             .disabled(!isRunning || session?.coreClient.snapshot?.folders.openFolder == nil)
@@ -127,6 +128,8 @@ struct FolderCommands: Commands {
             Button(closeTitle) {
                 if showsSettings {
                     settings?.close()
+                } else if let browser = session?.browsers.selected {
+                    session?.browsers.close(browser.id)
                 } else if openFilePath != nil, let close = tabActions?.closeTab {
                     close()
                 } else if openFilePath != nil {
@@ -144,6 +147,7 @@ struct FolderCommands: Commands {
 
     private var closeTitle: String {
         if settings?.isPresented == true && settings?.presentedWindowID == session?.id { return "Close Settings" }
+        if session?.browsers.selected != nil { return "Close Browser Tab" }
         if openFilePath != nil { return "Close File" }
         if let tabActions, workflowActions?.close != nil { return tabActions.closeTitle }
         return workflowActions?.close == nil ? "Close Window" : "Close Workflow"

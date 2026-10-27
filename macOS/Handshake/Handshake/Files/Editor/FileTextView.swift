@@ -18,10 +18,10 @@ struct FileTextView: NSViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator(text: $text) }
 
-    func makeNSView(context: Context) -> FileContentHost<NSScrollView> {
+    func makeNSView(context: Context) -> RetainedContentHost<NSScrollView> {
         let scroll = FileEditingTextView.scrollableTextView()
         guard let view = scroll.documentView as? NSTextView else {
-            return FileContentHost(content: scroll, responder: scroll)
+            return RetainedContentHost(content: scroll, responder: scroll)
         }
         view.isEditable = isEditable
         view.isSelectable = true
@@ -43,10 +43,10 @@ struct FileTextView: NSViewRepresentable {
         scroll.rulersVisible = true
         view.setAccessibilityIdentifier("fileText")
         view.setAccessibilityLabel("File contents")
-        return FileContentHost(content: scroll, responder: view)
+        return RetainedContentHost(content: scroll, responder: view)
     }
 
-    func updateNSView(_ host: FileContentHost<NSScrollView>, context: Context) {
+    func updateNSView(_ host: RetainedContentHost<NSScrollView>, context: Context) {
         let scroll = host.content
         guard let view = scroll.documentView as? NSTextView else { return }
         context.coordinator.text = $text
@@ -80,7 +80,7 @@ struct FileTextView: NSViewRepresentable {
         }
     }
 
-    static func dismantleNSView(_ host: FileContentHost<NSScrollView>, coordinator: Coordinator) {
+    static func dismantleNSView(_ host: RetainedContentHost<NSScrollView>, coordinator: Coordinator) {
         guard let view = host.content.documentView as? NSTextView else { return }
         view.undoManager?.removeAllActions()
         view.delegate = nil
@@ -89,7 +89,7 @@ struct FileTextView: NSViewRepresentable {
     }
 
     func sizeThatFits(
-        _ proposal: ProposedViewSize, nsView: FileContentHost<NSScrollView>, context: Context
+        _ proposal: ProposedViewSize, nsView: RetainedContentHost<NSScrollView>, context: Context
     ) -> CGSize? {
         // Retain the editor and undo stack without reflowing hidden TextKit viewports during zoom.
         isVisible ? proposal.replacingUnspecifiedDimensions() : .zero

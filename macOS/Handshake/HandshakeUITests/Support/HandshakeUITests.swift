@@ -34,6 +34,7 @@ final class HandshakeUITests: XCTestCase {
             try seedDatabase(in: dataDirectory, lastOpenFolder: lastOpenFolder.path(percentEncoded: false))
         }
         let app = makeTestApplication()
+        app.launchEnvironment["HANDSHAKE_TEST_BROWSER_EPHEMERAL"] = "1"
         // A fresh core database also needs a fresh window. Ignore AppKit's saved window state,
         // including an empty window list left by a unit-test host or a previous UI test.
         app.launchArguments = ["-ApplePersistenceIgnoreState", "YES"]

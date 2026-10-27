@@ -9,6 +9,8 @@ struct FolderView: View {
     @Environment(CoreClient.self) private var coreClient
     @Environment(WorkflowLayouts.self) private var layouts
     @Environment(FileTabsModel.self) private var tabs
+    @Environment(BrowserTabsModel.self) private var browsers
+    @Environment(SettingsPopup.self) private var settings
     @Environment(\.appZoom) private var zoom
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let path: String
@@ -76,7 +78,7 @@ struct FolderView: View {
                         contentHeight: workflowHeight,
                         designerVisibilityChanged: {
                             designerWorkflowIDs = $0
-                        }
+                        }, isPresented: !settings.isPresented || settings.presentedWindowID != browsers.windowID
                     )
                     .transaction { if tracesMotionID != nil { $0.animation = nil } }
                     if showsTraces {
@@ -89,7 +91,7 @@ struct FolderView: View {
                     }
                     StatusFooter(
                         branch: coreClient.snapshot?.folders.currentBranch,
-                        workflow: selectedWorkflow
+                        workflow: browsers.selected == nil ? selectedWorkflow : nil
                     )
                     .appZoom()
                     .transaction { if tracesMotionID != nil { $0.animation = nil } }
@@ -179,7 +181,7 @@ struct FolderView: View {
     }
 
     private var showsTraces: Bool {
-        guard tabs.selected == nil else { return false }
+        guard tabs.contentSelection.content == nil else { return false }
         guard let selectedID = selection.selectedID else { return true }
         return !designerWorkflowIDs.contains(selectedID)
     }

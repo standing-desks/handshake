@@ -10,7 +10,8 @@ final class FolderWindowSession: Identifiable {
     let id: UUID
     let worker: CoreWorker
     let coreClient: CoreClient
-    let tabs = FileTabsModel()
+    let tabs: FileTabsModel
+    let browsers: BrowserTabsModel
     var requestedFolder: String?
     let restoresFolder: Bool
     var hasStarted = false
@@ -20,6 +21,8 @@ final class FolderWindowSession: Identifiable {
 
     init(id: UUID, dataDirectory: URL, folder: String? = nil, restore: Bool = false) {
         self.id = id
+        tabs = FileTabsModel()
+        browsers = BrowserTabsModel(selection: tabs.contentSelection, windowID: id)
         worker = CoreWorker(dataDirectory: dataDirectory, windowMode: true)
         coreClient = CoreClient(transport: worker)
         requestedFolder = folder
@@ -155,6 +158,7 @@ final class FolderWindows {
     func retire(_ session: FolderWindowSession) {
         guard !isTerminating, !session.isClosing else { return }
         session.isClosing = true
+        session.browsers.closeAll(preservingPresentation: true)
         session.tabs.discardAll(preservingPresentation: true)
         closingTasks[session.id] = Task {
             await session.coreClient.stopForWindowClose()

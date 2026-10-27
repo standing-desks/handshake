@@ -16,6 +16,7 @@ struct FolderWindowRoot: View {
         ContentView(session: session, windows: windows)
             .environment(session.coreClient)
             .environment(session.tabs)
+            .environment(session.browsers)
             .focusedSceneValue(\.folderWindow, session)
             .preferredColorScheme(preferredColorScheme)
             .sheet(
