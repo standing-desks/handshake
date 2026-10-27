@@ -20,7 +20,9 @@ pub enum Error {
     InvalidFolder,
     #[error("The Handshake memory store is busy. It will retry automatically.")]
     Busy,
-    #[error("Native memory delivery is waiting for the active agent session to finish.")]
+    #[error(
+        "A native source or startup-file replacement is waiting for an active agent to finish. Current shared memories can still refresh at the next prompt."
+    )]
     NativeActive,
     #[error("The AMIS memory document is invalid: {0}")]
     Contract(String),

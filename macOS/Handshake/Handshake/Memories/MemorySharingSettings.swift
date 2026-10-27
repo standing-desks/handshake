@@ -51,8 +51,8 @@ struct MemorySharingSettings: View {
                                 }
                                 Text(
                                     """
-                                    Agents load native memories on their own schedule and quota.
-                                    Start a fresh conversation to use updates.
+                                    Shared project memories refresh at the next prompt in supported agents.
+                                    Native startup memory generation follows each agent’s schedule and quota.
                                     Local consolidation makes no model calls.
                                     """
                                 ).font(.caption).foregroundStyle(.secondary)

@@ -100,6 +100,8 @@ UI_DEFAULT_TESTS := testFirstLaunchShowsStartPage \
 	testMarkdownPreviewSourceSaveReloadAndLocalLinks \
 	testMemoryDockReadRefreshAndLeaveSourcesUnchanged \
 	testHandshakeMemoriesAutomaticallyShareBothDirectionsAndSurviveRelaunch \
+	testHandshakeMemoriesPublishNewFilesWhileBothProfilesAreActive \
+	testRunningAgentRefreshesSharedMemoryAtNextPromptWithoutRestart \
 	testMemoryDockClaudeScopesNarrowNavigationAndHiddenTerminal \
 	testMemoryDockOtherWorkspacesRememberNavigationAcrossRelaunch \
 	testMemoryDockArrowNavigationKeepsFocusAfterRendering \

@@ -39,6 +39,30 @@ pub(crate) fn prepare(position: Arc<ReplayPosition>) -> io::Result<(StepInbox, V
     ))
 }
 
+/// Keep memory refresh synchronous while the separate trace observers remain async.
+pub(crate) fn append_prompt_context(arguments: &mut [OsString], command: &str) -> io::Result<()> {
+    let index = arguments
+        .iter()
+        .position(|value| value == "--settings")
+        .ok_or_else(|| io::Error::other("Missing native Claude hook configuration"))?;
+    let source = arguments
+        .get(index + 1)
+        .ok_or_else(|| io::Error::other("Missing native Claude settings"))?
+        .to_string_lossy();
+    let bytes = if source.trim_start().starts_with('{') {
+        source.as_bytes().to_vec()
+    } else {
+        std::fs::read(source.as_ref())?
+    };
+    let mut settings: Value = serde_json::from_slice(&bytes).map_err(io::Error::other)?;
+    settings["hooks"]["UserPromptSubmit"]
+        .as_array_mut()
+        .ok_or_else(|| io::Error::other("Missing native Claude prompt hooks"))?
+        .push(json!({"hooks":[{"type":"command","command":command,"timeout":5}]}));
+    arguments[index + 1] = OsString::from(settings.to_string());
+    Ok(())
+}
+
 fn preview(value: &Value) -> String {
     value
         .as_str()
@@ -247,6 +271,34 @@ fn subagent_step(input: &Value, started: bool) -> Option<HarnessStep> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn live_memory_hook_keeps_native_directory_and_async_observers() {
+        let settings = json!({"autoMemoryDirectory":"/example/native/memory","hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"observer","async":true}]}]}});
+        let mut arguments = vec![
+            OsString::from("--settings"),
+            OsString::from(settings.to_string()),
+        ];
+        append_prompt_context(&mut arguments, "native-memory").unwrap();
+        let merged: Value = serde_json::from_str(arguments[1].to_str().unwrap()).unwrap();
+        assert_eq!(
+            merged["autoMemoryDirectory"],
+            settings["autoMemoryDirectory"]
+        );
+        assert_eq!(
+            merged["hooks"]["UserPromptSubmit"][0],
+            settings["hooks"]["UserPromptSubmit"][0]
+        );
+        assert!(
+            merged["hooks"]["UserPromptSubmit"][1]["hooks"][0]
+                .get("async")
+                .is_none()
+        );
+        assert_eq!(
+            merged["hooks"]["UserPromptSubmit"][1]["hooks"][0]["command"],
+            "native-memory"
+        );
+    }
 
     #[test]
     fn captures_session_identity_before_any_prompt() {

@@ -200,7 +200,7 @@ extension HandshakeUITests {
         app.descendants(matching: .any).matching(identifier: "handshakeMemoryEnabled").firstMatch
     }
     @MainActor
-    func testHandshakeMemoriesDeferActiveProfileWithoutReportingFailedSync() throws {
+    func testHandshakeMemoriesPublishNewFilesWhileBothProfilesAreActive() throws {
         let fixture = try makeAMISFixture()
         let app = fixture.app
         app.launch()
@@ -208,6 +208,10 @@ extension HandshakeUITests {
         openHandshakeMemory(in: app)
         waitForHandshakeText("1 project memories", identifier: "handshakeMemoryCount", in: app)
         let project = try fixture.projectRoot()
+        let claudeDescriptor = open(project.appending(path: "native-sessions-claude_code.lock").path, O_RDWR)
+        XCTAssertGreaterThanOrEqual(claudeDescriptor, 0)
+        defer { close(claudeDescriptor) }
+        XCTAssertEqual(flock(claudeDescriptor, LOCK_SH | LOCK_NB), 0)
         let descriptor = open(project.appending(path: "native-sessions-codex.lock").path, O_RDWR)
         XCTAssertGreaterThanOrEqual(descriptor, 0)
         defer { close(descriptor) }
@@ -215,12 +219,75 @@ extension HandshakeUITests {
         try "# Deferred memory\nUse the amber release lane.\n".write(
             to: fixture.source.appending(path: "deferred.md"), atomically: true, encoding: .utf8)
         app.buttons["handshakeMemorySync"].click()
-        waitForHandshakeText("Waiting to reconcile", identifier: "handshakeMemoryStatus", in: app)
-        XCTAssertFalse(app.staticTexts["handshakeMemoryFailure"].exists, "A native session lease is normal deferral.")
-        XCTAssertEqual(flock(descriptor, LOCK_UN), 0)
         waitForHandshakeText("Sharing automatically", identifier: "handshakeMemoryStatus", in: app)
         waitForHandshakeText("2 project memories", identifier: "handshakeMemoryCount", in: app)
+        let files = try FileManager.default.contentsOfDirectory(
+            at: project.appending(path: "native/codex/memories/extensions/ad_hoc/notes"),
+            includingPropertiesForKeys: nil)
+        XCTAssertTrue(try files.contains { try String(contentsOf: $0, encoding: .utf8).contains("amber release lane") })
         XCTAssertFalse(app.staticTexts["handshakeMemoryFailure"].exists)
+        attachScreenshot(of: app, named: "Sharing while both native profiles remain active")
+    }
+
+    @MainActor
+    func testRunningAgentRefreshesSharedMemoryAtNextPromptWithoutRestart() throws {
+        let fixture = try makeAMISFixture(hasMemories: false)
+        let bin = try writeMemoryPromptAgent(in: fixture.folder)
+        let app = fixture.app
+        app.launchEnvironment["HANDSHAKE_HARNESS_PATH"] = "\(bin.path):/usr/bin:/bin"
+        app.launch()
+        defer { app.terminate() }
+        chooseHarness("claudeCode", displayName: "Claude Code", in: app)
+        let pidFile = fixture.folder.appending(path: "agent-pid")
+        let started = expectation(
+            for: NSPredicate { _, _ in
+                guard let text = try? String(contentsOf: pidFile, encoding: .utf8), let pid = Int32(text) else {
+                    return false
+                }
+                return pid > 0
+            }, evaluatedWith: nil)
+        wait(for: [started], timeout: 10)
+        let pid = try String(contentsOf: pidFile, encoding: .utf8)
+        app.typeText("Ready?\r")
+        let response = fixture.folder.appending(path: "prompt-memory-response.json")
+        waitForFile(response, containing: "No active imported project memories", in: app)
+        let project = try fixture.projectRoot()
+        let notes = project.appending(path: "native/codex/memories/extensions/ad_hoc/notes")
+        try "Use the violet receipt check for this fictional project.".write(
+            to: notes.appending(path: "receipt-check.md"), atomically: true, encoding: .utf8)
+        app.typeText("Which project check should I use?\r")
+        waitForFile(response, containing: "violet receipt check", in: app)
+        XCTAssertEqual(try String(contentsOf: pidFile, encoding: .utf8), pid)
+        XCTAssertNotEqual(kill(Int32(pid) ?? 0, 0), -1, "The original agent stays running")
+        openHandshakeMemory(in: app)
+        waitForHandshakeText("1 project memories", identifier: "handshakeMemoryCount", in: app)
+        waitForHandshakeText("Sharing automatically", identifier: "handshakeMemoryStatus", in: app)
+        attachScreenshot(of: app, named: "Running agent refreshed at its next prompt")
+    }
+
+    private func writeMemoryPromptAgent(in folder: URL) throws -> URL {
+        let bin = folder.appending(path: "bin")
+        try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+        let program = bin.appending(path: "claude")
+        try """
+        #!/usr/bin/python3
+        import json, os, pathlib, subprocess, sys
+        if '--help' in sys.argv:
+            sys.stdout.write('--model <model> Model (e.g. "sonnet" or "opus")\\n')
+            sys.exit(0)
+        settings = json.loads(sys.argv[sys.argv.index('--settings') + 1])
+        hooks = settings['hooks']['UserPromptSubmit']
+        command = next(h['command'] for g in hooks for h in g['hooks'] if not h.get('async', False))
+        pathlib.Path('agent-pid').write_text(str(os.getpid()))
+        for line in sys.stdin:
+            payload = json.dumps({'session_id':'ui-session','prompt':line})
+            result = subprocess.run(command, shell=True, input=payload, text=True, capture_output=True)
+            pathlib.Path('prompt-memory-response.json').write_text(result.stdout)
+            sys.stdout.write('Prompt refreshed\\n')
+            sys.stdout.flush()
+        """.write(to: program, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: program.path)
+        return bin
     }
 
     @MainActor

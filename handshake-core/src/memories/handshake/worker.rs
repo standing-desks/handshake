@@ -38,6 +38,77 @@ impl Worker {
         self.enabled.load(Ordering::SeqCst)
     }
 
+    /// Refresh before each native prompt, even when other agents hold session leases.
+    /// The callback is bound by the launcher, never by a hook's untrusted cwd or input.
+    pub(crate) fn prompt_context(
+        &self,
+        folder: PathBuf,
+        provider: &'static str,
+        native_config: Option<PathBuf>,
+    ) -> impl Fn(&AtomicBool, &str) -> Result<Option<String>, super::Error> + Send + Sync + 'static
+    {
+        let root = self.root.clone();
+        let enabled = Arc::clone(&self.enabled);
+        let stopping = Arc::clone(&self.stop);
+        move |cancelled, _session| {
+            let deadline = std::time::Instant::now() + Duration::from_secs(4);
+            let active = || {
+                !cancelled.load(Ordering::Acquire)
+                    && enabled.load(Ordering::SeqCst)
+                    && !*stopping
+                        .0
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    && super::feature_enabled()
+            };
+            if !active() {
+                return Ok(None);
+            }
+            let gate = super::operation_gate(&root);
+            let _guard = loop {
+                if !active() {
+                    return Ok(None);
+                }
+                if std::time::Instant::now() >= deadline {
+                    return Err(super::Error::Busy);
+                }
+                match gate.try_lock() {
+                    Ok(guard) => break guard,
+                    Err(std::sync::TryLockError::Poisoned(error)) => break error.into_inner(),
+                    Err(std::sync::TryLockError::WouldBlock) => {
+                        std::thread::sleep(Duration::from_millis(10));
+                    }
+                }
+            };
+            if provider == "codex"
+                && !super::native::memory_use_enabled(
+                    &folder,
+                    native_config.as_deref().ok_or(super::Error::Conflict)?,
+                )?
+            {
+                return Ok(None);
+            }
+            let mut library = Library::open(&root)?;
+            if !active() {
+                return Ok(None);
+            }
+            let project = library.register(&folder)?;
+            if !project.enabled {
+                return Ok(None);
+            }
+            let within_deadline = || active() && std::time::Instant::now() < deadline;
+            match library.sync_cancellable(&project, &within_deadline) {
+                Ok(()) | Err(super::Error::NativeActive) => {}
+                Err(error) => return Err(error),
+            }
+            let context = library.prompt_context(&project, provider)?;
+            if std::time::Instant::now() >= deadline {
+                return Err(super::Error::Busy);
+            }
+            Ok(active().then_some(context))
+        }
+    }
+
     /// Disabling waits for active consolidation to finish before acknowledging the change.
     /// # Errors
     /// Fails closed if the receiver lock cannot be opened or drained.
@@ -193,5 +264,95 @@ mod tests {
         worker.set_enabled(false).unwrap();
         drop(worker);
         assert!(!root.exists());
+    }
+    /// Opt-in transport driver for real, persistent native conversations. No model is
+    /// invoked by this test; the caller owns native processes, prompts and quota.
+    #[test]
+    #[ignore = "requires an external native CLI driver and explicit quota authorization"]
+    fn native_live_memory_driver() {
+        use crate::harness::{claude, codex};
+        use crate::terminal::ReplayPosition;
+        use std::fs;
+        let ready =
+            PathBuf::from(std::env::var_os("HANDSHAKE_NATIVE_LIVE_READY").expect("ready path"));
+        let stop =
+            PathBuf::from(std::env::var_os("HANDSHAKE_NATIVE_LIVE_STOP").expect("stop path"));
+        let isolated =
+            PathBuf::from(std::env::var_os("XDG_CONFIG_HOME").expect("run via make test-lib"));
+        assert!(
+            isolated
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with("handshake-config-tests.")
+        );
+        let config = crate::config::Config::user_path().unwrap();
+        assert!(config.starts_with(isolated));
+        fs::create_dir_all(config.parent().unwrap()).unwrap();
+        fs::write(
+            config,
+            "[feature_flags]\ncross_agent_memory_consolidation = true\n",
+        )
+        .unwrap();
+        let fixture = tempfile::tempdir().unwrap();
+        let fixture_root = fixture.path().canonicalize().unwrap();
+        let folder = fixture_root.join("project");
+        fs::create_dir(&folder).unwrap();
+        let root = fixture_root.join("memories");
+        let mut library = Library::open(&root).unwrap();
+        let project = library.register(&folder).unwrap();
+        library.sync(&project).unwrap();
+        let codex_lease = library.session_lease(&project, "codex").unwrap();
+        let claude_lease = library.session_lease(&project, "claude_code").unwrap();
+        drop(library);
+        let worker = Worker::start(root, true);
+        let (codex_inbox, mut codex_args) =
+            codex::prepare(Arc::new(ReplayPosition::default())).unwrap();
+        let read = worker.prompt_context(
+            folder.clone(),
+            "codex",
+            Some(project.codex.join("config.toml")),
+        );
+        codex_inbox
+            .set_prompt_context(Arc::new(move |cancel, session| {
+                read(cancel, session).map_err(std::io::Error::other)
+            }))
+            .unwrap();
+        codex::append_prompt_context(&mut codex_args, &codex_inbox.prompt_context_command())
+            .unwrap();
+        let (claude_inbox, mut claude_args) =
+            claude::prepare(Arc::new(ReplayPosition::default())).unwrap();
+        let read = worker.prompt_context(folder.clone(), "claude_code", None);
+        claude_inbox
+            .set_prompt_context(Arc::new(move |cancel, session| {
+                read(cancel, session).map_err(std::io::Error::other)
+            }))
+            .unwrap();
+        claude::append_prompt_context(&mut claude_args, &claude_inbox.prompt_context_command())
+            .unwrap();
+        let mut settings: serde_json::Value =
+            serde_json::from_str(&claude_args[1].to_string_lossy()).unwrap();
+        settings["autoMemoryDirectory"] = serde_json::json!(project.claude);
+        claude_args[1] = settings.to_string().into();
+        let strings = |args: Vec<std::ffi::OsString>| {
+            args.into_iter()
+                .map(|s| s.into_string().unwrap())
+                .collect::<Vec<_>>()
+        };
+        fs::write(&ready, serde_json::to_vec_pretty(&serde_json::json!({
+            "folder":folder, "project":project.root, "codex_home":project.codex,
+            "claude_memory":project.claude, "codex_args":strings(codex_args),
+            "claude_args":strings(claude_args), "codex_hook":codex_inbox.prompt_context_command()
+        })).unwrap()).unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(600);
+        while !stop.exists() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "native driver timed out"
+            );
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        drop((codex_inbox, claude_inbox, worker, codex_lease, claude_lease));
+        fs::remove_dir_all(&project.claude).unwrap();
     }
 }

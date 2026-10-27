@@ -572,6 +572,15 @@ impl Application {
                         &mut arguments,
                     )
                     .and_then(|()| {
+                        self.append_memory_context(
+                            agent.harness,
+                            &processes.folder,
+                            &memory_environment,
+                            &mut arguments,
+                            hooks.as_ref(),
+                        )
+                    })
+                    .and_then(|()| {
                         Self::append_agent_instructions(
                             agent.harness,
                             &run.instructions(agent.agent_id, &command),

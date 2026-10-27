@@ -289,7 +289,44 @@ pub(super) fn safe_path(path: &Path) -> Result<(), Error> {
     }
     Ok(())
 }
-/// Refuse publication while the native process could be writing the project profile.
+/// Only new managed files are safe to publish beside a live native writer.
+pub(super) fn managed_projection(project: &Project, path: &Path, role: &str) -> bool {
+    matches!(role, "topic" | "note" | "index") && path != project.claude.join("MEMORY.md")
+}
+
+/// Codex's Use memories setting is independent of generation eligibility.
+/// The native /memories UI persists it to config; `threads.memory_mode` only controls
+/// generation, so a use-only conversation must still receive saved context.
+pub(super) fn memory_use_enabled(folder: &Path, config: &Path) -> Result<bool, Error> {
+    let layers = std::iter::once(config.to_owned()).chain(
+        folder
+            .ancestors()
+            .map(|parent| parent.join(".codex/config.toml")),
+    );
+    // Preserve explicit opt-outs conservatively, including ancestor project layers.
+    for path in layers {
+        let source = match fs::read_to_string(path) {
+            Ok(source) => source,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error.into()),
+        };
+        let settings: toml::Value =
+            toml::from_str(&source).map_err(|e| Error::Contract(e.to_string()))?;
+        for (section, key) in [("features", "memories"), ("memories", "use_memories")] {
+            if settings
+                .get(section)
+                .and_then(|v| v.get(key))
+                .and_then(toml::Value::as_bool)
+                == Some(false)
+            {
+                return Ok(false);
+            }
+        }
+    }
+    Ok(true)
+}
+
+/// Refuse native-owned file replacement while the process could be writing it.
 /// Process inspection failure holds delivery. Handshake's receiver lock alone is insufficient.
 pub(super) fn quiescent(project: &Project, provider: &str) -> Result<(), Error> {
     let output = std::process::Command::new("/bin/ps")

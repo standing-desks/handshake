@@ -3,10 +3,10 @@
 use std::io::{self, Read, Write};
 use std::os::fd::AsRawFd;
 use std::os::unix::net::{UnixListener, UnixStream};
-use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, sync_channel};
+use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
@@ -156,6 +156,7 @@ pub(crate) struct StepInbox {
     cancelled: Arc<AtomicBool>,
     worker: Option<JoinHandle<()>>,
     wake: UnixStream,
+    prompt_context: Mutex<Option<super::prompt_context::Inbox>>,
 }
 
 impl StepInbox {
@@ -297,11 +298,42 @@ impl StepInbox {
             cancelled,
             worker: Some(worker),
             wake,
+            prompt_context: Mutex::new(None),
         })
     }
 
     pub(crate) fn take(&self, limit: usize) -> Vec<ObservedStep> {
         self.received.try_iter().take(limit).collect()
+    }
+
+    /// Explicit native prompt context is independent of the observation-only trace hooks.
+    pub(crate) fn set_prompt_context(
+        &self,
+        reader: super::prompt_context::Reader,
+    ) -> io::Result<()> {
+        let inbox = super::prompt_context::Inbox::new(
+            &self.socket_path.with_file_name("memory.sock"),
+            reader,
+        )?;
+        *self
+            .prompt_context
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(inbox);
+        Ok(())
+    }
+
+    pub(crate) fn prompt_context_command(&self) -> String {
+        format!(
+            "handshake_session=$(/usr/bin/plutil -extract session_id raw -o - - 2>/dev/null) || handshake_session=''; case \"$handshake_session\" in *[!a-zA-Z0-9_-]*) handshake_session='' ;; esac; handshake_reply=$(/usr/bin/mktemp '{}/memory-response.XXXXXXXX') || exit 0; trap '/bin/rm -f \"$handshake_reply\"' EXIT; if /usr/bin/printf '{{\"handshake_memory_context\":true,\"session_id\":\"%s\"}}' \"$handshake_session\" | /usr/bin/curl --silent --fail --max-time 5 --header 'Expect:' --unix-socket '{}' --output \"$handshake_reply\" --data-binary @- http://localhost/ && /bin/cat \"$handshake_reply\" 2>/dev/null; then :; else /usr/bin/printf '%s\\n' '{{\"systemMessage\":\"Handshake shared-memory refresh is unavailable for this prompt. Check Memory settings before relying on new shared memories.\"}}'; fi",
+            self.directory
+                .path()
+                .to_string_lossy()
+                .replace('\'', "'\\''"),
+            self.socket_path
+                .with_file_name("memory.sock")
+                .to_string_lossy()
+                .replace('\'', "'\\''")
+        )
     }
 
     /// Hooks are observers only: bounded input and runtime, no output, and no failure status.
@@ -428,6 +460,10 @@ impl<R: Read> Read for CancellableReader<'_, R> {
 
 impl Drop for StepInbox {
     fn drop(&mut self) {
+        self.prompt_context
+            .get_mut()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
         self.cancelled.store(true, Ordering::Release);
         // Wake the blocking accept instead of polling and adding a delay to every event.
         let _ = self.wake.write_all(b"stop");
@@ -437,7 +473,7 @@ impl Drop for StepInbox {
     }
 }
 
-fn read_request(stream: &mut UnixStream) -> Option<Vec<u8>> {
+pub(super) fn read_request(stream: &mut UnixStream) -> Option<Vec<u8>> {
     stream.set_nonblocking(true).ok()?;
     let deadline = Instant::now() + REQUEST_TIMEOUT;
     let mut bytes = Vec::new();
@@ -501,6 +537,103 @@ fn read_request(stream: &mut UnixStream) -> Option<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn prompt_context_drains_large_inputs_and_refreshes_without_observing_prompt_text() {
+        use std::process::{Command, Stdio};
+        let inbox = StepInbox::new(
+            Arc::new(ReplayPosition::default()),
+            super::super::claude::parse,
+        )
+        .unwrap();
+        let current = Arc::new(Mutex::new(String::from("First saved preference.")));
+        let reader = Arc::clone(&current);
+        inbox
+            .set_prompt_context(Arc::new(move |_, _| {
+                Ok(Some(reader.lock().unwrap().clone()))
+            }))
+            .unwrap();
+        for expected in ["First saved preference.", "Updated saved preference."] {
+            *current.lock().unwrap() = expected.to_owned();
+            let mut child = Command::new("/bin/sh")
+                .args(["-c", &inbox.prompt_context_command()])
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .spawn()
+                .unwrap();
+            let payload = serde_json::json!({"hook_event_name":"UserPromptSubmit","prompt":"x".repeat(1024*1024)}).to_string();
+            child
+                .stdin
+                .take()
+                .unwrap()
+                .write_all(payload.as_bytes())
+                .unwrap();
+            let output = child.wait_with_output().unwrap();
+            assert!(output.status.success());
+            let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+            assert_eq!(value["hookSpecificOutput"]["additionalContext"], expected);
+        }
+        assert!(
+            inbox.take(10).is_empty(),
+            "Memory refresh does not become a fake user trace"
+        );
+    }
+
+    #[test]
+    fn slow_prompt_context_does_not_starve_observers_and_cancels_on_drop() {
+        use std::process::{Command, Stdio};
+        let inbox = StepInbox::new(
+            Arc::new(ReplayPosition::default()),
+            super::super::claude::parse,
+        )
+        .unwrap();
+        let entered = Arc::new(AtomicBool::new(false));
+        let signal = Arc::clone(&entered);
+        inbox
+            .set_prompt_context(Arc::new(move |cancelled, _| {
+                signal.store(true, Ordering::Release);
+                while !cancelled.load(Ordering::Acquire) {
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                Ok(None)
+            }))
+            .unwrap();
+        let mut child = Command::new("/bin/sh")
+            .args(["-c", &inbox.prompt_context_command()])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !entered.load(Ordering::Acquire) {
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let body = br#"{"hook_event_name":"UserPromptSubmit","session_id":"example","prompt_id":"turn","prompt":"hello"}"#;
+        let mut connection = UnixStream::connect(&inbox.socket_path).unwrap();
+        write!(
+            connection,
+            "POST / HTTP/1.1\r\nContent-Length: {}\r\n\r\n",
+            body.len()
+        )
+        .unwrap();
+        connection.write_all(body).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(1);
+        loop {
+            if !inbox.take(1).is_empty() {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "Trace observation was blocked by memory refresh"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let start = Instant::now();
+        drop(inbox);
+        assert!(start.elapsed() < Duration::from_secs(1));
+        assert!(child.wait().unwrap().success());
+    }
 
     #[test]
     fn full_prompt_files_keep_the_turn_and_content_above_both_preview_and_transport_limits() {
