@@ -14,6 +14,11 @@ struct FolderWindowRoot: View {
 
     var body: some View {
         ContentView(session: session, windows: windows)
+            .toolbar {
+                if needsStandaloneToolbar {
+                    KeepAwakeToolbar(window: session.window)
+                }
+            }
             .environment(session.coreClient)
             .environment(session.tabs)
             .environment(session.browsers)
@@ -34,6 +39,13 @@ struct FolderWindowRoot: View {
             }
     }
 
+    private var needsStandaloneToolbar: Bool {
+        if case .folder = WindowContent(runState: session.coreClient.runState, snapshot: session.coreClient.snapshot) {
+            return false
+        }
+        return true
+    }
+
     private var preferredColorScheme: ColorScheme? {
         switch session.coreClient.snapshot?.config.appearance.colorScheme {
         case .light: .light
@@ -41,6 +53,7 @@ struct FolderWindowRoot: View {
         case .system, nil: nil
         }
     }
+
 }
 
 #Preview {
@@ -50,4 +63,5 @@ struct FolderWindowRoot: View {
     .environment(WorkflowLayouts(fileURL: AppPaths.previewDirectory.appending(path: "workflow-layouts.json")))
     .environment(HarnessModelCatalog())
     .environment(SettingsPopup(dataDirectory: AppPaths.previewDirectory))
+    .environment(KeepAwakeModel(client: CoreClient(transport: CoreWorker(dataDirectory: AppPaths.previewDirectory))))
 }

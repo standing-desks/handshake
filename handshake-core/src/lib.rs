@@ -11,6 +11,8 @@ mod folder;
 mod git;
 pub use git::status::{GitChange, GitChangeKind, GitDecoration, GitRepository, GitSnapshot};
 mod harness;
+mod keep_awake;
+pub use keep_awake::{KeepAwakeError, keep_awake};
 pub mod memories;
 mod process;
 mod store;

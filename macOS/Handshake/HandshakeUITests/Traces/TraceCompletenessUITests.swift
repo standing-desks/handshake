@@ -48,6 +48,7 @@ extension HandshakeUITests {
 
         // Opening the panel starts the same event refresh used for live revisions.
         header.click()
+        XCTAssertTrue(fallback.waitForNonExistence(timeout: 5), app.debugDescription)
         header.click()
         XCTAssertTrue(fallback.waitForExistence(timeout: 10), app.debugDescription)
         log.hover()

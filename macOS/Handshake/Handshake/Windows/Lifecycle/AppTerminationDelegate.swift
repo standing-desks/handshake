@@ -8,6 +8,7 @@ final class AppTerminationDelegate: NSObject, NSApplicationDelegate {
     private var layouts: WorkflowLayouts?
     private var windows: FolderWindows?
     private var settings: SettingsPopup?
+    private var keepAwake: KeepAwakeModel?
 
     func attach(to coreClient: CoreClient, tabs: FileTabsModel? = nil, layouts: WorkflowLayouts? = nil) {
         self.coreClient = coreClient
@@ -15,10 +16,14 @@ final class AppTerminationDelegate: NSObject, NSApplicationDelegate {
         self.layouts = layouts
     }
 
-    func attach(windows: FolderWindows, layouts: WorkflowLayouts, settings: SettingsPopup? = nil) {
+    func attach(
+        windows: FolderWindows, layouts: WorkflowLayouts, settings: SettingsPopup? = nil,
+        keepAwake: KeepAwakeModel? = nil
+    ) {
         self.windows = windows
         self.layouts = layouts
         self.settings = settings
+        self.keepAwake = keepAwake
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -41,6 +46,7 @@ final class AppTerminationDelegate: NSObject, NSApplicationDelegate {
         isTerminating = true
         windows?.isTerminating = true
         Task {
+            await keepAwake?.stop()
             await windows?.finishClosingWindows()
             for client in clients { await client.stopForQuit() }
             await layouts?.flush()

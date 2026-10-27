@@ -8,12 +8,14 @@ struct AppPresentation {
     let zoom: AppZoom
     let settings: SettingsPopup
     let layouts: WorkflowLayouts
+    let keepAwake: KeepAwakeModel
 
     init(dataDirectory: URL) {
         windows = FolderWindows(dataDirectory: dataDirectory)
         harnessModels = HarnessModelCatalog()
         zoom = AppZoom()
         settings = SettingsPopup(dataDirectory: dataDirectory)
+        keepAwake = KeepAwakeModel(client: settings.coreClient)
         layouts = WorkflowLayouts(fileURL: dataDirectory.appending(path: "workflow-layouts.json"))
     }
 }
