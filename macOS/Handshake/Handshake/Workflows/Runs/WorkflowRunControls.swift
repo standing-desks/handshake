@@ -22,7 +22,7 @@ struct WorkflowRunControls: View {
 
     var body: some View {
         HStack(spacing: AgentSubtabLayout.actionSpacing) {
-            if run.agents.count > 1 && run.workflowType?.definition.graph == nil {
+            if run.agents.count > 1 {
                 Button {
                     Task {
                         do {
@@ -45,7 +45,7 @@ struct WorkflowRunControls: View {
                         ? "Individual mode is available after the workflow finishes."
                         : run.individualMode
                             ? "On: follow up with each agent individually. Turn Off to allow another workflow cycle."
-                            : "Off: a follow-up to a first-stage agent can start another workflow cycle. "
+                            : "Off: a follow-up to a starting agent can start another workflow cycle. "
                                 + "Turn On to work with agents individually."
                 )
                 .accessibilityLabel("Individual mode")

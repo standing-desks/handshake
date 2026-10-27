@@ -24,7 +24,8 @@ extension HandshakeUITests {
         app.typeKey(.return, modifierFlags: [])
         // The run opens on the implementer, which asks for the task in its terminal.
         XCTAssertTrue(item("workflowMarkDone").waitForExistence(timeout: 10), app.debugDescription)
-        XCTAssertFalse(item("workflowIndividualMode").exists)
+        XCTAssertTrue(item("workflowIndividualMode").exists)
+        XCTAssertFalse(item("workflowIndividualMode").isEnabled)
         XCTAssertEqual(app.buttons["agentSubtab-1"].value as? String, "Selected", app.debugDescription)
         XCTAssertTrue(app.buttons["agentSubtab-2"].exists)
         inspectStage("implement", in: app)
@@ -46,11 +47,23 @@ extension HandshakeUITests {
         XCTAssertTrue(item("workflowMarkDone").waitForExistence(timeout: 10))
         completeRole(in: app, summary: "Approved")
         XCTAssertTrue(app.staticTexts["Completed"].waitForExistence(timeout: 10), app.debugDescription)
+        checkIndividualModeToggle(item("workflowIndividualMode"))
         XCTAssertFalse(item("workflowCancel").exists)
         XCTAssertTrue(item("workflowResults").exists)
         XCTAssertTrue(app.staticTexts["Agent completed"].waitForExistence(timeout: 5), app.debugDescription)
         inspectGraphTraceFeedback(in: app)
         inspectSavedHarnesses(in: app)
+    }
+
+    @MainActor
+    private func checkIndividualModeToggle(_ individual: XCUIElement) {
+        XCTAssertTrue(individual.isEnabled)
+        individual.click()
+        let modeOn = expectation(for: NSPredicate { _, _ in individual.value as? String == "On" }, evaluatedWith: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [modeOn], timeout: 5), .completed)
+        individual.click()
+        let modeOff = expectation(for: NSPredicate { _, _ in individual.value as? String == "Off" }, evaluatedWith: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [modeOff], timeout: 5), .completed)
     }
 
     @MainActor
