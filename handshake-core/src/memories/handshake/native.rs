@@ -436,7 +436,11 @@ pub(super) fn quiescent(project: &Project, provider: &str) -> Result<(), Error> 
             .args(["-a", "-p", pid, "-d", "cwd", "-Fn"])
             .output()?;
         if !cwd.status.success() {
-            return Err(Error::NativeActive);
+            // The global process list is a snapshot: an unrelated agent can exit before lsof.
+            // Only confirmed disappearance permits progress; permission errors and live/reused
+            // PIDs still hold native replacement conservatively.
+            confirm_process_exit(pid)?;
+            continue;
         }
         if String::from_utf8_lossy(&cwd.stdout)
             .lines()
@@ -447,6 +451,22 @@ pub(super) fn quiescent(project: &Project, provider: &str) -> Result<(), Error> 
         }
     }
     Ok(())
+}
+
+fn confirm_process_exit(pid: &str) -> Result<(), Error> {
+    let pid = pid
+        .parse::<libc::pid_t>()
+        .map_err(|_| Error::NativeActive)?;
+    if pid <= 0 {
+        return Err(Error::NativeActive);
+    }
+    // SAFETY: signal zero probes a positive PID without sending a signal or modifying it.
+    let result = unsafe { libc::kill(pid, 0) };
+    if result == -1 && std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH) {
+        Ok(())
+    } else {
+        Err(Error::NativeActive)
+    }
 }
 
 /// Shared lifetime lease for Handshake-launched native processes; an exclusive lease protects apply.
@@ -492,4 +512,28 @@ pub(super) fn configuration(
         ]
         .concat(),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn failed_cwd_probe_only_releases_a_confirmed_exited_process() {
+        let mut child = std::process::Command::new("/usr/bin/true").spawn().unwrap();
+        let pid = child.id().to_string();
+        child.wait().unwrap();
+        confirm_process_exit(&pid).unwrap();
+        for pid in [
+            std::process::id().to_string(),
+            "0".into(),
+            "-1".into(),
+            "unknown".into(),
+        ] {
+            assert!(matches!(
+                confirm_process_exit(&pid),
+                Err(Error::NativeActive)
+            ));
+        }
+    }
 }
