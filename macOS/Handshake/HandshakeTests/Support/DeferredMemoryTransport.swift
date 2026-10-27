@@ -97,7 +97,8 @@ actor DeferredMemoryTransport {
         reads[index].resume(with: result)
     }
     func waitForCatalogs(_ count: Int) async throws {
-        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        // Parallel native-framework startup can delay the model's queued MainActor task in CI.
+        let deadline = ContinuousClock.now.advanced(by: .seconds(30))
         while catalogs.count < count {
             guard ContinuousClock.now < deadline else { throw CoreFailure.failed("No memory catalog request arrived.") }
             try await Task.sleep(for: .milliseconds(10))
