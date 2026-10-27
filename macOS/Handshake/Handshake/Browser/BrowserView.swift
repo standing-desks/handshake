@@ -54,7 +54,9 @@ struct BrowserView: View {
             ZStack(alignment: .top) {
                 BrowserWebView(
                     tab: tab, isVisible: isVisible && tab.hasNavigated,
-                    allowsKeyboardFocus: allowsAutomaticFocus && !editingAddress)
+                    allowsKeyboardFocus: allowsAutomaticFocus && !editingAddress && !tab.hasNativeSheet
+                )
+                .accessibilityHidden(tab.hasNativeSheet)
                 if !tab.hasNavigated {
                     ContentUnavailableView(
                         "New Browser Tab", systemImage: "globe",
@@ -67,18 +69,26 @@ struct BrowserView: View {
             }
         }
         .background(Color(nsColor: .textBackgroundColor))
-        .onChange(of: tab.address, initial: true) { if !editingAddress { draft = tab.address } }
-        .onChange(of: editingAddress) {
+        .onChange(of: tab.address, initial: true) {
             if !editingAddress {
                 draft = tab.address
                 validation = nil
             }
         }
+        .onChange(of: editingAddress) {
+            if !editingAddress {
+                draft = tab.address
+            }
+        }
         .onChange(of: tab.locationRequest) { focusAddress() }
         .onChange(of: isVisible, initial: true) {
             tab.isVisible = isVisible
-            if isVisible && !tab.hasNavigated && allowsAutomaticFocus { focusAddress() }
             if !isVisible { editingAddress = false }
+        }
+        .task(id: isVisible) {
+            await Task.yield()
+            guard !Task.isCancelled, isVisible, !tab.hasNavigated else { return }
+            focusAddress()
         }
         .onDisappear { tab.isVisible = false }
     }
@@ -86,6 +96,7 @@ struct BrowserView: View {
     private func focusAddress() {
         guard isVisible, allowsAutomaticFocus else { return }
         draft = tab.address
+        validation = nil
         editingAddress = true
         textSelection = TextSelection(range: draft.startIndex..<draft.endIndex)
     }
@@ -115,6 +126,7 @@ private struct BrowserWebView: NSViewRepresentable {
     func updateNSView(_ host: RetainedContentHost<WKWebView>, context: Context) {
         host.viewportScale = zoom?.scale ?? 1
         tab.webView.pageZoom = zoom?.scale ?? 1
+        tab.webView.setAccessibilityHidden(tab.hasNativeSheet)
         let becameFocusable = !host.allowsKeyboardFocus && allowsKeyboardFocus
         host.allowsKeyboardFocus = allowsKeyboardFocus
         host.setVisible(isVisible)
@@ -127,7 +139,7 @@ private struct BrowserWebView: NSViewRepresentable {
 struct NewBrowserTabButton: View {
     @Environment(BrowserTabsModel.self) private var browsers
     var body: some View {
-        Button("New Browser Tab", systemImage: "globe.badge.plus") { browsers.create() }
+        Button("New Browser Tab", systemImage: "globe") { browsers.create() }
             .labelStyle(.iconOnly).buttonStyle(.glass).controlSize(.small)
             .help("New Browser Tab (⌥⌘T)").accessibilityIdentifier("newBrowserTab")
     }

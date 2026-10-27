@@ -59,6 +59,15 @@ struct MediaPreviewTests {
         await model.load(path: path, folder: temporary.url.path, format: .video)
         #expect(model.player === player)
         #expect(abs(player.currentTime().seconds - time) < 0.1)
+        let playback = try #require(model.playback)
+        #expect(abs(playback.duration - 10) < 0.05)
+        playback.seek(to: 1.5)
+        for _ in 0..<100 {
+            if abs(playback.position - 1.5) < 0.1 { break }
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        #expect(abs(player.currentTime().seconds - 1.5) < 0.1)
+        #expect(abs(playback.position - 1.5) < 0.1)
     }
 
     @Test func nativePreviewsRejectSymlinksAndPathsOutsideTheFolder() async throws {

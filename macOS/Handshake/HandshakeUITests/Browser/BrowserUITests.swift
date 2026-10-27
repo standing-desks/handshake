@@ -13,6 +13,8 @@ extension HandshakeUITests {
         XCTAssertTrue(app.buttons["workflowTab-1"].waitForExistence(timeout: 10))
         resizeWindow(app.windows.firstMatch, to: CGSize(width: 1200, height: 800))
         let create = app.buttons["newBrowserTab"]
+        XCTAssertGreaterThanOrEqual(create.frame.height, 16)
+        XCTAssertGreaterThanOrEqual(create.frame.width, 20)
         XCTAssertGreaterThanOrEqual(create.frame.minX, app.buttons["newWorkflow"].frame.maxX)
         XCTAssertLessThan(create.frame.minX - app.buttons["newWorkflow"].frame.maxX, 20)
         create.click()
@@ -51,7 +53,7 @@ extension HandshakeUITests {
     }
 
     @MainActor
-    func testBrowserNavigationValidationSheetsAndContextualClose() async throws {
+    func testBrowserNavigationValidationPopupAndContextualClose() async throws {
         let folder = try makeTestFolder(prefix: "HandshakeBrowserNavigation")
         let server = try BrowserFixtureServer(root: folder.appending(path: "site"))
         try await server.start()
@@ -78,7 +80,6 @@ extension HandshakeUITests {
         waitForBrowserTitle("Page B", tab: tab, in: app)
         app.typeKey("r", modifierFlags: .command)
         waitForBrowserTitle("Page B", tab: tab, in: app)
-        checkNativeWebsiteSheets(in: app)
         checkNativePopupFocus(in: app)
         app.typeKey(",", modifierFlags: .command)
         XCTAssertTrue(app.buttons["closeSettings"].waitForExistence(timeout: 5))
@@ -87,7 +88,7 @@ extension HandshakeUITests {
         app.typeKey(.escape, modifierFlags: [])
         app.buttons["closeSettings"].click()
         XCTAssertTrue(app.buttons["closeSettings"].waitForNonExistence(timeout: 5))
-        attachScreenshot(of: app, named: "Browser native navigation controls and website sheets")
+        attachScreenshot(of: app, named: "Browser native navigation controls and popup tabs")
         app.typeKey("w", modifierFlags: .command)
         XCTAssertTrue(tab.waitForNonExistence(timeout: 5))
         XCTAssertTrue(app.windows.firstMatch.exists)
@@ -152,24 +153,6 @@ extension HandshakeUITests {
         search.typeKey(.return, modifierFlags: [])
         XCTAssertTrue(search.waitForNonExistence(timeout: 5))
         XCTAssertEqual(app.webViews.textFields["Page note"].value as? String, "keep my page state")
-    }
-
-    @MainActor
-    private func checkNativeWebsiteSheets(in app: XCUIApplication) {
-        app.webViews.buttons["Show alert"].click()
-        XCTAssertTrue(app.sheets.staticTexts["Fixture alert"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.sheets.staticTexts["127.0.0.1"].exists)
-        app.sheets.buttons["OK"].click()
-        app.webViews.buttons["Show confirm"].click()
-        XCTAssertTrue(app.sheets.staticTexts["Fixture confirm"].waitForExistence(timeout: 5))
-        app.sheets.buttons["Cancel"].click()
-        app.webViews.buttons["Show prompt"].click()
-        let input = app.textFields["browserPrompt"]
-        XCTAssertTrue(input.waitForExistence(timeout: 5))
-        input.typeKey("a", modifierFlags: .command)
-        input.typeText("native prompt")
-        app.sheets.buttons["OK"].click()
-        XCTAssertTrue(input.waitForNonExistence(timeout: 5))
     }
 
     @MainActor

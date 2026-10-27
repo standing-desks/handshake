@@ -42,7 +42,7 @@ needs = $(if $(PREBUILT),,$(1))
 UI_DEFAULT_TESTS := testFirstLaunchShowsStartPage \
 	testBrowserTabsShareRenamePinMoveReopenAndRestore \
 	testBrowserZoomRetainsPageAndKeepsCornerLinksInteractive \
-	testBrowserNavigationValidationSheetsAndContextualClose \
+	testBrowserNavigationValidationPopupAndContextualClose \
 	testPDFImageAndVideoPreviewsShareFileTabControls \
 	testManagedTabsKeepCreateButtonBesideTabsAndReachableDuringOverflow \
 	testManagedTabsValidateCancelAndResetNamesAndHandleEmptySearch \

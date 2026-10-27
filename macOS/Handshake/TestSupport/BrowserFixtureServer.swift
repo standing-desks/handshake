@@ -5,6 +5,7 @@ import Foundation
 final class BrowserFixtureServer {
     let root: URL
     private let process = Process()
+    private let errors = Pipe()
     private(set) var baseURL: URL?
 
     init(root: URL) throws {
@@ -13,10 +14,12 @@ final class BrowserFixtureServer {
         for name in ["a", "b", "popup"] {
             try Self.page(name).write(to: root.appending(path: name), atomically: true, encoding: .utf8)
         }
-        process.executableURL = URL(filePath: "/usr/bin/python3")
+        let developer = ProcessInfo.processInfo.environment["DEVELOPER_DIR"]
+        let python = developer.map { URL(filePath: $0).appending(path: "usr/bin/python3") }
+        process.executableURL = python ?? URL(filePath: "/usr/bin/python3")
         process.arguments = ["-u", "-c", Self.server, root.path]
         process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
+        process.standardError = errors
         try process.run()
     }
 
@@ -28,7 +31,10 @@ final class BrowserFixtureServer {
                 baseURL = url
                 return
             }
-            guard process.isRunning else { throw FixtureError.failed }
+            guard process.isRunning else {
+                let data = errors.fileHandleForReading.readDataToEndOfFile()
+                throw FixtureError.server(String(data: data.prefix(2048), encoding: .utf8) ?? "Fixture server exited.")
+            }
             try await Task.sleep(for: .milliseconds(25))
         }
         stop()
@@ -47,7 +53,10 @@ final class BrowserFixtureServer {
         }
     }
 
-    private enum FixtureError: Error { case failed }
+    private enum FixtureError: Error {
+        case failed
+        case server(String)
+    }
 
     private static func page(_ name: String) -> String {
         """
@@ -58,11 +67,11 @@ final class BrowserFixtureServer {
         <button onclick="document.querySelector('#result').textContent=note.value">Keep note</button>
         <a href="/b">Go to B</a><a href="/a">Go to A</a>
         <a href="/popup" target="_blank">Open popup</a>
-        <button onclick="alert('Fixture alert')">Show alert</button>
+        <button onclick="alert('Fixture alert');result.textContent='alert accepted'">Show alert</button>
         <button onclick="result.textContent=String(confirm('Fixture confirm'))">Show confirm</button>
         <button onclick="result.textContent=String(prompt('Fixture prompt','initial'))">Show prompt</button>
         <input id="upload" type="file" multiple aria-label="Choose fixture files">
-        <output id="result" aria-label="Page result"></output>
+        <p id="result" role="status"></p>
         <p id="cookie"></p><script>cookie.textContent=document.cookie; window.retained=0;</script>
         <div style="height:2400px">Scroll area</div><p>End of page</p>
         """

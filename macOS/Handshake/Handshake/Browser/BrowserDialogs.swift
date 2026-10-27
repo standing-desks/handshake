@@ -1,8 +1,14 @@
 import AppKit
+import Observation
 import WebKit
 
 /// Owns one native website sheet and resolves its delegate continuation exactly once.
+@Observable
 final class BrowserDialogs {
+    private(set) var isPresenting = false {
+        didSet { presentationChanged?(isPresenting) }
+    }
+    var presentationChanged: ((Bool) -> Void)?
     private var cancelPending: (() -> Void)?
 
     func cancel() {
@@ -51,10 +57,12 @@ final class BrowserDialogs {
             completion(.cancel)
             return
         }
+        isPresenting = true
         var resolved = false
         let finish: (NSApplication.ModalResponse) -> Void = { [weak self] response in
             guard !resolved else { return }
             resolved = true
+            self?.isPresenting = false
             self?.cancelPending = nil
             completion(response)
         }
@@ -75,10 +83,12 @@ final class BrowserDialogs {
         panel.allowsMultipleSelection = parameters.allowsMultipleSelection
         panel.canChooseDirectories = parameters.allowsDirectories
         panel.canChooseFiles = true
+        isPresenting = true
         var resolved = false
         let finish: (NSApplication.ModalResponse) -> Void = { [weak self] response in
             guard !resolved else { return }
             resolved = true
+            self?.isPresenting = false
             self?.cancelPending = nil
             completion(response == .OK ? panel.urls : nil)
         }

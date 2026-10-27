@@ -21,7 +21,7 @@ extension HandshakeUITests {
             row.click()
             XCTAssertTrue(
                 app.descendants(matching: .any)[identifier].waitForExistence(timeout: 10), app.debugDescription)
-            XCTAssertTrue(app.descendants(matching: .any)[document].waitForExistence(timeout: 10), app.debugDescription)
+            verifyNativeMediaContent(document, in: app)
             XCTAssertFalse(app.staticTexts["Binary File"].exists)
             XCTAssertFalse(app.staticTexts["File Too Large"].exists)
             XCTAssertFalse(app.descendants(matching: .any)["mediaFailure"].exists)
@@ -52,13 +52,60 @@ extension HandshakeUITests {
         waitForTab(pdf, valueContaining: "Pinned", in: app)
     }
     @MainActor
+    private func verifyNativeMediaContent(_ document: String, in app: XCUIApplication) {
+        if document == "pdfDocument" {
+            let text = app.staticTexts.matching(NSPredicate(format: "value CONTAINS %@", "Handshake PDF fixture"))
+                .firstMatch
+            XCTAssertTrue(text.waitForExistence(timeout: 10), app.debugDescription)
+            let next = app.staticTexts.matching(NSPredicate(format: "value CONTAINS %@", "Second PDF page")).firstMatch
+            let viewport = app.descendants(matching: .any)["fileViewport"]
+            for _ in 0..<5 {
+                if next.exists && next.isHittable { break }
+                viewport.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5)).scroll(byDeltaX: 0, deltaY: -700)
+            }
+            XCTAssertTrue(next.isHittable, app.debugDescription)
+        } else if document == "videoPlayer" {
+            app.descendants(matching: .any)["videoPreview"].hover()
+            let ready = app.buttons["Play"].firstMatch.waitForExistence(timeout: 10)
+            attachScreenshot(of: app, named: "Video preview and native controls")
+            XCTAssertTrue(ready, app.debugDescription)
+        } else {
+            XCTAssertTrue(app.images[document].waitForExistence(timeout: 10), app.debugDescription)
+        }
+    }
+
+    @MainActor
     private func verifyVideoPausesWhenHidden(url: URL, in app: XCUIApplication) {
         let play = app.buttons.matching(NSPredicate(format: "label ==[c] %@", "Play")).firstMatch
         XCTAssertTrue(play.waitForExistence(timeout: 5), app.debugDescription)
         play.click()
-        XCTAssertTrue(
-            app.buttons.matching(NSPredicate(format: "label ==[c] %@", "Pause")).firstMatch.waitForExistence(timeout: 5)
-        )
+        let pause = app.buttons["Pause"].firstMatch
+        XCTAssertTrue(pause.waitForExistence(timeout: 5))
+        pause.click()
+        XCTAssertTrue(play.waitForExistence(timeout: 5))
+        let position = app.sliders["videoPosition"]
+        position.adjust(toNormalizedSliderPosition: 0.5)
+        let scrubbed = expectation(
+            for: NSPredicate { _, _ in
+                let value = (position.value as? NSNumber)?.doubleValue ?? -1
+                let time = app.staticTexts["videoTime"].value as? String ?? ""
+                return abs(value - 5) < 0.15 && ["0:04", "0:05"].contains(time)
+            }, evaluatedWith: nil)
+        let displayedTime = String(describing: app.staticTexts["videoTime"].value)
+        XCTAssertEqual(
+            XCTWaiter.wait(for: [scrubbed], timeout: 5), .completed,
+            "Time: \(displayedTime); slider: \(String(describing: position.value))")
+        let beforeArrow = (position.value as? NSNumber)?.doubleValue
+        position.typeKey(.rightArrow, modifierFlags: [])
+        XCTAssertNotEqual((position.value as? NSNumber)?.doubleValue, beforeArrow)
+        position.adjust(toNormalizedSliderPosition: 0.5)
+        app.buttons["workflowTab-1"].click()
+        fileTab(url, in: app).click()
+        XCTAssertTrue(play.waitForExistence(timeout: 5), app.debugDescription)
+        let retainedTime = app.staticTexts["videoTime"].value as? String ?? ""
+        XCTAssertTrue(["0:04", "0:05"].contains(retainedTime), retainedTime)
+        play.click()
+        XCTAssertTrue(pause.waitForExistence(timeout: 5))
         app.buttons["workflowTab-1"].click()
         fileTab(url, in: app).click()
         XCTAssertTrue(play.waitForExistence(timeout: 5), app.debugDescription)

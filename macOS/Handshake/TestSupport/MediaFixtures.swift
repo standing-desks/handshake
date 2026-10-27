@@ -25,12 +25,13 @@ enum MediaFixtures {
     private static func makePDF(at url: URL) throws {
         var box = CGRect(x: 0, y: 0, width: 400, height: 500)
         guard let context = CGContext(url as CFURL, mediaBox: &box, nil) else { throw FixtureError.failed }
-        context.beginPDFPage(nil)
-        let text = NSAttributedString(
-            string: "Handshake PDF fixture", attributes: [.font: NSFont.systemFont(ofSize: 24)])
-        context.textPosition = CGPoint(x: 24, y: 420)
-        CTLineDraw(CTLineCreateWithAttributedString(text), context)
-        context.endPDFPage()
+        for title in ["Handshake PDF fixture", "Second PDF page"] {
+            context.beginPDFPage(nil)
+            let text = NSAttributedString(string: title, attributes: [.font: NSFont.systemFont(ofSize: 24)])
+            context.textPosition = CGPoint(x: 24, y: 420)
+            CTLineDraw(CTLineCreateWithAttributedString(text), context)
+            context.endPDFPage()
+        }
         context.closePDF()
     }
 
@@ -68,6 +69,7 @@ enum MediaFixtures {
                 throw FixtureError.failed
             }
         }
+        writer.endSession(atSourceTime: CMTime(value: 300, timescale: 30))
         input.markAsFinished()
         await writer.finishWriting()
         guard writer.status == .completed else { throw FixtureError.failed }

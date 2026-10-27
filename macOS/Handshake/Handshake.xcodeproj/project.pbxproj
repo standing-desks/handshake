@@ -587,6 +587,7 @@
 		F266A40D3068BD6100C1232B /* Debug configuration for PBXNativeTarget "HandshakeUITests" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = HandshakeUITests/HandshakeUITests.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
@@ -606,6 +607,7 @@
 		F266A40E3068BD6100C1232B /* Release configuration for PBXNativeTarget "HandshakeUITests" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = HandshakeUITests/HandshakeUITests.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;

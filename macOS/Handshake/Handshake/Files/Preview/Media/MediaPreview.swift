@@ -23,7 +23,10 @@ struct MediaPreview: View {
                 case .image:
                     ImagePreview(image: media.image, isVisible: isVisible)
                 case .video:
-                    VideoPreview(player: media.player, isVisible: isVisible, allowsAutomaticFocus: allowsAutomaticFocus)
+                    if let playback = media.playback {
+                        VideoPreview(
+                            playback: playback, isVisible: isVisible, allowsAutomaticFocus: allowsAutomaticFocus)
+                    }
                 case .html, .markdown:
                     EmptyView()
                 }
@@ -86,28 +89,5 @@ private struct ImagePreview: NSViewRepresentable {
         host.focusesOnShow = false
         host.allowsKeyboardFocus = allowsAutomaticFocus
         host.setVisible(isVisible)
-    }
-}
-
-private struct VideoPreview: NSViewRepresentable {
-    let player: AVPlayer?
-    let isVisible: Bool
-    var allowsAutomaticFocus = true
-    func makeNSView(context: Context) -> RetainedContentHost<AVPlayerView> {
-        let view = AVPlayerView()
-        view.controlsStyle = .inline
-        view.setAccessibilityIdentifier("videoPlayer")
-        return RetainedContentHost(content: view, responder: view)
-    }
-    func updateNSView(_ host: RetainedContentHost<AVPlayerView>, context: Context) {
-        if host.content.player !== player { host.content.player = player }
-        if !isVisible { player?.pause() }
-        host.allowsKeyboardFocus = allowsAutomaticFocus
-        host.setVisible(isVisible)
-    }
-    static func dismantleNSView(_ host: RetainedContentHost<AVPlayerView>, coordinator: Void) {
-        host.content.player?.pause()
-        host.content.player = nil
-        host.setVisible(false)
     }
 }

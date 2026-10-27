@@ -12,8 +12,10 @@ struct BrowserDialogsTests {
         let dialogs = BrowserDialogs()
         var responses: [Bool] = []
         dialogs.confirm("Pending confirmation", origin: "localhost", window: window) { responses.append($0) }
+        #expect(dialogs.isPresenting)
         dialogs.cancel()
         dialogs.cancel()
+        #expect(!dialogs.isPresenting)
         #expect(responses == [false])
         window.orderOut(nil)
     }

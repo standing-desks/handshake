@@ -7,7 +7,8 @@ import PDFKit
 final class MediaPreviewModel {
     private(set) var pdf: PDFDocument?
     private(set) var image: NSImage?
-    private(set) var player: AVPlayer?
+    private(set) var playback: VideoPlaybackModel?
+    var player: AVPlayer? { playback?.player }
     private(set) var failure: String?
     private(set) var isLoaded = false
     private var stamp: MediaFileStamp?
@@ -25,7 +26,7 @@ final class MediaPreviewModel {
             observation?.invalidate()
             pdf = nil
             image = nil
-            player = nil
+            playback = nil
             isLoaded = false
             failure = nil
             try await read(next.url, format: format, request: request)
@@ -61,8 +62,10 @@ final class MediaPreviewModel {
         let asset = AVURLAsset(url: url)
         guard try await asset.load(.isPlayable) else { throw MediaError.unreadable }
         guard !Task.isCancelled, generation == request else { return }
+        let duration = try await asset.load(.duration).seconds
+        guard !Task.isCancelled, generation == request else { return }
         let item = AVPlayerItem(asset: asset)
-        player = AVPlayer(playerItem: item)
+        playback = VideoPlaybackModel(player: AVPlayer(playerItem: item), duration: duration)
         observation = item.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
             let failed = item.status == .failed
             Task { @MainActor [weak self, weak item] in

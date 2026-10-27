@@ -43,6 +43,7 @@ final class BrowserTab: NSObject, Identifiable, WKNavigationDelegate, WKUIDelega
         super.init()
         webView.navigationDelegate = self
         webView.uiDelegate = self
+        dialogs.presentationChanged = { [weak self] visible in self?.webView.setAccessibilityHidden(visible) }
         webView.allowsBackForwardNavigationGestures = true
         webView.setAccessibilityIdentifier("browserPage-\(id)")
         observations = [
@@ -55,6 +56,7 @@ final class BrowserTab: NSObject, Identifiable, WKNavigationDelegate, WKUIDelega
         ]
     }
 
+    var hasNativeSheet: Bool { dialogs.isPresenting }
     var defaultTitle: String { pageTitle.isEmpty ? (url?.host ?? "New Browser Tab") : pageTitle }
     var title: String { customName ?? defaultTitle }
     var address: String { (url ?? pendingURL)?.absoluteString ?? "" }

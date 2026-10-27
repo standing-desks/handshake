@@ -26,7 +26,7 @@ extension HandshakeUITests {
             navigateBrowser(to: try server.url("zoom"), in: app)
             let tab = browserTabs(in: app).firstMatch
             waitForBrowserTitle("Zoom page", tab: tab, in: app)
-            let heading = app.webViews.staticTexts["Browser zoom"]
+            let heading = app.webViews.staticTexts["Browser zoom"].firstMatch
             XCTAssertTrue(heading.waitForExistence(timeout: 5))
             let height = heading.frame.height
             for (percent, steps) in [(50, -4), (100, 0), (125, 2), (200, 6)] {
