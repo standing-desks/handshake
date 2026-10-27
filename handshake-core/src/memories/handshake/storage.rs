@@ -2430,22 +2430,61 @@ mod tests {
         )
         .unwrap();
         f.library.sync(&f.project).unwrap();
+        let notes = f.project.codex.join("memories/extensions/ad_hoc/notes");
+        let live: Vec<_> = fs::read_dir(&notes)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| {
+                path.file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .contains(".revision-")
+            })
+            .map(|path| {
+                let bytes = fs::read(&path).unwrap();
+                (path, bytes)
+            })
+            .collect();
+        assert_eq!(live.len(), 1);
         let id = f.library.snapshot(&f.project).unwrap().records[0]
             .id
             .clone();
         f.library.withdraw(&f.project, &id).unwrap();
         f.library.sync(&f.project).unwrap();
-        drop(lease);
-        f.sync();
-        let notes = f.project.codex.join("memories/extensions/ad_hoc/notes");
-        for entry in fs::read_dir(notes).unwrap() {
-            let path = entry.unwrap().path();
-            let text = fs::read_to_string(&path).unwrap();
+        for (path, bytes) in &live {
+            assert_eq!(fs::read(path).unwrap(), *bytes);
+        }
+        for provider in ["claude_code", "codex"] {
             assert!(
-                !text.contains("maple-417"),
-                "stale claim at {}",
-                path.display()
+                !f.library
+                    .prompt_context(&f.project, provider)
+                    .unwrap()
+                    .contains("maple-417")
             );
+        }
+        drop(lease);
+        // Process discovery can still conservatively defer retirement while another native
+        // process exits. Retry reconciliation as the worker does; every old claim must go.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            let result = f.library.sync(&f.project);
+            assert!(
+                matches!(result, Ok(()) | Err(Error::NativeActive)),
+                "retirement failed: {result:?}"
+            );
+            let stale: Vec<_> = fs::read_dir(&notes)
+                .unwrap()
+                .map(|entry| entry.unwrap().path())
+                .filter(|path| fs::read_to_string(path).unwrap().contains("maple-417"))
+                .collect();
+            if stale.is_empty() {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "stale claims: {stale:?}"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(50));
         }
         let count = f.library.load(&f.project).unwrap()["records"]
             .as_array()
