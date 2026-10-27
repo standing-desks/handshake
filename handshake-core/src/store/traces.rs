@@ -114,7 +114,7 @@ impl Store {
             |row| row.get(0),
         )?;
         transaction.execute(
-            "UPDATE workflows SET name = ?2, kind = 'single_agent', harness_id = ?3,
+            "UPDATE workflows SET name = ?2, kind = 'single_agent', harness_id = ?3, archived = 0,
              lifecycle_status = 'running' WHERE id = ?1",
             params![
                 sql_integer(new.workflow_id.0)?,

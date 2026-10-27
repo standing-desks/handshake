@@ -1,16 +1,26 @@
 import Foundation
 
 nonisolated enum FeatureFlagID: String, Codable, Identifiable, Sendable {
+    case tabManagement
     case crossAgentMemoryConsolidation
     var id: Self { self }
 }
 
 nonisolated struct CoreFeatureConfiguration: Decodable, Equatable, Sendable {
+    let tabManagement: Bool
     let crossAgentMemoryConsolidation: Bool
-    init(crossAgentMemoryConsolidation: Bool = false) {
+    init(crossAgentMemoryConsolidation: Bool = false, tabManagement: Bool = false) {
+        self.tabManagement = tabManagement
         self.crossAgentMemoryConsolidation = crossAgentMemoryConsolidation
     }
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        crossAgentMemoryConsolidation =
+            try values.decodeIfPresent(Bool.self, forKey: .crossAgentMemoryConsolidation) ?? false
+        tabManagement = try values.decodeIfPresent(Bool.self, forKey: .tabManagement) ?? false
+    }
     private enum CodingKeys: String, CodingKey {
+        case tabManagement = "tab_management"
         case crossAgentMemoryConsolidation = "cross_agent_memory_consolidation"
     }
 }

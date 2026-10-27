@@ -5,6 +5,7 @@ struct TerminalHistorySurface: View {
     @Environment(TraceTerminalNavigation.self) private var navigation
     let target: TraceTerminalTarget
     let returnToLive: () -> Void
+    var showsReturnToLive = true
     @State private var state = TerminalHistoryState()
     @State private var minimap = TerminalMinimapState()
 
@@ -32,9 +33,11 @@ struct TerminalHistorySurface: View {
                 Text(target.message).font(.caption).foregroundStyle(Color(nsColor: palette.text).opacity(0.7))
                     .lineLimit(1)
                 Spacer(minLength: 0)
-                Button("Return to live", action: returnToLive)
-                    .buttonStyle(.glass).controlSize(.small)
-                    .accessibilityIdentifier("returnToLive")
+                if showsReturnToLive {
+                    Button("Return to live", action: returnToLive)
+                        .buttonStyle(.glass).controlSize(.small)
+                        .accessibilityIdentifier("returnToLive")
+                }
             }
             .foregroundStyle(Color(nsColor: palette.text))
             .padding(.horizontal, 14).frame(height: 40)

@@ -155,7 +155,7 @@ final class FolderWindows {
     func retire(_ session: FolderWindowSession) {
         guard !isTerminating, !session.isClosing else { return }
         session.isClosing = true
-        session.tabs.discardAll()
+        session.tabs.discardAll(preservingPresentation: true)
         closingTasks[session.id] = Task {
             await session.coreClient.stopForWindowClose()
             sessions.removeValue(forKey: session.id)

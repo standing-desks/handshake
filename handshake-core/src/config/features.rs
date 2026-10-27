@@ -10,12 +10,14 @@ use crate::{FileContent, FilePreview, FileSaveOutcome, FileSaveRequest, FileVers
 #[serde(default)]
 pub struct FeatureFlags {
     pub cross_agent_memory_consolidation: bool,
+    pub tab_management: bool,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum FeatureFlag {
     CrossAgentMemoryConsolidation,
+    TabManagement,
 }
 
 #[derive(Debug, Serialize)]
@@ -32,16 +34,23 @@ pub struct FeatureFlagSnapshot {
 }
 
 impl FeatureFlag {
-    const ALL: [Self; 1] = [Self::CrossAgentMemoryConsolidation];
+    const ALL: [Self; 2] = [Self::CrossAgentMemoryConsolidation, Self::TabManagement];
 
     fn key(self) -> &'static str {
         match self {
             Self::CrossAgentMemoryConsolidation => "cross_agent_memory_consolidation",
+            Self::TabManagement => "tab_management",
         }
     }
 
     fn state(self, flags: &FeatureFlags) -> FeatureFlagState {
         match self {
+            Self::TabManagement => FeatureFlagState {
+                id: self,
+                title: "Tab management",
+                description: "Rename, reorder, pin, find, and reopen tabs, with keyboard navigation and workflow status.",
+                enabled: flags.tab_management,
+            },
             Self::CrossAgentMemoryConsolidation => FeatureFlagState {
                 id: self,
                 title: "Cross-agent memory consolidation",

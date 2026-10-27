@@ -4540,4 +4540,60 @@ os.execvp('pi', ['pi', '--append-system-prompt', instructions, '--', prompt])
             "Handshake workflow works\n"
         );
     }
+    #[test]
+    fn reopened_runs_keep_outcomes_and_reject_delayed_completions_without_processes() {
+        for outcome in [RunStatus::Running, RunStatus::Completed, RunStatus::Failed] {
+            let folder = tempfile::tempdir().unwrap();
+            let bin = tempfile::tempdir().unwrap();
+            let app = application(folder.path(), bin.path(), "while :; do sleep 1; done");
+            app.lock_inner()
+                .unwrap()
+                .config
+                .feature_flags
+                .tab_management = true;
+            let id = launch_legacy(&app, folder.path(), BuiltinType::Adversarial);
+            let original = app.snapshot().unwrap().workflows.workflows[0].clone();
+            let run = original.run.as_ref().unwrap();
+            let late = Command::CompleteWorkflowRole {
+                workflow_id: id,
+                agent_id: original.agents[0].agent_id,
+                generation: run.generation,
+                signal: CompletionSignal {
+                    decision: Decision::Done,
+                    summary: "Late".into(),
+                    assignments: Vec::new(),
+                    task: String::new(),
+                },
+            };
+            if outcome != RunStatus::Running {
+                let mut inner = app.lock_inner().unwrap();
+                let mut workflow = inner.workflows.workflows[0].clone();
+                workflow
+                    .run
+                    .as_mut()
+                    .unwrap()
+                    .finish(outcome, "Outcome before close");
+                workflow.status = workflow_status(outcome);
+                inner.publish_run(0, workflow).unwrap();
+            }
+            accepted(&app, Command::CloseWorkflow { workflow_id: id });
+            assert!(app.run_processes.lock().unwrap().get(&id).is_none());
+            accepted(&app, Command::ReopenWorkflow { workflow_id: id });
+            assert!(
+                matches!(app.handle_command(RequestId(2), late).unwrap().disposition,
+                CommandDisposition::Rejected { code, .. } if code == "workflowArchived")
+            );
+            app.poll_workflow_signals().unwrap();
+            let snapshot = app.snapshot().unwrap();
+            let reopened = &snapshot.workflows.workflows[0];
+            let expected = if outcome == RunStatus::Running {
+                RunStatus::Interrupted
+            } else {
+                outcome
+            };
+            assert_eq!(reopened.status, workflow_status(expected));
+            assert_eq!(reopened.run.as_ref().unwrap().status, expected);
+            assert_eq!(snapshot.terminals, []);
+        }
+    }
 }

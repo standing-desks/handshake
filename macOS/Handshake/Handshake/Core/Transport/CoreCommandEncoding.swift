@@ -73,7 +73,8 @@ nonisolated private struct CommandPayload: Encodable {
         case .createSession, .renameSession, .selectSession, .deleteSession:
             type = ""
             configureSession(command)
-        case .createWorkflow, .activateWorkflow, .nameDraftWorkflow, .closeWorkflow, .startAgent, .resumeAgent,
+        case .createWorkflow, .activateWorkflow, .nameDraftWorkflow, .renameWorkflow, .reopenWorkflow, .closeWorkflow,
+            .startAgent, .resumeAgent,
             .cancelAgent:
             type = ""
             configureWorkflow(command)
@@ -213,6 +214,13 @@ nonisolated private struct CommandPayload: Encodable {
             type = "nameDraftWorkflow"
             self.workflowID = workflowID
             self.name = name
+        case .renameWorkflow(let workflowID, let name):
+            type = "renameWorkflow"
+            self.workflowID = workflowID
+            self.name = name
+        case .reopenWorkflow(let workflowID):
+            type = "reopenWorkflow"
+            self.workflowID = workflowID
         case .closeWorkflow(let workflowID):
             type = "closeWorkflow"
             self.workflowID = workflowID

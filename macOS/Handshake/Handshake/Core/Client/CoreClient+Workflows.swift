@@ -1,6 +1,18 @@
 import Foundation
 
 extension CoreClient {
+    func renameWorkflow(workflowID: UInt64, name: String?) async throws {
+        let receipt = try await send(.renameWorkflow(workflowID: workflowID, name: name))
+        if let error = receipt.error { throw CoreFailure.commandRejected(code: error.code, message: error.message) }
+    }
+
+    func reopenWorkflow(workflowID: UInt64) async throws {
+        let result = try await sendAndAwaitCompletion(.reopenWorkflow(workflowID: workflowID))
+        guard case .workflowReopened(let id) = result, id == workflowID else {
+            throw CoreFailure.unexpectedCommandResult
+        }
+    }
+
     func nameDraftWorkflow(workflowID: UInt64, name: String) async throws {
         let receipt = try await send(.nameDraftWorkflow(workflowID: workflowID, name: name))
         if let error = receipt.error {

@@ -22,7 +22,7 @@ struct FeatureFlagsView: View {
                         .accessibilityIdentifier("featureFlag-\(flag.id.rawValue)")
                         .disabled(configurationHasChanges || model.isSaving || model.needsApply)
                     }
-                    Text("Changes save and apply immediately. Existing memories and running agents stay intact.")
+                    Text("Changes save and apply immediately. Running work stays intact.")
                         .font(.caption).foregroundStyle(.secondary)
                 } else if model.failure == nil {
                     ProgressView("Loading feature flags…")

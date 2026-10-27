@@ -78,7 +78,13 @@ final class MetalTerminalView: TerminalView {
         set {
             super.hasFocus = newValue
             // AppKit can change the first responder during a SwiftUI update, which mustn't change state.
-            if newValue { Task { [weak self] in self?.didFocus?() } }
+            if newValue {
+                Task { [weak self] in
+                    await Task.yield()
+                    guard let self, self.hasFocus, self.requestedVisibility != false else { return }
+                    self.didFocus?()
+                }
+            }
         }
     }
 

@@ -64,6 +64,10 @@ pub struct Workflow {
     pub workflow_id: WorkflowId,
     pub session_id: SessionId,
     pub name: String,
+    /// A user title, independent of the automatic workflow name.
+    pub custom_name: Option<String>,
+    /// Reopened history never starts processes implicitly, including after relaunch.
+    pub archived: bool,
     pub kind: WorkflowKind,
     /// The harness filling a single-agent workflow's role.
     pub harness: Option<HarnessId>,
@@ -112,6 +116,9 @@ impl Workflow {
 
     /// The workflow's live shells.
     pub(crate) fn terminal_ids(&self) -> Vec<TerminalId> {
+        if self.archived {
+            return Vec::new();
+        }
         self.shells()
             .into_iter()
             .filter(|terminal_id| terminal_id.value() != 0)

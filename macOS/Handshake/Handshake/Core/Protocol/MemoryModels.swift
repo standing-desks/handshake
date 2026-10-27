@@ -16,7 +16,7 @@ nonisolated enum MemoryKind: String, Codable, CaseIterable, Identifiable {
     var id: Self { self }
 }
 
-nonisolated struct CoreMemoryRequest: Encodable, Sendable {
+nonisolated struct CoreMemoryRequest: Codable, Equatable, Sendable {
     let folder: String?
     var sourceID: String?
     var examplesRoot: String?
@@ -27,7 +27,7 @@ nonisolated struct CoreMemoryRequest: Encodable, Sendable {
     }
 }
 
-nonisolated struct CoreMemorySource: Decodable, Identifiable, Sendable {
+nonisolated struct CoreMemorySource: Codable, Equatable, Identifiable, Sendable {
     let id: String
     let title: String
     let harness: MemoryHarness

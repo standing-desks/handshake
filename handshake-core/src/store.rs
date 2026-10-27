@@ -15,7 +15,7 @@ mod trace_payloads;
 mod trace_storage;
 mod traces;
 mod workflow_types;
-mod workflows;
+pub(crate) mod workflows;
 pub(crate) use traces::{NewTraceSpan, TraceEnding};
 
 pub(crate) use harness_steps::HarnessStepContext;
@@ -265,7 +265,10 @@ const MIGRATIONS: &[&str] = &[
        payload_bytes INTEGER NOT NULL DEFAULT 0,payload_files INTEGER NOT NULL DEFAULT 0,updated_at INTEGER NOT NULL DEFAULT 0,
        clear_generation INTEGER NOT NULL DEFAULT 0,completed_clear_generation INTEGER NOT NULL DEFAULT 0
      ) STRICT;
-     INSERT INTO trace_storage_preferences(id,budget_bytes,retention_days) VALUES(1,536870912,90)"
+     INSERT INTO trace_storage_preferences(id,budget_bytes,retention_days) VALUES(1,536870912,90)",
+    // 20: Custom workflow titles and read-only reopened history.
+    "ALTER TABLE workflows ADD COLUMN custom_name TEXT;
+     ALTER TABLE workflows ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0,1))"
 ];
 
 /// How long a write waits for another connection, such as a second Handshake process, to release the

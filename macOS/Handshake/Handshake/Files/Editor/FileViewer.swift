@@ -8,6 +8,7 @@ struct FileViewer: View {
     let folder: String
     let failure: String?
     let isVisible: Bool
+    var allowsAutomaticFocus = true
     let openFile: (URL) -> Void
     var didSave: (() async throws -> Void)?
     @State private var showsGoToLine = false
@@ -74,7 +75,7 @@ struct FileViewer: View {
                                     isVisible: isVisible, openFile: openFile, format: format,
                                     localResourcesOnly: editor.memoryRequest != nil,
                                     hidesFrontmatter: editor.memoryRequest != nil,
-                                    focusesOnShow: editor.memoryRequest == nil
+                                    focusesOnShow: allowsAutomaticFocus && editor.memoryRequest == nil
                                 )
                                 .id(editor.navigationID)
                             } else {
@@ -182,7 +183,8 @@ struct FileViewer: View {
                 text: Binding(get: { editor.text }, set: { editor.text = $0 }),
                 loadID: editor.loadID, isEditable: editor.isEditable && !showsPreview,
                 isVisible: isVisible && !showsPreview, lineRequest: lineRequest, language: syntaxLanguage,
-                focusesOnShow: !showsGoToLine && (editor.memoryRequest == nil || previewFormat != nil))
+                focusesOnShow: allowsAutomaticFocus && !showsGoToLine
+                    && (editor.memoryRequest == nil || previewFormat != nil))
         case .binary:
             unavailable("Binary File", "Only UTF-8 text files can be displayed.")
         case .tooLarge:

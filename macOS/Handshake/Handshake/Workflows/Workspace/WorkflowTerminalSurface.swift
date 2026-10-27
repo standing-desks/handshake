@@ -11,6 +11,7 @@ struct WorkflowTerminalSurface: View {
     var isTiled = false
     var didFocus: (() -> Void)?
     let reportFailure: (String) -> Void
+    var startNewTerminal: () -> Void = {}
     @State private var draft = WorkflowDraftPresentation()
     @State private var showsChoices = false
     @State private var focusRequest = 0
@@ -24,7 +25,11 @@ struct WorkflowTerminalSurface: View {
     }
 
     var body: some View {
-        if workflow.kind == .agents {
+        if workflow.isArchived {
+            if isVisible ?? isSelected {
+                ArchivedWorkflowSurface(workflow: workflow, startNewTerminal: startNewTerminal)
+            }
+        } else if workflow.kind == .agents {
             AgentWorkflowSurface(
                 folder: folder, workflow: workflow, isSelected: isSelected, reportFailure: reportFailure)
         } else {

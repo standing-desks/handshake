@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct WorkflowTabs: View {
@@ -111,7 +112,7 @@ struct WorkflowTabs: View {
     }
 }
 
-private struct WorkspaceTab: View {
+struct WorkspaceTab: View {
     let name: String
     let symbol: String
     let tabID: String
@@ -120,6 +121,12 @@ private struct WorkspaceTab: View {
     let fill: Color
     var selectedForeground: Color?
     var isEdited = false
+    var statusSymbol: String?
+    var statusColor: Color = .secondary
+    var statusDescription: String?
+    var unread = false
+    var pinned = false
+    var doubleClick: (() -> Void)?
     let isSelected: Bool
     let select: () -> Void
     let close: () -> Void
@@ -131,29 +138,17 @@ private struct WorkspaceTab: View {
     private var showsClose: Bool { isHovered || focusedControl != nil }
 
     var body: some View {
-        Button(action: select) {
-            HStack(spacing: 6) {
-                Image(systemName: symbol)
-                    .frame(width: 15)
-                    .opacity(showsClose ? 0 : 1)
-                Text(name)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(maxWidth: 180)
-                if isEdited {
-                    Circle().fill(.secondary).frame(width: 5, height: 5).accessibilityHidden(true)
-                }
-            }
-            .tabTitleStyle(isSelected: isSelected, foreground: isSelected ? selectedForeground : nil)
-            .padding(.horizontal, 12)
-            .frame(height: isSelected ? WorkflowTabLayout.height : 28)
-            .contentShape(.rect)
+        Button(action: activate) {
+            titleContent
         }
         .buttonStyle(.plain)
         .focused($focusedControl, equals: .select)
         .accessibilityLabel(name)
         .accessibilityValue(
-            [isSelected ? "Selected" : nil, isEdited ? "Edited" : nil].compactMap { $0 }.joined(separator: ", ")
+            [
+                isSelected ? "Selected" : nil, isEdited ? "Edited" : nil, pinned ? "Pinned" : nil,
+                unread ? "Unseen update" : nil, statusDescription,
+            ].compactMap { $0 }.joined(separator: ", ")
         )
         .accessibilityIdentifier(tabID)
         .background {
@@ -182,6 +177,37 @@ private struct WorkspaceTab: View {
         .onHover { isHovered = $0 }
         .animation(Motion.tabCloseButton, value: showsClose)
         .help(helpText)
+    }
+
+    private func activate() {
+        if let event = NSApp.currentEvent, event.type == .leftMouseUp, event.clickCount == 2, let doubleClick {
+            doubleClick()
+        } else {
+            select()
+        }
+    }
+
+    private var titleContent: some View {
+        HStack(spacing: 6) {
+            Image(systemName: symbol)
+                .frame(width: 15)
+                .opacity(showsClose ? 0 : 1)
+            Text(name)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: 180)
+            if let statusSymbol {
+                Image(systemName: statusSymbol).font(.system(size: 9)).foregroundStyle(statusColor)
+            }
+            if unread { Circle().fill(.tint).frame(width: 5, height: 5).accessibilityHidden(true) }
+            if isEdited {
+                Circle().fill(.secondary).frame(width: 5, height: 5).accessibilityHidden(true)
+            }
+        }
+        .tabTitleStyle(isSelected: isSelected, foreground: isSelected ? selectedForeground : nil)
+        .padding(.horizontal, 12)
+        .frame(height: isSelected ? WorkflowTabLayout.height : 28)
+        .contentShape(.rect)
     }
 
     private var tabShape: UnevenRoundedRectangle {
