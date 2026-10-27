@@ -79,3 +79,36 @@ extension HandshakeUITests {
         XCTAssertEqual(XCTWaiter.wait(for: [matches], timeout: 30), .completed, app.debugDescription)
     }
 }
+
+extension HandshakeUITests {
+    func writeMemoryPromptAgent(in folder: URL) throws -> URL {
+        let bin = folder.appending(path: "bin")
+        try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+        try """
+        #!/usr/bin/python3
+        import json, os, pathlib, subprocess, sys
+        if '--help' in sys.argv:
+            sys.stdout.write('--model <model> Model (e.g. "sonnet" or "opus")\\n')
+            sys.exit(0)
+        settings = json.loads(sys.argv[sys.argv.index('--settings') + 1])
+        memory = settings['autoMemoryDirectory']
+        hooks = settings['hooks']['UserPromptSubmit']
+        command = next(h['command'] for g in hooks for h in g['hooks'] if not h.get('async', False))
+        for group in settings['hooks']['SessionStart']:
+            for hook in group['hooks']:
+                subprocess.run(hook['command'], shell=True, input=json.dumps({
+                    'hook_event_name':'SessionStart','session_id':'ui-session'
+                }), text=True, capture_output=True, check=True)
+        pathlib.Path('agent-launch.json').write_text(json.dumps({'arguments':sys.argv, 'memory_directory':memory}))
+        pathlib.Path('agent-pid').write_text(str(os.getpid()))
+        for line in sys.stdin:
+            payload = json.dumps({'session_id':'ui-session','prompt':line})
+            result = subprocess.run(command, shell=True, input=payload, text=True, capture_output=True)
+            pathlib.Path('prompt-memory-response.json').write_text(result.stdout)
+            sys.stdout.write('Prompt refreshed\\n')
+            sys.stdout.flush()
+        """.write(to: folder.appending(path: "memory-prompt-agent.py"), atomically: true, encoding: .utf8)
+        return bin
+    }
+
+}

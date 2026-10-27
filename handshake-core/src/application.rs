@@ -346,10 +346,13 @@ impl Application {
             &data_directory.join("transcripts"),
         )?);
         let store = Store::open(&database_path(data_directory))?;
-        let memory_enabled = config.feature_flags.cross_agent_memory_consolidation;
-        let mut application = Self::with_store(store, config, DEFAULT_EVENT_CAPACITY, transcripts)?;
-        application.attach_memories(data_directory, memory_enabled);
-        Ok(application)
+        Self::with_store(
+            store,
+            config,
+            DEFAULT_EVENT_CAPACITY,
+            transcripts,
+            Some(data_directory),
+        )
     }
 
     /// Creates the application with an in-memory database, default configuration, and an
@@ -361,6 +364,7 @@ impl Application {
             Config::default(),
             event_capacity,
             Arc::new(TranscriptRecorder::temporary()?),
+            None,
         )?;
         application
             .terminals
@@ -373,11 +377,19 @@ impl Application {
         config: Config,
         event_capacity: usize,
         transcripts: Arc<TranscriptRecorder>,
+        memory_data_directory: Option<&Path>,
     ) -> Result<Self, ApplicationError> {
         // Recover every folder, including closed or currently unavailable folders, before ready.
         store.recover_interrupted_work()?;
         let folders = Folders::restore(store)?;
-        Self::with_folders(folders, config, event_capacity, transcripts, false)
+        Self::with_folders(
+            folders,
+            config,
+            event_capacity,
+            transcripts,
+            false,
+            memory_data_directory,
+        )
     }
 
     fn with_folders(
@@ -386,6 +398,7 @@ impl Application {
         event_capacity: usize,
         transcripts: Arc<TranscriptRecorder>,
         shared_recording: bool,
+        memory_data_directory: Option<&Path>,
     ) -> Result<Self, ApplicationError> {
         folders.store().configure_trace_storage(&config.traces)?;
         let mut events = EventJournal::new(event_capacity)?;
@@ -404,7 +417,8 @@ impl Application {
             terminals.set_test_shell(PathBuf::from("/bin/sh"));
             terminals
         };
-        let application = Self {
+        let memory_enabled = config.feature_flags.cross_agent_memory_consolidation;
+        let mut application = Self {
             window_storage: None,
             shared_recording,
             memory_worker: None,
@@ -445,6 +459,10 @@ impl Application {
             harness_path: None,
         };
 
+        // Restored agents need their native profile and prompt hooks on their first launch.
+        if let Some(directory) = memory_data_directory {
+            application.attach_memories(directory, memory_enabled);
+        }
         application.restore_workflows()?;
         let _ = application.trace_storage_status(None)?;
         info!("application core initialized");

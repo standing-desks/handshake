@@ -56,6 +56,11 @@ process needs a normal resume to receive the hook; refresh does not interrupt a
 streaming answer. Local consolidation does not call a model. Native memory
 generation still follows the harness's own schedule and settings.
 
+Attach the memory service before restoring agent processes at application or
+window startup. A saved conversation must resume with its original native
+profile and the current prompt hook. Attaching the service after restoration
+cannot repair the environment of a process that has already launched.
+
 An archive stops future Handshake delivery. It cannot erase text that an agent
 has already read into an open conversation. Native file changes may wait for a
 writer to become idle; live prompt refresh must exclude archived claims during

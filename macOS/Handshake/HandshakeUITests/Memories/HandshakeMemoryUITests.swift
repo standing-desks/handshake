@@ -279,6 +279,45 @@ extension HandshakeUITests {
         try checkLiveArchiveAndRestore(project: project, notes: notes, response: response, in: app)
         XCTAssertEqual(try String(contentsOf: pidFile, encoding: .utf8), pid)
         XCTAssertNotEqual(kill(Int32(pid) ?? 0, 0), -1)
+        try checkLiveMemoryAfterRelaunch(fixture: fixture, notes: notes, response: response, previousPID: pid)
+    }
+
+    @MainActor
+    private func checkLiveMemoryAfterRelaunch(
+        fixture: HandshakeMemoryFixture, notes: URL, response: URL, previousPID: String
+    ) throws {
+        let app = fixture.app
+        let launchFile = fixture.folder.appending(path: "agent-launch.json")
+        let original = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(contentsOf: launchFile)) as? [String: Any])
+        let originalMemory = try XCTUnwrap(original["memory_directory"] as? String)
+        app.terminate()
+        try FileManager.default.removeItem(at: response)
+        try "Use the silver restart check for this fictional project.".write(
+            to: notes.appending(path: "restart-check.md"), atomically: true, encoding: .utf8)
+        app.launch()
+        let resumed = expectation(
+            for: NSPredicate { _, _ in
+                guard let text = try? String(contentsOf: fixture.folder.appending(path: "agent-pid"), encoding: .utf8),
+                    let pid = Int32(text), pid > 0
+                else { return false }
+                return text != previousPID
+            }, evaluatedWith: nil)
+        wait(for: [resumed], timeout: 15)
+        let launch = try Data(contentsOf: launchFile)
+        let values = try XCTUnwrap(JSONSerialization.jsonObject(with: launch) as? [String: Any])
+        let arguments = try XCTUnwrap(values["arguments"] as? [String])
+        let resume = try XCTUnwrap(arguments.firstIndex(of: "--resume"))
+        XCTAssertEqual(try XCTUnwrap(arguments.dropFirst(resume + 1).first), "ui-session")
+        XCTAssertEqual(try XCTUnwrap(values["memory_directory"] as? String), originalMemory)
+        let tab = app.buttons["workflowTab-2"]
+        XCTAssertTrue(tab.waitForExistence(timeout: 10), app.debugDescription)
+        let visible = expectation(for: NSPredicate { _, _ in tab.isHittable }, evaluatedWith: nil)
+        wait(for: [visible], timeout: 5)
+        tab.click()
+        app.typeText("Which project check applies after reopening?\r")
+        waitForFile(response, containing: "silver restart check", in: app)
+        attachScreenshot(of: app, named: "Resumed agent retains its native memory profile and live prompt hook")
     }
 
     @MainActor
@@ -310,29 +349,6 @@ extension HandshakeUITests {
         app.typeKey(.escape, modifierFlags: [])
         app.typeText("Which project check is restored?\r")
         waitForFile(response, containing: "violet receipt check", in: app)
-    }
-
-    private func writeMemoryPromptAgent(in folder: URL) throws -> URL {
-        let bin = folder.appending(path: "bin")
-        try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
-        try """
-        #!/usr/bin/python3
-        import json, os, pathlib, subprocess, sys
-        if '--help' in sys.argv:
-            sys.stdout.write('--model <model> Model (e.g. "sonnet" or "opus")\\n')
-            sys.exit(0)
-        settings = json.loads(sys.argv[sys.argv.index('--settings') + 1])
-        hooks = settings['hooks']['UserPromptSubmit']
-        command = next(h['command'] for g in hooks for h in g['hooks'] if not h.get('async', False))
-        pathlib.Path('agent-pid').write_text(str(os.getpid()))
-        for line in sys.stdin:
-            payload = json.dumps({'session_id':'ui-session','prompt':line})
-            result = subprocess.run(command, shell=True, input=payload, text=True, capture_output=True)
-            pathlib.Path('prompt-memory-response.json').write_text(result.stdout)
-            sys.stdout.write('Prompt refreshed\\n')
-            sys.stdout.flush()
-        """.write(to: folder.appending(path: "memory-prompt-agent.py"), atomically: true, encoding: .utf8)
-        return bin
     }
 
     @MainActor
