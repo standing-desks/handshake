@@ -82,6 +82,7 @@ UI_DEFAULT_TESTS := testFirstLaunchShowsStartPage \
 	testTerminalRunsLibraryInjectionAndDebugger \
 	testSingleAgentStartsInteractivelyTakesInputAndCancels \
 	testSingleAgentUsesHarnessDefaultsAndRemembersYoloMode \
+	testKiroLaunchesRecordsTracesAndResumesEachConversation \
 	testClaudeMinimapDotsSelectTheirTraceAndScrollToThePrompt \
 	testTimelineInspectorShowsNestedCallsFiltersAndSurvivesRelaunch \
 	testNativeHistoryShowsModelSummaryFullDetailsAndStoragePinAfterRelaunch \
@@ -180,6 +181,7 @@ test-lib: ## Test the library (LIB_TEST_ARGS='filter -- flags')
 	handshake_config_tests=$$(mktemp -d "$${TMPDIR:-/tmp}/handshake-config-tests.XXXXXX"); \
 	trap 'rm -rf "$$handshake_config_tests"' EXIT; \
 	env -u HANDSHAKE_CONFIG_PATH -u TWINE_CONFIG_PATH XDG_CONFIG_HOME="$$handshake_config_tests" \
+		KIRO_HOME="$$handshake_config_tests/kiro" \
 		cargo test --workspace --locked $(LIB_TEST_ARGS)
 
 .PHONY: check-lib

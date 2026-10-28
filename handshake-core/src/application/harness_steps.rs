@@ -192,51 +192,49 @@ impl Application {
             }
         }
     }
-    /// Missing hook infrastructure degrades to the normal interactive launch.
+    /// Optional observers degrade gracefully; Kiro's named profile is required for exact resume.
     pub(super) fn harness_arguments(
         &self,
         harness: HarnessId,
         terminal_id: TerminalId,
         options: crate::harness::launch::LaunchOptions<'_>,
         prompt: &str,
-    ) -> (Vec<OsString>, Option<StepInbox>) {
+        session: Option<&str>,
+    ) -> std::io::Result<(Vec<OsString>, Option<StepInbox>)> {
         let mut arguments: Vec<OsString> = harness
             .definition()
             .subcommand
             .map(OsString::from)
             .into_iter()
             .collect();
-        let hooks = {
-            self.terminal_output
-                .replay_position(terminal_id)
-                .ok()
-                .and_then(|position| {
-                    match match harness {
-                        HarnessId::ClaudeCode => crate::harness::claude::prepare(position),
-                        HarnessId::Codex => crate::harness::codex::prepare(position),
-                        HarnessId::Pi | HarnessId::Omp => {
-                            crate::harness::pi::prepare(position, harness)
-                        }
-                        HarnessId::Antigravity => crate::harness::antigravity::prepare(position),
-                        HarnessId::Opencode => crate::harness::opencode::prepare(position),
-                    } {
-                        Ok((inbox, flags)) => {
-                            arguments.extend(flags);
-                            Some(inbox)
-                        }
-                        Err(error) => {
-                            tracing::warn!(%error, "couldn't prepare harness step hooks");
-                            None
-                        }
-                    }
-                })
+        let prepared = self
+            .terminal_output
+            .replay_position(terminal_id)
+            .map_err(std::io::Error::other)
+            .and_then(|position| match harness {
+                HarnessId::ClaudeCode => crate::harness::claude::prepare(position),
+                HarnessId::Codex => crate::harness::codex::prepare(position),
+                HarnessId::Pi | HarnessId::Omp => crate::harness::pi::prepare(position, harness),
+                HarnessId::Antigravity => crate::harness::antigravity::prepare(position),
+                HarnessId::Opencode => crate::harness::opencode::prepare(position),
+                HarnessId::Kiro => crate::harness::kiro::prepare(position, session),
+            });
+        let hooks = match prepared {
+            Ok((inbox, flags)) => {
+                arguments.extend(flags);
+                Some(inbox)
+            }
+            Err(error) if harness == HarnessId::Kiro => return Err(error),
+            Err(error) => {
+                tracing::warn!(%error,"couldn't prepare harness step hooks");
+                None
+            }
         };
         arguments.extend(crate::harness::launch::launch_arguments(harness, options));
-        // Without a prompt the harness opens interactively and waits for the user.
         if !prompt.is_empty() {
             arguments.extend(harness.definition().arguments(prompt));
         }
-        (arguments, hooks)
+        Ok((arguments, hooks))
     }
 
     pub(super) fn register_harness_steps(

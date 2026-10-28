@@ -147,7 +147,14 @@ impl Application {
             Ok(id) => id,
             Err(error) => return Ok(rejection("agentStartFailed", &error)),
         };
-        let (mut arguments, hooks) = self.harness_arguments(harness, reserved, options, "");
+        let (mut arguments, hooks) =
+            match self.harness_arguments(harness, reserved, options, "", None) {
+                Ok(prepared) => prepared,
+                Err(error) => {
+                    let _ = self.terminals.cancel_reserved_terminal(reserved);
+                    return Ok(rejection("agentStartFailed", &error));
+                }
+            };
         let (memory_environment, memory_lease) = match self.memory_environment(harness, &folder) {
             Ok(values) => values,
             Err(error) => {

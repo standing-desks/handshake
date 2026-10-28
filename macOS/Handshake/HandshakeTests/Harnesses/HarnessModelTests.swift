@@ -102,6 +102,7 @@ struct HarnessModelTests {
         #expect(catalog.entry(for: .antigravity).models != nil)
         #expect(catalog.entry(for: .omp).models != nil)
         #expect(catalog.entry(for: .opencode).models != nil)
+        #expect(catalog.entry(for: .kiro).models != nil)
         guard case .failed(let message) = catalog.entry(for: .piAgent) else {
             Issue.record("pi's listing should have failed")
             return
@@ -166,6 +167,7 @@ extension HarnessModelTests {
         #expect(available.contains(.antigravity))
         #expect(available.contains(.omp))
         #expect(available.contains(.opencode))
+        #expect(available.contains(.kiro))
     }
 
     @Test func availableHarnessesIsEmptyWhenNoneAreInstalled() async throws {

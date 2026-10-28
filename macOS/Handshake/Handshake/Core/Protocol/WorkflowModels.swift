@@ -35,6 +35,7 @@ nonisolated enum CoreHarness: String, CaseIterable, Codable, Identifiable, Senda
     case antigravity
     case omp
     case opencode
+    case kiro
 
     var id: String { rawValue }
 
@@ -46,6 +47,7 @@ nonisolated enum CoreHarness: String, CaseIterable, Codable, Identifiable, Senda
         case .antigravity: "Antigravity"
         case .omp: "OMP"
         case .opencode: "OpenCode"
+        case .kiro: "Kiro CLI"
         }
     }
 }

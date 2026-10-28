@@ -152,11 +152,45 @@ pub(crate) struct StepInbox {
     pub directory: tempfile::TempDir,
     pub socket_path: std::path::PathBuf,
     pub environment: Vec<(String, String)>,
+    pub configuration: Option<ConfigurationFile>,
     received: Receiver<ObservedStep>,
     cancelled: Arc<AtomicBool>,
     worker: Option<JoinHandle<()>>,
     wake: UnixStream,
     prompt_context: Mutex<Option<super::prompt_context::Inbox>>,
+}
+
+/// Holds the native configuration lease until cleanup has checked its file identity.
+pub(crate) struct ConfigurationFile {
+    path: std::path::PathBuf,
+    file: std::fs::File,
+}
+
+impl ConfigurationFile {
+    pub(crate) fn new(path: std::path::PathBuf, file: std::fs::File) -> Self {
+        Self { path, file }
+    }
+    pub(crate) fn path(&self) -> &std::path::Path {
+        &self.path
+    }
+}
+
+impl AsRef<std::path::Path> for ConfigurationFile {
+    fn as_ref(&self) -> &std::path::Path {
+        self.path()
+    }
+}
+
+impl Drop for ConfigurationFile {
+    fn drop(&mut self) {
+        use std::os::unix::fs::MetadataExt;
+        if let (Ok(owned), Ok(current)) = (self.file.metadata(), self.path.symlink_metadata())
+            && owned.dev() == current.dev()
+            && owned.ino() == current.ino()
+        {
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
 }
 
 impl StepInbox {
@@ -166,7 +200,7 @@ impl StepInbox {
     )]
     pub(crate) fn new(
         position: Arc<ReplayPosition>,
-        adapter: fn(&[u8]) -> Option<HarnessStep>,
+        mut adapter: impl FnMut(&[u8]) -> Option<HarnessStep> + Send + 'static,
     ) -> io::Result<Self> {
         // macOS limits Unix socket paths to 104 bytes; its usual temporary directory is too long.
         let directory = tempfile::Builder::new()
@@ -294,6 +328,7 @@ impl StepInbox {
             directory,
             socket_path,
             environment: Vec::new(),
+            configuration: None,
             received,
             cancelled,
             worker: Some(worker),

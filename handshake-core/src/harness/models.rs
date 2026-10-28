@@ -101,6 +101,7 @@ impl HarnessId {
                 efforts: Vec::new(),
                 supports_yolo: true,
             }),
+            Self::Kiro => parse_kiro(output).ok_or(ModelListError::Unreadable(name)),
             Self::Opencode => Ok(HarnessModels {
                 models: parse_opencode(output).ok_or(ModelListError::Unreadable(name))?,
                 allows_custom: true,
@@ -111,6 +112,28 @@ impl HarnessId {
             }),
         }
     }
+}
+
+fn parse_kiro(output: &str) -> Option<HarnessModels> {
+    let catalog: serde_json::Value = serde_json::from_str(output).ok()?;
+    let models = catalog["models"]
+        .as_array()?
+        .iter()
+        .map(|model| {
+            Some(HarnessModel {
+                id: validate_model(model["model_id"].as_str()?)?.to_owned(),
+                name: model["model_name"].as_str()?.to_owned(),
+                group: None,
+                efforts: None,
+            })
+        })
+        .collect::<Option<Vec<_>>>()?;
+    Some(HarnessModels {
+        models,
+        allows_custom: false,
+        efforts: Vec::new(),
+        supports_yolo: true,
+    })
 }
 
 /// `OpenCode` v2's CLI API returns the current catalog and each model's named variants.
@@ -346,6 +369,18 @@ fn help_levels(help: &str, option: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn kiro_catalog_uses_native_selectors_without_guessing_effort_levels() {
+        let catalog =
+            parse_kiro(r#"{"models":[{"model_name":"Model","model_id":"provider/model"}]}"#)
+                .unwrap();
+        assert_eq!(catalog.models[0].id, "provider/model");
+        assert!(catalog.supports_yolo && catalog.efforts.is_empty());
+        assert!(
+            parse_kiro(r#"{"models":[{"model_name":"Model","model_id":"--unsafe"}]}"#).is_none()
+        );
+    }
 
     #[test]
     fn codex_lists_its_picker_models_in_priority_order() {

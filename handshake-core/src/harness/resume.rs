@@ -15,7 +15,12 @@ pub(crate) fn arguments(harness: HarnessId, session: &str) -> Option<Vec<OsStrin
     if session.is_empty() || session.len() > 4096 || session.chars().any(char::is_control) {
         return None;
     }
+    if harness == HarnessId::Kiro {
+        let (native, _) = super::kiro::session_parts(session)?;
+        return Some(["--resume-id", native].map(OsString::from).to_vec());
+    }
     let flags = match harness {
+        HarnessId::Kiro => unreachable!("handled Kiro session handle"),
         HarnessId::Codex | HarnessId::ClaudeCode | HarnessId::Antigravity | HarnessId::Opencode => {
             if !session
                 .chars()

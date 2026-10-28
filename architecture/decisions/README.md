@@ -17,3 +17,4 @@ Do not include machine-specific paths or account details.
 | [0002](0002-graduate-tab-management.md) | Accepted | Graduate tab management from the feature-flag catalog |
 | [0003](0003-keep-cross-agent-memory-an-opt-in-beta.md) | Accepted | Keep cross-agent memory an opt-in beta |
 | [0004](0004-bound-memory-context-and-record-explicit-corrections.md) | Accepted | Bound memory context and record explicit corrections |
+| [0005](0005-integrate-kiro-through-native-v3-hooks.md) | Accepted | Integrate Kiro through native V3 hooks and exact conversation profiles |

@@ -187,10 +187,16 @@ by its command on your shell's `PATH`:
 | OMP | `omp` | Yes |
 | Antigravity | `agy` | Yes; model invocation details where exposed |
 | OpenCode v2 | `opencode` | Yes |
+| Kiro CLI V3 | `kiro-cli` | Yes; completed tool observations without inferred call durations |
 
 Install and authenticate harnesses separately. Model choices come from each
 harness's own CLI, and provider access and usage charges follow your harness
 configuration. Handshake never edits your harness config files.
+
+For Kiro, run `kiro-cli login` first. Handshake supplies a temporary named profile
+for its hooks and workflow role instructions and restores that profile identity
+when resuming a captured conversation. Existing Kiro profiles and settings remain
+in place. Kiro's workspace-trust prompt appears when its native policy requires it.
 
 ## Project status
 

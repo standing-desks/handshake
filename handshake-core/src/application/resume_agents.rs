@@ -137,8 +137,25 @@ impl Application {
             .store()
             .terminal_history(saved.workflow_id)?;
         let reserved = self.terminals.reserve_terminal()?;
-        let (mut arguments, hooks) =
-            self.harness_arguments(harness, reserved, LaunchOptions::default(), "");
+        if harness == crate::HarnessId::Kiro && !self.terminals.is_running(saved.terminal_id) {
+            self.harness_steps
+                .lock()
+                .map_err(|_| ApplicationError::Poisoned)?
+                .remove(&saved.terminal_id);
+        }
+        let (mut arguments, hooks) = match self.harness_arguments(
+            harness,
+            reserved,
+            LaunchOptions::default(),
+            "",
+            Some(&session),
+        ) {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                let _ = self.terminals.cancel_reserved_terminal(reserved);
+                return Err(crate::StoreError::TracePayload(error).into());
+            }
+        };
         let (memory_environment, memory_lease) =
             match self.resume_memory_environment(harness, folder, &session) {
                 Ok(values) => values,

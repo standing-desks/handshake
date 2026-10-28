@@ -388,6 +388,21 @@ impl Application {
         if sessions.is_empty() && saved_run.graph.is_none() {
             return Ok(());
         }
+        {
+            let mut recordings = self
+                .harness_steps
+                .lock()
+                .map_err(|_| ApplicationError::Poisoned)?;
+            for tab in &saved.agents {
+                if saved_run.agents.iter().any(|agent| {
+                    agent.agent_id == tab.agent_id.0 && agent.harness == crate::HarnessId::Kiro
+                }) && sessions.contains_key(&tab.agent_id)
+                    && !self.terminals.is_running(tab.terminal_id)
+                {
+                    recordings.remove(&tab.terminal_id);
+                }
+            }
+        }
         let mut harnesses = HashMap::new();
         for agent in &saved_run.agents {
             if let std::collections::hash_map::Entry::Vacant(entry) = harnesses.entry(agent.harness)
@@ -514,8 +529,26 @@ impl Application {
             match self.terminals.reserve_terminal() {
                 Ok(reserved) => {
                     let options = workflow_launch_options(&agent);
-                    let (mut arguments, hooks) =
-                        self.harness_arguments(agent.harness, reserved, options, "");
+                    let (mut arguments, hooks) = match self.harness_arguments(
+                        agent.harness,
+                        reserved,
+                        options,
+                        "",
+                        processes
+                            .resumed_sessions
+                            .get(&AgentId(agent.agent_id))
+                            .map(String::as_str),
+                    ) {
+                        Ok(prepared) => prepared,
+                        Err(error) => {
+                            let _ = self.terminals.cancel_reserved_terminal(reserved);
+                            run.finish(
+                                RunStatus::Failed,
+                                &format!("Could not prepare the agent: {error}"),
+                            );
+                            break;
+                        }
+                    };
                     let command = if hooks.is_some() || run.graph.is_some() {
                         let Ok(command) = processes.command_for(AgentId(agent.agent_id), &inbox)
                         else {
@@ -606,6 +639,11 @@ impl Application {
                     }
                     let task = run.initial_task(agent.agent_id);
                     if !task.is_empty() {
+                        // Task history may quote another role's command. Like continuations,
+                        // initial assignments end with the recipient's current command.
+                        let task = format!(
+                            "{task}\n\nUse this completion command for your current assignment: {command}"
+                        );
                         arguments.extend(agent.harness.definition().arguments(&task));
                     }
                     prepared.push(PreparedAgent {
@@ -2371,6 +2409,73 @@ $prompt" ;; esac
     [ -n "$prompt" ] || exit
     done
     "#;
+
+    #[test]
+    fn kiro_run_reopens_immediately_with_its_exact_profile_and_fresh_lease() {
+        let folder = tempfile::tempdir().unwrap();
+        let bin = tempfile::tempdir().unwrap();
+        let app = application(
+            folder.path(),
+            bin.path(),
+            "printf '%s\\n' \"$@\" > kiro-arguments; while [ \"$#\" -gt 0 ]; do if [ \"$1\" = --agent ]; then printf '%s' \"$2\" > kiro-profile; fi; shift; done; while read line; do echo \"$line\"; done",
+        );
+        std::fs::copy(bin.path().join("pi"), bin.path().join("kiro-cli")).unwrap();
+        let id = launch_legacy_with_harness(
+            &app,
+            folder.path(),
+            BuiltinType::Adversarial,
+            SIZE,
+            "Kiro task; quoted sender command: 'sender-completion'.",
+            HarnessId::Kiro,
+        );
+        let original = wait_for(&app, id, |w| {
+            !w.agents.is_empty()
+                && std::fs::read_to_string(folder.path().join("kiro-profile"))
+                    .is_ok_and(|s| !s.is_empty())
+        });
+        let old_terminal = original.agents[0].terminal_id;
+        let profile = std::fs::read_to_string(folder.path().join("kiro-profile")).unwrap();
+        let initial = std::fs::read_to_string(folder.path().join("kiro-arguments")).unwrap();
+        let command = app.run_processes.lock().unwrap()[&id].completion_commands
+            [&original.agents[0].agent_id]
+            .command();
+        assert!(initial.contains("quoted sender command: 'sender-completion'"));
+        assert!(initial.ends_with(&format!(
+            "Use this completion command for your current assignment: {command}\n"
+        )));
+        assert!(
+            !initial.lines().any(|argument| argument == "--"),
+            "{initial}"
+        );
+        app.lock_inner()
+            .unwrap()
+            .folders
+            .store()
+            .remember_harness_session(old_terminal, &format!("sess_fixture:{profile}"))
+            .unwrap();
+        accepted(&app, Command::CloseFolder);
+        accepted(
+            &app,
+            Command::OpenFolder {
+                path: folder.path().to_owned(),
+            },
+        );
+        let resumed = wait_for(&app, id, |w| {
+            w.status == WorkflowStatus::Running
+                && w.agents[0].terminal_id != old_terminal
+                && std::fs::read_to_string(folder.path().join("kiro-arguments"))
+                    .is_ok_and(|args| args.contains("--resume-id\nsess_fixture"))
+        });
+        assert_eq!(
+            std::fs::read_to_string(folder.path().join("kiro-profile")).unwrap(),
+            profile
+        );
+        assert!(
+            resumed.run.as_ref().unwrap().generation > original.run.as_ref().unwrap().generation
+        );
+        let args = std::fs::read_to_string(folder.path().join("kiro-arguments")).unwrap();
+        assert!(args.contains("--resume-id\nsess_fixture"), "{args}");
+    }
 
     #[test]
     fn interrupted_workflow_resumes_its_assignment_and_accepts_fresh_completion() {
