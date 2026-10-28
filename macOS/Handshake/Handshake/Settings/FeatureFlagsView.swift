@@ -14,11 +14,26 @@ struct FeatureFlagsView: View {
                     ForEach(snapshot.flags) { flag in
                         Toggle(isOn: Binding(get: { flag.enabled }, set: { change(flag.id, $0) })) {
                             VStack(alignment: .leading, spacing: 5) {
-                                Text(flag.title).font(.headline)
+                                HStack(spacing: 8) {
+                                    Text(flag.title).font(.headline)
+                                    if flag.id == .crossAgentMemoryConsolidation {
+                                        Text("Beta").font(.caption.weight(.medium))
+                                            .padding(.horizontal, 6).padding(.vertical, 2)
+                                            .background(.quaternary, in: .capsule)
+                                            .accessibilityIdentifier("crossAgentMemoryBeta")
+                                    }
+                                }
                                 Text(flag.description).font(.callout).foregroundStyle(.secondary)
+                                if flag.id == .crossAgentMemoryConsolidation {
+                                    Text("Off by default. Enable to try cross-agent memory sharing.")
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
                             }
                         }
                         .toggleStyle(.switch)
+                        .accessibilityLabel(
+                            flag.id == .crossAgentMemoryConsolidation ? "\(flag.title), Beta" : flag.title
+                        )
                         .accessibilityIdentifier("featureFlag-\(flag.id.rawValue)")
                         .disabled(configurationHasChanges || model.isSaving || model.needsApply)
                     }

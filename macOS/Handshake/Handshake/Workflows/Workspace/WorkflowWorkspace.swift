@@ -38,7 +38,6 @@ struct WorkflowWorkspace: View {
     private var tabWorkflows: [CoreWorkflow] {
         workflows.filter { layouts.splitRoot(for: $0.id, in: folder, workflows: workflows) == $0.id }
     }
-    private var enhancedTabs: Bool { coreClient.snapshot?.config.featureFlags.tabManagement == true }
 
     private var canSplit: Bool {
         isVisible && !isSplitting && selectedWorkflow?.kind != .agents && selectedWorkflow?.isArchived != true
@@ -48,25 +47,11 @@ struct WorkflowWorkspace: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(alignment: .bottom, spacing: 0) {
-                if enhancedTabs {
-                    WorkspaceTabBar(
-                        model: tabManagement, folder: folder, sessionID: sessionID, workflows: allWorkflows,
-                        tabWorkflows: tabWorkflows, selectedRoot: selectedRoot, selection: $selection,
-                        close: closeGroup, closeFile: tabClosing.closeFile, cancel: cancelAgent,
-                        create: { Task { await create() } }, reportFailure: { failureMessage = $0 })
-                } else {
-                    WorkflowTabs(
-                        workflows: tabWorkflows,
-                        selectedID: isVisible ? selectedRoot : nil,
-                        select: {
-                            fileTabs.showWorkflows()
-                            selection.selectedID = $0
-                        },
-                        close: closeGroup,
-                        cancelAgent: cancelAgent,
-                        create: { Task { await create() } }
-                    )
-                }
+                WorkspaceTabBar(
+                    model: tabManagement, folder: folder, sessionID: sessionID, workflows: allWorkflows,
+                    tabWorkflows: tabWorkflows, selectedRoot: selectedRoot, selection: $selection,
+                    close: closeGroup, closeFile: tabClosing.closeFile, cancel: cancelAgent,
+                    create: { Task { await create() } }, reportFailure: { failureMessage = $0 })
                 TerminalSplitControls(split: split, isEnabled: canSplit)
             }
             .appZoom()
@@ -87,9 +72,6 @@ struct WorkflowWorkspace: View {
             }
             .terminalPanelShadow()
             .accessibilityIdentifier("workspaceViewport")
-        }
-        .onChange(of: enhancedTabs, initial: true) {
-            browsers.configure(folder: folder, persistenceEnabled: enhancedTabs)
         }
         .task {
             selection.reconcile(sessionID: sessionID, current: workflows.map(\.id))
@@ -129,10 +111,10 @@ struct WorkflowWorkspace: View {
                 selection: $selection, isVisible: isVisible, reportFailure: { failureMessage = $0 },
                 closePane: close)
             BrowserTabsSurface(
-                isPresented: isPresented, allowsAutomaticFocus: !enhancedTabs || !tabManagement.showsSwitcher)
+                isPresented: isPresented, allowsAutomaticFocus: !tabManagement.showsSwitcher)
             FileTabsSurface(
                 folder: folder, failure: files.failure, isPresented: isPresented,
-                allowsAutomaticFocus: !enhancedTabs || !tabManagement.showsSwitcher,
+                allowsAutomaticFocus: !tabManagement.showsSwitcher,
                 reportFailure: { failureMessage = $0 })
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -211,11 +193,7 @@ struct WorkflowWorkspace: View {
     }
 
     private func closeGroup(_ id: UInt64) {
-        if enhancedTabs {
-            tabClosing.closeWorkflows(layouts.terminalSplit(for: id, in: folder).ids, root: id)
-        } else {
-            for pane in layouts.terminalSplit(for: id, in: folder).ids { close(pane) }
-        }
+        tabClosing.closeWorkflows(layouts.terminalSplit(for: id, in: folder).ids, root: id)
     }
 
     private var tabClosing: WorkspaceTabClosing {
@@ -258,21 +236,6 @@ struct WorkflowWorkspace: View {
     }
 
     private func close(_ id: UInt64) {
-        if enhancedTabs {
-            tabClosing.closeWorkflows([id], root: id)
-            return
-        }
-        let root = layouts.splitRoot(for: id, in: folder, workflows: workflows)
-        let sibling = layouts.terminalSplit(for: root, in: folder).ids.first { $0 != id }
-        if selection.selectedID == id, let sibling { selection.selectedID = sibling }
-        Task {
-            do {
-                try await coreClient.closeWorkflow(workflowID: id)
-            } catch {
-                if !workflows.contains(where: { $0.id == id }) { return }
-                failureMessage = error.localizedDescription
-                workflowLogger.error("Could not close workflow: \(error.localizedDescription, privacy: .public)")
-            }
-        }
+        tabClosing.closeWorkflows([id], root: id)
     }
 }

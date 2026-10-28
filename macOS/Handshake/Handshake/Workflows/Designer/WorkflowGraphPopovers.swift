@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct WorkflowGraphAgentPopover: View {
+    @Environment(\.effectiveReduceMotion) private var reduceMotion
     @Bindable var model: WorkflowDesignerModel
     let role: CoreWorkflowType.Role
     let close: () -> Void
@@ -45,8 +46,8 @@ struct WorkflowGraphAgentPopover: View {
                 page == .agent ? (inputCount > 1 ? 640 : 540) : (binding.wrappedValue.agentDefaults == nil ? 180 : 340),
                 maximumSize.height)
         )
-        .animation(.easeInOut(duration: 0.18), value: page)
-        .animation(.easeInOut(duration: 0.18), value: binding.wrappedValue.agentDefaults != nil)
+        .animation(reduceMotion ? nil : Motion.disclosure, value: page)
+        .animation(reduceMotion ? nil : Motion.disclosure, value: binding.wrappedValue.agentDefaults != nil)
         .focusable(interactions: .edit)
         .focused($panelFocused)
         .focusEffectDisabled()
@@ -157,12 +158,13 @@ struct WorkflowGraphAgentPopover: View {
 }
 
 private struct WorkflowDisclosureStyle: DisclosureGroupStyle {
+    @Environment(\.effectiveReduceMotion) private var reduceMotion
     let identifier: String
 
     func makeBody(configuration: Configuration) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Button {
-                withAnimation(.easeInOut(duration: 0.18)) { configuration.isExpanded.toggle() }
+                withAnimation(reduceMotion ? nil : Motion.disclosure) { configuration.isExpanded.toggle() }
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "chevron.right").font(.caption.weight(.semibold))

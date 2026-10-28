@@ -4,6 +4,7 @@ import SwiftUI
 struct WorkflowTerminalSurface: View {
     @Environment(CoreClient.self) private var coreClient
     @Environment(TraceTerminalNavigation.self) private var navigation
+    @Environment(\.effectiveReduceMotion) private var reduceMotion
     let folder: String
     let workflow: CoreWorkflow
     let isSelected: Bool
@@ -124,14 +125,15 @@ struct WorkflowTerminalSurface: View {
                 }
             }
         }
-        .animation(Motion.draftTabToTerminal, value: workflow.kind)
+        .animation(reduceMotion ? nil : Motion.draftTabToTerminal, value: workflow.kind)
         .onAppear {
-            withAnimation(Motion.choicesCardAppear) { showsChoices = true }
+            withAnimation(reduceMotion ? nil : Motion.choicesCardAppear) { showsChoices = true }
         }
     }
 
     private var choicesTransition: AnyTransition {
-        .asymmetric(
+        if reduceMotion { return .identity }
+        return .asymmetric(
             insertion: .opacity.combined(with: .scale(scale: Motion.choicesCardAppearScale)),
             removal: .opacity
         )

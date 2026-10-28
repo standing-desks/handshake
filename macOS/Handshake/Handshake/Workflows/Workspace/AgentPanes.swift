@@ -7,6 +7,7 @@ import SwiftUI
 struct AgentPanes: View {
     @TerminalTheme private var palette
     @Environment(CoreClient.self) private var coreClient
+    @Environment(\.effectiveReduceMotion) private var reduceMotion
     let workflow: CoreWorkflow
     @Binding var layout: WorkflowLayout
     let isSelected: Bool
@@ -45,6 +46,7 @@ struct AgentPanes: View {
                         }
                     }
                 )
+                .geometryGroup()
                 .layoutValue(key: PaneSlot.self, value: .agent(agent.id))
             }
             if arrangement.columns.count > 1, let size {
@@ -77,6 +79,7 @@ struct AgentPanes: View {
             }
         }
         .background(arrangement.isTiled ? Color.workflowTint : Color(nsColor: palette.background))
+        .animation(reduceMotion ? nil : Motion.paneLayout, value: layout.mode)
         .onGeometryChange(for: CGSize.self, of: { $0.size }, action: { size = $0 })
         // Clicking the layout picker can take the keyboard, so give it back to the focused terminal.
         .onChange(of: layout.mode) { focusRequest += 1 }

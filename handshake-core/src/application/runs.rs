@@ -4656,11 +4656,6 @@ os.execvp('pi', ['pi', '--append-system-prompt', instructions, '--', prompt])
             let folder = tempfile::tempdir().unwrap();
             let bin = tempfile::tempdir().unwrap();
             let app = application(folder.path(), bin.path(), "while :; do sleep 1; done");
-            app.lock_inner()
-                .unwrap()
-                .config
-                .feature_flags
-                .tab_management = true;
             let id = launch_legacy(&app, folder.path(), BuiltinType::Adversarial);
             let original = app.snapshot().unwrap().workflows.workflows[0].clone();
             let run = original.run.as_ref().unwrap();

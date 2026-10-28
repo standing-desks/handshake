@@ -91,8 +91,10 @@ struct WorkspaceTabBar: View {
             .appZoom()
         }
         .task(id: sessionID) {
+            // Core teardown can clear the session after presentation snapshots have been saved.
+            guard !Task.isCancelled, !files.isClosingPresentation else { return }
             prepared = false
-            browsers.configure(folder: folder, persistenceEnabled: true)
+            browsers.configure(folder: folder)
             prepareBrowsers()
             let keepsBrowser = browsers.selected != nil
             let savedSelection = model.arrangement(sessionID).selection

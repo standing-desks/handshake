@@ -3,6 +3,7 @@ import SwiftUI
 /// The strip at the top of an agents workflow's terminal panel: a subtab for each agent in tab mode,
 /// then the run's actions and a picker between tab mode and Bento mode, whose panes name their agents.
 struct AgentSubtabs<Actions: View>: View {
+    @Environment(\.effectiveReduceMotion) private var reduceMotion
     let agents: [CoreAgent]
     /// The agent with the keyboard: the one tab mode shows, or the focused Bento pane's.
     let selectedID: UInt64?
@@ -54,7 +55,7 @@ struct AgentSubtabs<Actions: View>: View {
             .scrollIndicators(.never)
             .onChange(of: selectedID) { _, selectedID in
                 if let selectedID {
-                    withAnimation(Motion.scrollToSelectedTab) { proxy.scrollTo(selectedID) }
+                    withAnimation(reduceMotion ? nil : Motion.scrollToSelectedTab) { proxy.scrollTo(selectedID) }
                 }
             }
             .onGeometryChange(

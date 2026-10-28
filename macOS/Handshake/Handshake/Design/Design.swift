@@ -80,11 +80,26 @@ extension ShapeStyle where Self == Color {
 
 // MARK: - Motion
 
+private nonisolated enum MotionOverrideKey: EnvironmentKey {
+    static let defaultValue: Bool? = nil
+}
+
+extension EnvironmentValues {
+    /// Uses the system setting unless a host explicitly supplies its effective motion policy.
+    var effectiveReduceMotion: Bool {
+        get { self[MotionOverrideKey.self] ?? accessibilityReduceMotion }
+        set { self[MotionOverrideKey.self] = newValue }
+    }
+}
+
 /// Animations, each tied to a user action.
 nonisolated enum Motion {
     /// The close button fading in over a tab's icon on hover.
     static let tabCloseButton = Animation.easeInOut(duration: 0.12)
     static let scrollToSelectedTab = Animation.easeInOut(duration: 0.18)
+    static let tabChange = Animation.easeInOut(duration: 0.18)
+    static let paneLayout = Animation.smooth(duration: 0.22)
+    static let disclosure = Animation.easeInOut(duration: 0.18)
     /// Sidebar sections and the Traces panel collapsing and expanding.
     static let sectionToggle = Animation.smooth(duration: 0.2)
     /// The trace detail panel sliding in from the trailing edge with a fade.

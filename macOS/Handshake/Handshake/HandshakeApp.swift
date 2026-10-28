@@ -64,6 +64,13 @@ struct HandshakeApp: App {
                 }
             }
             .task { await startup.prepare() }
+            #if DEBUG
+                .transformEnvironment(\.effectiveReduceMotion) { value in
+                    if ProcessInfo.processInfo.environment["HANDSHAKE_TEST_REDUCE_MOTION"] == "1" {
+                        value = true
+                    }
+                }
+            #endif
         }
         .windowToolbarStyle(.unified)
         .defaultWindowPlacement { _, context in

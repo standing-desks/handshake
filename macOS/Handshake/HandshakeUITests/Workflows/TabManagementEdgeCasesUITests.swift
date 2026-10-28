@@ -2,9 +2,56 @@ import XCTest
 
 extension HandshakeUITests {
     @MainActor
+    func testTabCreationButtonsMatchTabsAcrossAppearancesAndZoom() throws {
+        for (appearance, scrollBars) in [
+            ("Light", "Automatic"), ("Dark", "Automatic"), ("Light", "Always"), ("Dark", "Always"),
+        ] {
+            let folder = try makeTestFolder(prefix: "HandshakeTabControlHeight")
+            let app = try managedTabApp(folder: folder)
+            app.launchEnvironment["HANDSHAKE_TEST_APPEARANCE"] = appearance
+            app.launchArguments += ["-AppleShowScrollBars", scrollBars]
+            app.launch()
+            defer { app.terminate() }
+            XCTAssertTrue(app.buttons["workflowTab-1"].waitForExistence(timeout: 10), app.debugDescription)
+            resizeWindow(app.windows.firstMatch, to: CGSize(width: 920, height: 676))
+            setSidebar(open: true, in: app)
+            for id in 2...4 {
+                app.buttons["newWorkflow"].click()
+                XCTAssertTrue(app.buttons["workflowTab-\(id)"].waitForExistence(timeout: 5), app.debugDescription)
+                waitForTab(app.buttons["workflowTab-\(id)"], valueContaining: "Selected", in: app)
+            }
+            let tab = app.buttons["workflowTab-4"]
+            for step in 0..<3 {
+                if step > 0 {
+                    app.menuBars.menuBarItems["View"].click()
+                    app.menuItems["Zoom In"].click()
+                }
+                let create = app.buttons["newWorkflow"]
+                let browser = app.buttons["newBrowserTab"]
+                let aligned = expectation(
+                    for: NSPredicate { _, _ in
+                        abs(create.frame.height - tab.frame.height) <= 1
+                            && abs(browser.frame.height - tab.frame.height) <= 1
+                            && abs(create.frame.midY - tab.frame.midY) <= 1
+                            && abs(browser.frame.midY - tab.frame.midY) <= 1
+                    }, evaluatedWith: nil)
+                XCTAssertEqual(XCTWaiter.wait(for: [aligned], timeout: 5), .completed, app.debugDescription)
+                XCTAssertGreaterThanOrEqual(create.frame.minX, tab.frame.maxX)
+                XCTAssertLessThan(create.frame.minX - tab.frame.maxX, 20)
+                XCTAssertGreaterThanOrEqual(browser.frame.minX, create.frame.maxX)
+                XCTAssertLessThan(browser.frame.minX - create.frame.maxX, 20)
+                attachScreenshot(
+                    of: app, named: "\(appearance), \(scrollBars) scrollbars, tab controls at zoom step \(step)")
+            }
+            app.terminate()
+        }
+    }
+
+    @MainActor
     func testManagedTabsKeepCreateButtonBesideTabsAndReachableDuringOverflow() throws {
         let folder = try makeTestFolder(prefix: "HandshakeTabCreatePosition")
         let app = try managedTabApp(folder: folder)
+        app.launchArguments += ["-AppleShowScrollBars", "Always"]
         app.launch()
         defer { app.terminate() }
         let first = app.buttons["workflowTab-1"]

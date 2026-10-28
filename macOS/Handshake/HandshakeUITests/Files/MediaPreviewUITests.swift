@@ -6,10 +6,11 @@ extension HandshakeUITests {
         let folder = try makeTestFolder(prefix: "HandshakeMediaPreviews")
         try await MediaFixtures.make(in: folder)
         let app = try managedTabApp(folder: folder)
+        app.launchArguments += ["-AppleShowScrollBars", "Always"]
         app.launch()
         defer { app.terminate() }
         XCTAssertTrue(app.buttons["workflowTab-1"].waitForExistence(timeout: 10))
-        resizeWindow(app.windows.firstMatch, to: CGSize(width: 1200, height: 800))
+        resizeWindow(app.windows.firstMatch, to: CGSize(width: 920, height: 676))
         setSidebar(open: true, in: app)
         for (name, identifier, document) in [
             ("sample.pdf", "pdfPreview", "pdfDocument"), ("sample-large.png", "imagePreview", "imageDocument"),
@@ -29,27 +30,34 @@ extension HandshakeUITests {
             if document == "videoPlayer" { verifyVideoPausesWhenHidden(url: url, in: app) }
             attachScreenshot(of: app, named: "Native \(name) viewer")
         }
-        app.buttons["workflowTab-1"].click()
+        app.typeKey("1", modifierFlags: .command)
+        waitForTab(app.buttons["workflowTab-1"], valueContaining: "Selected", in: app)
         app.typeKey("t", modifierFlags: [.command, .option])
         let browser = browserTabs(in: app).firstMatch
         XCTAssertTrue(browser.waitForExistence(timeout: 5))
-        let pdf = fileTab(folder.appending(path: "sample.pdf"), in: app)
-        pdf.click()
+        let pdfURL = folder.appending(path: "sample.pdf")
+        let pdf = fileTab(pdfURL, in: app)
+        selectMediaTab(pdfURL, in: app)
         app.typeKey("p", modifierFlags: [.command, .shift])
         waitForTab(pdf, valueContaining: "Pinned", in: app)
-        app.typeKey("a", modifierFlags: [.command, .shift])
-        let search = app.textFields["tabSwitcherSearch"]
-        XCTAssertTrue(search.waitForExistence(timeout: 5))
-        search.typeText("sample.pdf")
-        search.typeKey(.return, modifierFlags: [])
-        XCTAssertTrue(search.waitForNonExistence(timeout: 5))
-        waitForTab(pdf, valueContaining: "Selected", in: app)
+        selectMediaTab(pdfURL, in: app)
         app.typeKey("w", modifierFlags: .command)
         XCTAssertTrue(pdf.waitForNonExistence(timeout: 5))
         app.typeKey("t", modifierFlags: [.command, .shift])
         XCTAssertTrue(pdf.waitForExistence(timeout: 5))
         XCTAssertTrue(app.descendants(matching: .any)["pdfPreview"].waitForExistence(timeout: 10))
         waitForTab(pdf, valueContaining: "Pinned", in: app)
+    }
+
+    @MainActor
+    private func selectMediaTab(_ url: URL, in app: XCUIApplication) {
+        app.typeKey("a", modifierFlags: [.command, .shift])
+        let search = app.textFields["tabSwitcherSearch"]
+        XCTAssertTrue(search.waitForExistence(timeout: 5), app.debugDescription)
+        search.typeText(url.lastPathComponent)
+        search.typeKey(.return, modifierFlags: [])
+        XCTAssertTrue(search.waitForNonExistence(timeout: 5), app.debugDescription)
+        waitForTab(fileTab(url, in: app), valueContaining: "Selected", in: app)
     }
     @MainActor
     private func verifyNativeMediaContent(_ document: String, in app: XCUIApplication) {
@@ -99,15 +107,17 @@ extension HandshakeUITests {
         position.typeKey(.rightArrow, modifierFlags: [])
         XCTAssertNotEqual((position.value as? NSNumber)?.doubleValue, beforeArrow)
         position.adjust(toNormalizedSliderPosition: 0.5)
-        app.buttons["workflowTab-1"].click()
-        fileTab(url, in: app).click()
+        app.typeKey("1", modifierFlags: .command)
+        waitForTab(app.buttons["workflowTab-1"], valueContaining: "Selected", in: app)
+        selectMediaTab(url, in: app)
         XCTAssertTrue(play.waitForExistence(timeout: 5), app.debugDescription)
         let retainedTime = app.staticTexts["videoTime"].value as? String ?? ""
         XCTAssertTrue(["0:04", "0:05"].contains(retainedTime), retainedTime)
         play.click()
         XCTAssertTrue(pause.waitForExistence(timeout: 5))
-        app.buttons["workflowTab-1"].click()
-        fileTab(url, in: app).click()
+        app.typeKey("1", modifierFlags: .command)
+        waitForTab(app.buttons["workflowTab-1"], valueContaining: "Selected", in: app)
+        selectMediaTab(url, in: app)
         XCTAssertTrue(play.waitForExistence(timeout: 5), app.debugDescription)
     }
 

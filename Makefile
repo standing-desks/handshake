@@ -47,10 +47,11 @@ UI_DEFAULT_TESTS := testFirstLaunchShowsStartPage \
 	testBrowserNavigationValidationPopupAndContextualClose \
 	testPDFImageAndVideoPreviewsShareFileTabControls \
 	testManagedTabsKeepCreateButtonBesideTabsAndReachableDuringOverflow \
+	testTabCreationButtonsMatchTabsAcrossAppearancesAndZoom \
 	testManagedTabsValidateCancelAndResetNamesAndHandleEmptySearch \
 	testManagedTabsHideTopLevelRunningAndExitIndicators \
 	testManagedFileTabsDisambiguateSearchPinAndReopen \
-	testTabManagementFlagAppliesLiveAndPersists \
+	testTabManagementIsStandardAndIgnoresRetiredSettings \
 	testTabSwitcherSupportsKeyboardSelection \
 	testManagedTabsRenameReorderPinNavigateAndReopenWithoutRestarting \
 	testManagedTabsKeepSplitNeighborAndRestoreFilesAfterQuit \

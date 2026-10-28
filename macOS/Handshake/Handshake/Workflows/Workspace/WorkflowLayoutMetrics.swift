@@ -44,6 +44,7 @@ nonisolated enum RestoredNoticeLayout {
 
 nonisolated enum WorkflowTabLayout {
     static let height: CGFloat = 32
+    static let creationButtonWidth: CGFloat = 32
 }
 
 nonisolated enum WorkflowSurfaceLayout {

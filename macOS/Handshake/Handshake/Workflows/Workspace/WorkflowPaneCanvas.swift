@@ -5,6 +5,7 @@ struct WorkflowPaneCanvas: View {
     @TerminalTheme private var palette
     @Environment(CoreClient.self) private var coreClient
     @Environment(WorkflowLayouts.self) private var layouts
+    @Environment(\.effectiveReduceMotion) private var reduceMotion
     let folder: String
     let workflows: [CoreWorkflow]
     let sessionID: UInt64?
@@ -40,8 +41,7 @@ struct WorkflowPaneCanvas: View {
                         if tiled {
                             HStack {
                                 Label(
-                                    coreClient.snapshot?.config.featureFlags.tabManagement == true
-                                        ? workflow.customName ?? workflow.name : workflow.name,
+                                    workflow.customName ?? workflow.name,
                                     systemImage: workflow.kind == .singleAgent ? "person" : "terminal"
                                 )
                                 .lineLimit(1)
@@ -84,6 +84,7 @@ struct WorkflowPaneCanvas: View {
                     .bentoPane(isTiled: tiled, isFocused: focused)
                     .position(x: frame.midX, y: frame.midY)
                     .opacity(shown ? 1 : 0).allowsHitTesting(shown).accessibilityHidden(!shown)
+                    .animation(reduceMotion ? nil : Motion.paneLayout, value: split.ids)
                 }
                 if let selectedRoot, isVisible {
                     let split = layouts.terminalSplit(for: selectedRoot, in: folder)
@@ -99,6 +100,7 @@ struct WorkflowPaneCanvas: View {
                         }
                         .frame(width: divider.frame.width, height: divider.frame.height)
                         .position(x: divider.frame.midX, y: divider.frame.midY)
+                        .animation(reduceMotion ? nil : Motion.paneLayout, value: split.ids)
                     }
                 }
             }

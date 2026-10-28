@@ -24,9 +24,21 @@ struct MemoryViewPreview: View {
                 }
             }.frame(width: 285)
             VStack(spacing: 0) {
-                WorkflowTabs(
-                    workflows: [], selectedID: nil, select: { _ in }, close: { _ in },
-                    cancelAgent: { _ in }, create: {})
+                ManagedWorkflowTabs(
+                    items: tabs.editors.map {
+                        WorkspaceTabItem(
+                            id: WorkspaceTabsModel.file($0.path), title: $0.displayName,
+                            detail: $0.path, symbol: "doc.text", fileID: $0.id)
+                    },
+                    selected: tabs.selected.map { WorkspaceTabsModel.file($0.path) },
+                    dragScope: "memory-source-preview", showsSwitcher: .constant(false),
+                    select: { reference in
+                        if let editor = tabs.editors.first(where: { WorkspaceTabsModel.file($0.path) == reference }) {
+                            tabs.select(editor.id)
+                        }
+                    }, close: { item in if let id = item.fileID { tabs.close(id) } },
+                    rename: { _ in }, resetName: { _ in }, pin: { _ in }, move: { _, _ in },
+                    drop: { _, _, _ in }, cancel: { _ in }, create: {}, reopen: {}, canReopen: false)
                 if let editor = tabs.selected {
                     FileViewer(
                         path: editor.path, folder: editor.folder, failure: nil, isVisible: true,
