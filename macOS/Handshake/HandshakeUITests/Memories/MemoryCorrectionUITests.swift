@@ -50,6 +50,7 @@ extension HandshakeUITests {
         app.launch()
         defer { app.terminate() }
         startMemoryPromptAgent(fixture: fixture, bin: bin)
+        resizeWindow(app.windows.firstMatch, to: CGSize(width: 820, height: 573))
         let pidFile = fixture.folder.appending(path: "agent-pid")
         let started = expectation(
             for: NSPredicate { _, _ in

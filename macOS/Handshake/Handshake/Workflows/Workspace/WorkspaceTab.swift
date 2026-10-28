@@ -92,9 +92,9 @@ struct WorkspaceTab: View {
                 Circle().fill(.secondary).frame(width: 5, height: 5).accessibilityHidden(true)
             }
         }
-        .tabTitleStyle(isSelected: isSelected, foreground: isSelected ? selectedForeground : nil)
+        .tabTitleStyle(isSelected: isSelected, foreground: isSelected ? selectedForeground : .primary)
         .padding(.horizontal, 12)
-        .frame(height: isSelected ? WorkflowTabLayout.height : 28)
+        .frame(height: WorkflowTabLayout.height)
         .contentShape(.rect)
     }
 

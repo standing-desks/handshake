@@ -28,14 +28,11 @@ extension HandshakeUITests {
                 }
                 let create = app.buttons["newWorkflow"]
                 let browser = app.buttons["newBrowserTab"]
-                let aligned = expectation(
-                    for: NSPredicate { _, _ in
-                        abs(create.frame.height - tab.frame.height) <= 1
-                            && abs(browser.frame.height - tab.frame.height) <= 1
-                            && abs(create.frame.midY - tab.frame.midY) <= 1
-                            && abs(browser.frame.midY - tab.frame.midY) <= 1
-                    }, evaluatedWith: nil)
-                XCTAssertEqual(XCTWaiter.wait(for: [aligned], timeout: 5), .completed, app.debugDescription)
+                let peers = [
+                    create, browser, app.buttons["workflowTab-3"], app.buttons["tabSwitcher"],
+                    app.buttons["splitTerminalRight"], app.buttons["splitTerminalDown"],
+                ]
+                assertTabRowAlignment(peers, with: tab, in: app)
                 XCTAssertGreaterThanOrEqual(create.frame.minX, tab.frame.maxX)
                 XCTAssertLessThan(create.frame.minX - tab.frame.maxX, 20)
                 XCTAssertGreaterThanOrEqual(browser.frame.minX, create.frame.maxX)
@@ -43,8 +40,25 @@ extension HandshakeUITests {
                 attachScreenshot(
                     of: app, named: "\(appearance), \(scrollBars) scrollbars, tab controls at zoom step \(step)")
             }
+            app.buttons["tabSwitcher"].click()
+            let search = app.textFields["tabSwitcherSearch"]
+            XCTAssertTrue(search.waitForExistence(timeout: 5))
+            search.typeKey(.escape, modifierFlags: [])
+            XCTAssertTrue(search.waitForNonExistence(timeout: 5))
             app.terminate()
         }
+    }
+
+    @MainActor
+    private func assertTabRowAlignment(_ controls: [XCUIElement], with tab: XCUIElement, in app: XCUIApplication) {
+        let aligned = expectation(
+            for: NSPredicate { _, _ in
+                controls.allSatisfy {
+                    $0.exists && abs($0.frame.height - tab.frame.height) <= 1
+                        && abs($0.frame.midY - tab.frame.midY) <= 1
+                }
+            }, evaluatedWith: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [aligned], timeout: 5), .completed, app.debugDescription)
     }
 
     @MainActor
@@ -74,6 +88,9 @@ extension HandshakeUITests {
         XCTAssertGreaterThanOrEqual(app.buttons["tabSwitcher"].frame.width, switcherWidth - 1)
         XCTAssertGreaterThanOrEqual(create.frame.minX, last.frame.maxX - 1)
         attachScreenshot(of: app, named: "Create button remains reachable with overflowing tabs")
+        last.scroll(byDeltaX: 1200, deltaY: 0)
+        XCTAssertTrue(first.isHittable, app.debugDescription)
+        XCTAssertEqual(last.value as? String, "Selected", "Manual scrolling must not change selection or snap back")
         app.typeKey("1", modifierFlags: .command)
         waitForTab(first, valueContaining: "Selected", in: app)
         XCTAssertTrue(first.isHittable, app.debugDescription)

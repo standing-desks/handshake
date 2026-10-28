@@ -27,9 +27,14 @@ struct ManagedWorkflowTabs: View {
     @State private var tabsWidth: CGFloat?
     @State private var scrollEdge = 0
 
+    private struct ScrollWidths: Equatable {
+        let content: CGFloat
+        let viewport: CGFloat
+    }
+
     var body: some View {
         HStack(alignment: .bottom, spacing: 6) {
-            Text("TABS").sectionLabelStyle().fixedSize().padding(.bottom, 10)
+            Text("TABS").sectionLabelStyle().fixedSize().frame(height: WorkflowTabLayout.height)
             ScrollViewReader { proxy in
                 ScrollView(.horizontal) {
                     HStack(alignment: .bottom, spacing: 6) {
@@ -60,20 +65,22 @@ struct ManagedWorkflowTabs: View {
                 .onGeometryChange(for: CGFloat.self, of: { $0.size.width }, action: { viewportWidth = $0 })
                 .scrollIndicators(.never)
                 .onChange(of: selected) {
-                    if let selected {
-                        withAnimation(reduceMotion ? nil : Motion.scrollToSelectedTab) { proxy.scrollTo(selected) }
-                    }
+                    withAnimation(reduceMotion ? nil : Motion.scrollToSelectedTab) { revealSelection(using: proxy) }
                 }
-                .onChange(of: items.map(\.id)) {
-                    if let dragging, !items.contains(where: { $0.id == dragging }) { cancelDrag() }
-                    if let selected { proxy.scrollTo(selected) }
-                }
-                .onGeometryChange(
-                    for: CGFloat.self, of: { $0.size.width },
-                    action: { _ in
-                        if let selected { proxy.scrollTo(selected) }
+                .onScrollGeometryChange(
+                    for: ScrollWidths.self,
+                    of: { ScrollWidths(content: $0.contentSize.width, viewport: $0.containerSize.width) },
+                    action: { _, _ in
+                        // The native viewport can still be animating after the outer layout reports its final size.
+                        var transaction = Transaction(animation: nil)
+                        transaction.disablesAnimations = true
+                        withTransaction(transaction) { revealSelection(using: proxy) }
                     }
                 )
+                .onChange(of: items.map(\.id)) {
+                    if let dragging, !items.contains(where: { $0.id == dragging }) { cancelDrag() }
+                    revealSelection(using: proxy)
+                }
                 .task(id: scrollEdge) {
                     guard scrollEdge != 0 else { return }
                     var index =
@@ -96,9 +103,8 @@ struct ManagedWorkflowTabs: View {
                 Label("New Workflow", systemImage: "plus")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .labelStyle(.iconOnly).buttonStyle(.glass).controlSize(.small)
-            .buttonSizing(.flexible)
-            .frame(width: WorkflowTabLayout.creationButtonWidth, height: WorkflowTabLayout.height)
+            .labelStyle(.iconOnly).workspaceBarControl()
+            .frame(width: WorkflowTabLayout.creationButtonWidth)
             .help("New Workflow (⌘T)").accessibilityIdentifier("newWorkflow")
             NewBrowserTabButton()
             Spacer(minLength: 0)
@@ -106,9 +112,10 @@ struct ManagedWorkflowTabs: View {
                 showsSwitcher.toggle()
             } label: {
                 Label("\(items.count)", systemImage: "chevron.down")
+                    .frame(maxHeight: .infinity)
             }
-            .buttonStyle(.glass).controlSize(.small).help("Find an Open Tab (⌘⇧A)")
-            .fixedSize()
+            .workspaceBarControl().help("Find an Open Tab (⌘⇧A)")
+            .fixedSize(horizontal: true, vertical: false)
             .accessibilityLabel("Find an open tab, \(items.count) tabs")
             .accessibilityIdentifier("tabSwitcher")
             .popover(isPresented: $showsSwitcher) {
@@ -118,6 +125,11 @@ struct ManagedWorkflowTabs: View {
         .frame(height: WorkflowTabLayout.height, alignment: .bottom)
         .animation(reduceMotion ? nil : Motion.tabChange, value: items.map(\.id))
         .contextMenu { Button("Reopen Closed Tab", action: reopen).disabled(!canReopen) }
+    }
+
+    private func revealSelection(using proxy: ScrollViewProxy) {
+        guard let selected else { return }
+        proxy.scrollTo(selected, anchor: selected == items.last?.id ? .trailing : nil)
     }
 
     private func tab(_ item: WorkspaceTabItem) -> some View {

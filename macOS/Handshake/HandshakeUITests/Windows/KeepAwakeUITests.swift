@@ -14,9 +14,11 @@ extension HandshakeUITests {
         waitForKeepAwake(button, "Off")
         XCTAssertGreaterThan(button.frame.midX, first.frame.midX)
         XCTAssertLessThan(button.frame.maxY, first.frame.minY + 85)
+        attachWindow(in: app, name: "Keep Awake off in the native toolbar")
         let parent = try keepAwakeAppPID()
         button.click()
         waitForKeepAwake(button, "On")
+        attachWindow(in: app, name: "Keep Awake on in the native toolbar")
         let child = try waitForCaffeinate(parent: parent)
         try waitForPowerAssertions(child)
 

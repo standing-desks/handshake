@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-10-27
 - Related issue: [HAND-81](https://linear.app/standing-desks/issue/HAND-81)
+- Tab-row glass styling superseded by [ADR 0006](0006-align-and-quiet-the-folder-top-bar.md); placement and motion decisions remain in force.
 
 ## Context
 

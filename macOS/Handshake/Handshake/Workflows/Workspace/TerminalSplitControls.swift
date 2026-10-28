@@ -10,7 +10,7 @@ struct TerminalSplitControls: View {
                 split(.right)
             } label: {
                 Image(systemName: "rectangle.split.2x1")
-                    .frame(width: 20, height: 20)
+                    .frame(width: WorkflowTabLayout.height, height: WorkflowTabLayout.height)
                     .contentShape(.rect)
             }
             .help("Split Right (⌘D)")
@@ -20,16 +20,16 @@ struct TerminalSplitControls: View {
                 split(.down)
             } label: {
                 Image(systemName: "rectangle.split.1x2")
-                    .frame(width: 20, height: 20)
+                    .frame(width: WorkflowTabLayout.height, height: WorkflowTabLayout.height)
                     .contentShape(.rect)
             }
             .help("Split Down (⇧⌘D)")
             .accessibilityLabel("Split Down")
             .accessibilityIdentifier("splitTerminalDown")
         }
-        .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(.secondary)
+        .buttonStyle(.borderless).font(.caption).foregroundStyle(.secondary)
         .disabled(!isEnabled)
-        .padding(.horizontal, 10).padding(.bottom, 7)
+        .padding(.horizontal, 4)
     }
 }
 

@@ -97,6 +97,7 @@ struct KeepAwakeControl: View {
                 Text("Keep Awake")
                 Text(model.isEnabled ? "On" : "Off").foregroundStyle(.secondary)
             }
+            .foregroundStyle(model.isEnabled ? Color.accentColor : .secondary)
         }
         .tint(model.isEnabled ? Color.accentColor : nil)
         .disabled(model.isUpdating)
