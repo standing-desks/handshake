@@ -64,10 +64,13 @@ struct ManagedWorkflowTabs: View {
                         withAnimation(reduceMotion ? nil : Motion.scrollToSelectedTab) { proxy.scrollTo(selected) }
                     }
                 }
-                .onScrollGeometryChange(for: CGFloat.self, of: { $0.contentSize.width }) { _, _ in
-                    // Scroll after the scroll view has laid out inserted or renamed tabs.
-                    if let selected { proxy.scrollTo(selected) }
-                }
+                .onScrollGeometryChange(
+                    for: CGFloat.self, of: { $0.contentSize.width },
+                    action: { _, _ in
+                        // Scroll after the scroll view has laid out inserted or renamed tabs.
+                        if let selected { proxy.scrollTo(selected) }
+                    }
+                )
                 .onChange(of: items.map(\.id)) {
                     if let dragging, !items.contains(where: { $0.id == dragging }) { cancelDrag() }
                     if let selected { proxy.scrollTo(selected) }
