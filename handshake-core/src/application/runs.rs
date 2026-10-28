@@ -639,6 +639,11 @@ impl Application {
                     }
                     let task = run.initial_task(agent.agent_id);
                     if !task.is_empty() {
+                        // Task history may quote another role's command. Like continuations,
+                        // initial assignments end with the recipient's current command.
+                        let task = format!(
+                            "{task}\n\nUse this completion command for your current assignment: {command}"
+                        );
                         arguments.extend(agent.harness.definition().arguments(&task));
                     }
                     prepared.push(PreparedAgent {
@@ -2420,7 +2425,7 @@ $prompt" ;; esac
             folder.path(),
             BuiltinType::Adversarial,
             SIZE,
-            "Kiro task",
+            "Kiro task; quoted sender command: 'sender-completion'.",
             HarnessId::Kiro,
         );
         let original = wait_for(&app, id, |w| {
@@ -2431,6 +2436,13 @@ $prompt" ;; esac
         let old_terminal = original.agents[0].terminal_id;
         let profile = std::fs::read_to_string(folder.path().join("kiro-profile")).unwrap();
         let initial = std::fs::read_to_string(folder.path().join("kiro-arguments")).unwrap();
+        let command = app.run_processes.lock().unwrap()[&id].completion_commands
+            [&original.agents[0].agent_id]
+            .command();
+        assert!(initial.contains("quoted sender command: 'sender-completion'"));
+        assert!(initial.ends_with(&format!(
+            "Use this completion command for your current assignment: {command}\n"
+        )));
         assert!(
             !initial.lines().any(|argument| argument == "--"),
             "{initial}"
