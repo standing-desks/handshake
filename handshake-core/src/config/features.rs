@@ -10,14 +10,12 @@ use crate::{FileContent, FilePreview, FileSaveOutcome, FileSaveRequest, FileVers
 #[serde(default)]
 pub struct FeatureFlags {
     pub cross_agent_memory_consolidation: bool,
-    pub tab_management: bool,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum FeatureFlag {
     CrossAgentMemoryConsolidation,
-    TabManagement,
 }
 
 #[derive(Debug, Serialize)]
@@ -34,23 +32,16 @@ pub struct FeatureFlagSnapshot {
 }
 
 impl FeatureFlag {
-    const ALL: [Self; 2] = [Self::CrossAgentMemoryConsolidation, Self::TabManagement];
+    const ALL: [Self; 1] = [Self::CrossAgentMemoryConsolidation];
 
     fn key(self) -> &'static str {
         match self {
             Self::CrossAgentMemoryConsolidation => "cross_agent_memory_consolidation",
-            Self::TabManagement => "tab_management",
         }
     }
 
     fn state(self, flags: &FeatureFlags) -> FeatureFlagState {
         match self {
-            Self::TabManagement => FeatureFlagState {
-                id: self,
-                title: "Tab management",
-                description: "Rename, reorder, pin, find, and reopen tabs, with keyboard navigation and workflow status.",
-                enabled: flags.tab_management,
-            },
             Self::CrossAgentMemoryConsolidation => FeatureFlagState {
                 id: self,
                 title: "Cross-agent memory consolidation",
@@ -150,6 +141,32 @@ fn set_at(
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn retired_tab_settings_are_ignored_and_memory_remains_opt_in() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("config.toml");
+        for retired in [false, true] {
+            for memory in [None, Some(false), Some(true)] {
+                let source = format!(
+                    "[feature_flags]\ntab_management = {retired}\n{}",
+                    memory.map_or_else(String::new, |enabled| format!(
+                        "cross_agent_memory_consolidation = {enabled}\n"
+                    ))
+                );
+                let loaded = Config::load_source(&path, &source);
+                assert_eq!(loaded.diagnostics, []);
+                assert_eq!(
+                    loaded.config.feature_flags.cross_agent_memory_consolidation,
+                    memory.unwrap_or(false)
+                );
+                let flags = FeatureFlag::ALL.map(|flag| flag.state(&loaded.config.feature_flags));
+                assert_eq!(flags.len(), 1);
+                assert_eq!(flags[0].id, FeatureFlag::CrossAgentMemoryConsolidation);
+                assert_eq!(flags[0].enabled, memory.unwrap_or(false));
+            }
+        }
+    }
 
     #[test]
     fn defaults_are_off_and_toggling_preserves_comments_and_other_settings() {

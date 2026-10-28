@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// The experimental strip shares no state with terminal views, so dragging never remounts a terminal.
+/// The strip shares no state with terminal views, so dragging never remounts a terminal.
 struct ManagedWorkflowTabs: View {
     @TerminalTheme private var palette
+    @Environment(\.effectiveReduceMotion) private var reduceMotion
     let items: [WorkspaceTabItem]
     let selected: String?
     let dragScope: String
@@ -35,6 +36,7 @@ struct ManagedWorkflowTabs: View {
                         ForEach(items) { item in
                             tab(item)
                                 .id(item.id)
+                                .transition(.opacity)
                                 .highPriorityGesture(
                                     DragGesture(minimumDistance: 5, coordinateSpace: .named(dragScope))
                                         .onChanged { updateDrag(item, location: $0.location) }
@@ -58,7 +60,9 @@ struct ManagedWorkflowTabs: View {
                 .onGeometryChange(for: CGFloat.self, of: { $0.size.width }, action: { viewportWidth = $0 })
                 .scrollIndicators(.hidden)
                 .onChange(of: selected) {
-                    if let selected { withAnimation(Motion.scrollToSelectedTab) { proxy.scrollTo(selected) } }
+                    if let selected {
+                        withAnimation(reduceMotion ? nil : Motion.scrollToSelectedTab) { proxy.scrollTo(selected) }
+                    }
                 }
                 .onChange(of: items.map(\.id)) {
                     if let dragging, !items.contains(where: { $0.id == dragging }) { cancelDrag() }
@@ -78,7 +82,7 @@ struct ManagedWorkflowTabs: View {
                     while !Task.isCancelled && scrollEdge != 0 && dragging != nil {
                         index = min(max(index + scrollEdge, 0), max(0, items.count - 1))
                         if items.indices.contains(index) {
-                            withAnimation {
+                            withAnimation(reduceMotion ? nil : Motion.scrollToSelectedTab) {
                                 proxy.scrollTo(items[index].id, anchor: scrollEdge < 0 ? .leading : .trailing)
                             }
                         }
@@ -90,6 +94,8 @@ struct ManagedWorkflowTabs: View {
             .layoutPriority(1)
             Button("New Workflow", systemImage: "plus", action: create)
                 .labelStyle(.iconOnly).buttonStyle(.glass).controlSize(.small)
+                .buttonSizing(.flexible)
+                .frame(width: WorkflowTabLayout.creationButtonWidth, height: WorkflowTabLayout.height)
                 .help("New Workflow (⌘T)").accessibilityIdentifier("newWorkflow")
             NewBrowserTabButton()
             Spacer(minLength: 0)
@@ -107,6 +113,7 @@ struct ManagedWorkflowTabs: View {
             }
         }
         .frame(height: WorkflowTabLayout.height, alignment: .bottom)
+        .animation(reduceMotion ? nil : Motion.tabChange, value: items.map(\.id))
         .contextMenu { Button("Reopen Closed Tab", action: reopen).disabled(!canReopen) }
     }
 

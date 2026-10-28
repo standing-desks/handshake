@@ -141,6 +141,8 @@ struct NewBrowserTabButton: View {
     var body: some View {
         Button("New Browser Tab", systemImage: "globe") { browsers.create() }
             .labelStyle(.iconOnly).buttonStyle(.glass).controlSize(.small)
+            .buttonSizing(.flexible)
+            .frame(width: WorkflowTabLayout.creationButtonWidth, height: WorkflowTabLayout.height)
             .help("New Browser Tab (⌥⌘T)").accessibilityIdentifier("newBrowserTab")
     }
 }

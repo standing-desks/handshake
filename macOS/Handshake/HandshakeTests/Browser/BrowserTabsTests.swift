@@ -30,24 +30,22 @@ struct BrowserTabsTests {
         #expect(files.editors.count == 1)
     }
 
-    @Test func snapshotsRestoreOnlyWhenTabManagementIsEnabled() throws {
+    @Test func snapshotsRestoreForTheirFolder() throws {
         let defaults = try #require(UserDefaults(suiteName: "BrowserTabsTests-\(UUID())"))
         let selection = WorkspaceContentSelection()
         let model = BrowserTabsModel(selection: selection, defaults: defaults, configuration: isolated)
-        model.configure(folder: "/tmp/browser", persistenceEnabled: true)
+        model.configure(folder: "/tmp/browser")
         let tab = model.create()
         tab.customName = "Reference"
         let id = tab.id
         model.closeAll(preservingPresentation: true)
         let fresh = BrowserTabsModel(selection: selection, defaults: defaults, configuration: isolated)
-        fresh.configure(folder: "/tmp/browser", persistenceEnabled: false)
-        #expect(fresh.tabs.isEmpty)
-        fresh.configure(folder: "/tmp/browser", persistenceEnabled: true)
+        fresh.configure(folder: "/tmp/browser")
         #expect(fresh.tabs.map(\.id) == [id])
         #expect(fresh.tabs.first?.customName == "Reference")
         #expect(fresh.tabs.first?.webView.configuration.websiteDataStore.isPersistent == false)
         fresh.closeAll()
-        fresh.configure(folder: "/tmp/other", persistenceEnabled: true)
+        fresh.configure(folder: "/tmp/other")
         #expect(fresh.tabs.isEmpty)
         fresh.closeAll()
     }

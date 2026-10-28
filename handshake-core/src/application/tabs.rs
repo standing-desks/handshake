@@ -45,12 +45,6 @@ impl Application {
         name: Option<&str>,
     ) -> Result<CommandDisposition, ApplicationError> {
         let mut inner = self.lock_inner()?;
-        if !inner.config.feature_flags.tab_management {
-            return Ok(super::workflows::reject(
-                "featureDisabled",
-                "Enable Tab management in Settings first.",
-            ));
-        }
         let name = name.map(str::trim);
         if name.is_some_and(|name| !valid_name(name)) {
             return Ok(super::workflows::reject(
@@ -84,12 +78,6 @@ impl Application {
         id: WorkflowId,
     ) -> Result<CommandDisposition, ApplicationError> {
         let mut inner = self.lock_inner()?;
-        if !inner.config.feature_flags.tab_management {
-            return Ok(super::workflows::reject(
-                "featureDisabled",
-                "Enable Tab management in Settings first.",
-            ));
-        }
         let Some(folder) = inner.folders.state().open_folder.clone() else {
             return Ok(super::workflows::reject(
                 "folderChanged",
@@ -186,10 +174,8 @@ mod tests {
     use crate::{Command, TerminalSize, WorkflowKind};
     use std::path::Path;
 
-    fn open(data: &Path, folder: &Path, enabled: bool) -> Application {
-        let mut config = Config::default();
-        config.feature_flags.tab_management = enabled;
-        let mut app = Application::with_config(data, config).unwrap();
+    fn open(data: &Path, folder: &Path) -> Application {
+        let mut app = Application::with_config(data, Config::default()).unwrap();
         app.terminals.set_test_shell("/bin/sh".into());
         accepted(
             &app,
@@ -238,7 +224,7 @@ mod tests {
     fn user_titles_survive_activation_restore_and_reset_without_changing_terminals() {
         let root = tempfile::tempdir().unwrap();
         let folder = tempfile::tempdir().unwrap();
-        let app = open(root.path(), folder.path(), true);
+        let app = open(root.path(), folder.path());
         let id = create(&app, folder.path());
         let terminal = app.snapshot().unwrap().workflows.workflows[0].terminal_id;
         accepted(
@@ -268,7 +254,7 @@ mod tests {
             ));
         }
         drop(app);
-        let app = open(root.path(), folder.path(), true);
+        let app = open(root.path(), folder.path());
         assert_eq!(
             app.snapshot().unwrap().workflows.workflows[0]
                 .custom_name
@@ -289,10 +275,10 @@ mod tests {
     }
 
     #[test]
-    fn reopening_is_history_only_even_after_relaunch_with_the_flag_off() {
+    fn reopening_is_history_only_even_after_relaunch_with_default_settings() {
         let root = tempfile::tempdir().unwrap();
         let folder = tempfile::tempdir().unwrap();
-        let app = open(root.path(), folder.path(), true);
+        let app = open(root.path(), folder.path());
         let id = create(&app, folder.path());
         accepted(&app, Command::ActivateWorkflow { workflow_id: id });
         let terminal = app.snapshot().unwrap().workflows.workflows[0].terminal_id;
@@ -315,7 +301,7 @@ mod tests {
             CommandDisposition::Rejected { .. }
         ));
         drop(app);
-        let app = open(root.path(), folder.path(), false);
+        let app = open(root.path(), folder.path());
         let snapshot = app.snapshot().unwrap();
         assert_eq!(snapshot.terminals, []);
         assert!(snapshot.workflows.workflows[0].archived);
@@ -327,9 +313,7 @@ mod tests {
                 name: Some("Title".into()),
             },
         ] {
-            assert!(
-                matches!(app.handle_command(RequestId(101), command).unwrap().disposition, CommandDisposition::Rejected { code, .. } if code == "featureDisabled")
-            );
+            accepted(&app, command);
         }
     }
 
@@ -338,7 +322,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let folder = tempfile::tempdir().unwrap();
         let other = tempfile::tempdir().unwrap();
-        let app = open(root.path(), folder.path(), true);
+        let app = open(root.path(), folder.path());
         let id = create(&app, folder.path());
         let session = app
             .snapshot()

@@ -5,13 +5,16 @@ extension HandshakeUITests {
     func testFeatureFlagControlsMemorySharingImmediatelyAndPersists() throws {
         let fixture = try makeAMISFixture(featureEnabled: false)
         let app = fixture.app
+        let config = URL(filePath: try XCTUnwrap(app.launchEnvironment["HANDSHAKE_CONFIG_PATH"]))
+        let initial = try String(contentsOf: config, encoding: .utf8)
+        try initial.replacingOccurrences(of: "cross_agent_memory_consolidation = false", with: "")
+            .write(to: config, atomically: true, encoding: .utf8)
         app.launch()
         setSidebar(open: true, in: app)
         defer { app.terminate() }
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["openNativeMemory"].exists)
         XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.store.path))
-        let config = URL(filePath: try XCTUnwrap(app.launchEnvironment["HANDSHAKE_CONFIG_PATH"]))
         try setMemoryFeature(true, in: app, config: config)
         XCTAssertTrue(app.buttons["openNativeMemory"].waitForExistence(timeout: 10))
         openHandshakeMemory(in: app)
@@ -64,6 +67,9 @@ extension HandshakeUITests {
         section.click()
         let toggle = memoryFeatureToggle(in: app)
         XCTAssertTrue(toggle.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(toggle.label.contains("Beta"), app.debugDescription)
+        XCTAssertFalse(
+            app.descendants(matching: .any).matching(identifier: "featureFlag-tabManagement").firstMatch.exists)
         toggle.click()
         waitForFile(config, containing: "cross_agent_memory_consolidation = \(value)", in: app)
         let settled = expectation(

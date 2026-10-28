@@ -5,6 +5,18 @@ import Testing
 
 @MainActor
 struct FeatureFlagsTests {
+    @Test func memoryDecodingDefaultsOffAndPreservesAnExplicitOptIn() throws {
+        for retired in [false, true] {
+            let absent = Data("{\"tab_management\":\(retired)}".utf8)
+            #expect(
+                try JSONDecoder().decode(CoreFeatureConfiguration.self, from: absent).crossAgentMemoryConsolidation
+                    == false)
+            let enabled = Data("{\"tab_management\":\(retired),\"cross_agent_memory_consolidation\":true}".utf8)
+            #expect(
+                try JSONDecoder().decode(CoreFeatureConfiguration.self, from: enabled).crossAgentMemoryConsolidation)
+        }
+    }
+
     @Test func settingAppliesTheSavedFileAndPreservesVersionProtection() async throws {
         let transport = FeatureFlagTestTransport()
         let client = CoreClient(transport: transport)

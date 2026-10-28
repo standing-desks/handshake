@@ -366,6 +366,10 @@ fn parse_document<T: serde::de::DeserializeOwned + Default>(
         serde_path_to_error::Deserializer::new(toml::Deserializer::from(table), &mut track);
     let result = serde_ignored::deserialize(deserializer, |key| {
         let segments = diagnostics::ignored_segments(&key);
+        // Tab improvements are standard; keep older settings readable without a warning.
+        if segments == ["feature_flags", "tab_management"] {
+            return;
+        }
         let offset = locations
             .iter()
             .find(|location| location.segments == segments)

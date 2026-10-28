@@ -11,6 +11,7 @@ struct WorkspaceViewport<Content: View>: NSViewRepresentable {
     @Environment(HarnessModelCatalog.self) private var catalog
     @Environment(\.appZoom) private var zoom
     @Environment(\.traceLaneColors) private var laneColors
+    @Environment(\.effectiveReduceMotion) private var reduceMotion
     let contentHeight: CGFloat
     @ViewBuilder let content: Content
 
@@ -48,7 +49,7 @@ struct WorkspaceViewport<Content: View>: NSViewRepresentable {
     private var hostedContent: WorkspaceContent<Content> {
         WorkspaceContent(
             content: content, client: client, layouts: layouts, tabs: tabs, browsers: browsers,
-            navigation: navigation, catalog: catalog, zoom: zoom, laneColors: laneColors)
+            navigation: navigation, catalog: catalog, zoom: zoom, laneColors: laneColors, reduceMotion: reduceMotion)
     }
 
     final class Coordinator {
@@ -66,12 +67,14 @@ struct WorkspaceContent<Content: View>: View {
     let catalog: HarnessModelCatalog
     let zoom: AppZoom?
     let laneColors: [UInt64: Color]
+    let reduceMotion: Bool
 
     var body: some View {
         content
             .environment(client).environment(layouts).environment(tabs).environment(browsers)
             .environment(navigation).environment(catalog)
             .environment(\.appZoom, zoom).environment(\.traceLaneColors, laneColors)
+            .environment(\.effectiveReduceMotion, reduceMotion)
             .defaultAppStorage(WorkflowLaunchPreferences.defaultStore())
     }
 }

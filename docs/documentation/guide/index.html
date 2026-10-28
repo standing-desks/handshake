@@ -183,10 +183,10 @@ directory entries, 32 databases, and 256 recent extraction records per database.
 scanned eight levels deep and folder instructions six levels deep. The checked-locations menu
 shows discovery diagnostics. Return to workflows by clicking the Sessions header.</p>
 <h3 id="cross-agent-memory-sharing">Sharing memories between agents<a class="headerlink" href="#cross-agent-memory-sharing" title="Permanent link">#</a></h3>
-<p>Handshake can automatically share project memories between Codex and Claude Code.
+<p>Handshake can automatically share project memories between Codex and Claude Code as an opt-in beta.
 To enable sharing:</p>
 <ol>
-<li>Open <strong>Settings → Feature flags</strong> and enable <strong>Cross-agent memory consolidation</strong>.
+<li>Open <strong>Settings → Feature flags</strong> and enable <strong>Cross-agent memory consolidation</strong>, labeled <strong>Beta</strong>.
 The flag defaults to off, saves immediately, and applies to every open folder.</li>
 <li>Open your project folder and turn on the <strong>Share</strong> switch beside <strong>Memories</strong>.
 This switch controls sharing for that project and remains available when Memories is collapsed.</li>
@@ -413,19 +413,17 @@ Use Back, Forward, Reload/Stop, and <strong>⌘L</strong> for the address field.
 <strong>⌘[</strong>, <strong>⌘]</strong>, and <strong>⌘R</strong>. <strong>⌘T</strong> still creates a workflow.</p>
 <p>Each tab keeps its page and history while you switch tabs or sessions. Website popups open sibling tabs;
 website dialogs and file uploads use native sheets. Browser tabs share WebKit's normal persistent website data.
-Enable Tab management below for browser renaming, reordering, pinning, search, reopening, and restoration.
+Browser renaming, reordering, pinning, search, reopening, and restoration are available by default.
 Restoration loads the saved page address; it does not restore an in-memory form or page history.</p>
 <p>Open PDFs, images, and videos from the Files sidebar to preview them in file tabs. PDFs use the native document
 viewer; images fit the available space; videos have playback and seek controls and pause when hidden.
 These previews are not subject to the text editor's 2 MiB limit. Playback depends on the system's supported codecs.
 Text images such as SVG retain their Source editor.</p>
-<h3 id="experimental-tab-management">Experimental tab management</h3>
-<p>In <strong>Settings → Feature flags</strong>, enable <strong>Tab management</strong> to try custom
+<h3 id="experimental-tab-management">Tab management</h3>
+<p>Tab management is available in every folder, including custom
 workflow and browser names, drag reordering, pinned tabs, a searchable open-tab list, completion indicators,
-and reopening closed tabs. The flag defaults to off and applies immediately to all folder windows.
-The equivalent configuration is:</p>
-<pre class="highlight"><code class="language-toml">[feature_flags]
-tab_management = true</code></pre>
+and reopening closed tabs. There is no feature flag to enable. Existing <code>tab_management</code>
+configuration entries are ignored.</p>
 <p>Double-click a workflow or browser tab or choose <strong>Rename…</strong> from its context menu. Choose
 <strong>Reset Name</strong> to return to its automatic name. File tabs keep their filenames; duplicate
 filenames show enough parent folders to distinguish them. Drag tabs to reorder, or use

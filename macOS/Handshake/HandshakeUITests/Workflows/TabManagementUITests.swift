@@ -3,21 +3,28 @@ import XCTest
 
 extension HandshakeUITests {
     @MainActor
-    func testTabManagementFlagAppliesLiveAndPersists() throws {
-        let folder = try makeTestFolder(prefix: "HandshakeTabFlag")
-        let app = try makeApp(lastOpenFolder: folder)
+    func testTabManagementIsStandardAndIgnoresRetiredSettings() throws {
+        let folder = try makeTestFolder(prefix: "HandshakeStandardTabs")
+        let app = try managedTabApp(folder: folder)
         app.launch()
         defer { app.terminate() }
         XCTAssertTrue(app.buttons["workflowTab-1"].waitForExistence(timeout: 10))
-        XCTAssertFalse(app.buttons["tabSwitcher"].exists)
-        setTabManagement(true, in: app)
-        XCTAssertTrue(app.buttons["tabSwitcher"].waitForExistence(timeout: 10), app.debugDescription)
-        setTabManagement(false, in: app)
-        XCTAssertTrue(app.buttons["tabSwitcher"].waitForNonExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["tabSwitcher"].waitForExistence(timeout: 5))
+        app.typeKey(",", modifierFlags: .command)
+        let section = app.sheets.radioButtons["Feature flags"]
+        XCTAssertTrue(section.waitForExistence(timeout: 10))
+        section.click()
+        XCTAssertFalse(
+            app.descendants(matching: .any).matching(identifier: "featureFlag-tabManagement").firstMatch.exists)
+        app.buttons["closeSettings"].click()
         app.terminate()
+        let root = URL(filePath: try XCTUnwrap(app.launchEnvironment["XDG_CONFIG_HOME"]))
+        let config = root.appending(path: "handshake/config.toml")
+        try "[feature_flags]\ntab_management = false\n".write(to: config, atomically: true, encoding: .utf8)
         app.launch()
         XCTAssertTrue(app.buttons["workflowTab-1"].waitForExistence(timeout: 10))
-        XCTAssertFalse(app.buttons["tabSwitcher"].exists)
+        XCTAssertTrue(app.buttons["tabSwitcher"].waitForExistence(timeout: 5))
+        XCTAssertEqual(try String(contentsOf: config, encoding: .utf8), "[feature_flags]\ntab_management = false\n")
     }
 
     @MainActor
@@ -63,18 +70,16 @@ extension HandshakeUITests {
         waitForTab(third, valueContaining: "Pinned", in: app)
         XCTAssertLessThan(third.frame.minX, first.frame.minX)
         XCTAssertTrue(app.buttons["restartClosedTerminal"].waitForExistence(timeout: 5))
-        try verifyHistoryFlagAndExplicitRestart(in: app, folder: folder, originalProcessID: processID)
+        try verifyHistoryAndExplicitRestart(in: app, folder: folder, originalProcessID: processID)
     }
 
     @MainActor
-    private func verifyHistoryFlagAndExplicitRestart(
+    private func verifyHistoryAndExplicitRestart(
         in app: XCUIApplication, folder: URL, originalProcessID: Int32
     ) throws {
-        setTabManagement(false, in: app)
-        XCTAssertFalse(app.buttons["tabSwitcher"].exists)
+        XCTAssertTrue(app.buttons["tabSwitcher"].exists)
         XCTAssertTrue(app.buttons["restartClosedTerminal"].exists)
         XCTAssertTrue(processEnds(originalProcessID))
-        setTabManagement(true, in: app)
         app.buttons["restartClosedTerminal"].click()
         let fresh = app.buttons["workflowTab-4"]
         XCTAssertTrue(fresh.waitForExistence(timeout: 5))
@@ -246,34 +251,8 @@ extension HandshakeUITests {
     @MainActor
     func managedTabApp(folder: URL) throws -> XCUIApplication {
         let app = try makeApp(lastOpenFolder: folder)
-        let root = URL(filePath: try XCTUnwrap(app.launchEnvironment["XDG_CONFIG_HOME"]))
-        let config = root.appending(path: "handshake/config.toml")
-        try FileManager.default.createDirectory(
-            at: config.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try "[feature_flags]\ntab_management = true\n".write(to: config, atomically: true, encoding: .utf8)
         app.launchEnvironment["SHELL"] = "/bin/sh"
         return app
-    }
-
-    @MainActor
-    func setTabManagement(_ enabled: Bool, in app: XCUIApplication) {
-        app.typeKey(",", modifierFlags: .command)
-        let section = app.sheets.radioButtons["Feature flags"]
-        XCTAssertTrue(section.waitForExistence(timeout: 10))
-        section.click()
-        let toggle = app.switches["featureFlag-tabManagement"]
-        let checkbox = app.checkBoxes["featureFlag-tabManagement"]
-        let control = toggle.exists ? toggle : checkbox
-        XCTAssertTrue(control.waitForExistence(timeout: 10), app.debugDescription)
-        if (String(describing: control.value ?? "") == "1") != enabled { control.click() }
-        if let root = app.launchEnvironment["XDG_CONFIG_HOME"] {
-            let config = URL(filePath: root).appending(path: "handshake/config.toml")
-            waitForFile(config, containing: "tab_management = \(enabled)", in: app)
-        }
-        let settled = expectation(for: NSPredicate { _, _ in control.isEnabled }, evaluatedWith: nil)
-        wait(for: [settled], timeout: 15)
-        XCTAssertFalse(app.staticTexts["featureFlagsFailure"].exists)
-        app.buttons["closeSettings"].click()
     }
 
     @MainActor

@@ -92,7 +92,7 @@ struct WorkspaceTabBar: View {
         }
         .task(id: sessionID) {
             prepared = false
-            browsers.configure(folder: folder, persistenceEnabled: true)
+            browsers.configure(folder: folder)
             prepareBrowsers()
             let keepsBrowser = browsers.selected != nil
             let savedSelection = model.arrangement(sessionID).selection

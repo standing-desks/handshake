@@ -4,9 +4,17 @@ import XCTest
 extension HandshakeUITests {
     @MainActor
     func testTerminalSplitsResizeKeepTheirNeighborAndRestoreOutput() throws {
+        for reducedMotion in [false, true] {
+            try verifyTerminalSplits(reducedMotion: reducedMotion)
+        }
+    }
+
+    @MainActor
+    private func verifyTerminalSplits(reducedMotion: Bool) throws {
         let folder = try makeTestFolder(prefix: "HandshakeSplitUITests")
         let app = try makeApp(lastOpenFolder: folder)
         app.launchEnvironment["SHELL"] = "/bin/bash"
+        app.launchEnvironment["HANDSHAKE_TEST_REDUCE_MOTION"] = reducedMotion ? "1" : "0"
         app.launch()
         defer { app.terminate() }
         XCTAssertTrue(app.buttons["workflowTab-1"].waitForExistence(timeout: 10))

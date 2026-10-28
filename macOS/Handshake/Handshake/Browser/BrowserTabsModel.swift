@@ -19,7 +19,6 @@ final class BrowserTabsModel {
     private let defaults: UserDefaults
     private let configuration: @MainActor () -> WKWebViewConfiguration
     private var folder: String?
-    private var persistenceEnabled = false
     private var lastSaved: [Snapshot] = []
     private(set) var isClosing = false
 
@@ -40,17 +39,16 @@ final class BrowserTabsModel {
     }
     var selected: BrowserTab? { tabs.first { $0.id == selectedID } }
 
-    func configure(folder: String, persistenceEnabled: Bool) {
+    func configure(folder: String) {
         let canonical = FolderWindows.canonicalPath(folder)
-        if self.folder != canonical {
+        let changedFolder = self.folder != canonical
+        if changedFolder {
             closeAll(preservingPresentation: true)
             self.folder = canonical
             isClosing = false
             lastSaved = []
-            self.persistenceEnabled = false
         }
-        let shouldRestore = persistenceEnabled && !self.persistenceEnabled && tabs.isEmpty
-        self.persistenceEnabled = persistenceEnabled
+        let shouldRestore = changedFolder && tabs.isEmpty
         let restored = defaults.data(forKey: key).flatMap { try? JSONDecoder().decode([Snapshot].self, from: $0) }
         if shouldRestore, let snapshots = restored {
             lastSaved = snapshots
@@ -130,7 +128,7 @@ final class BrowserTabsModel {
     }
 
     func remember() {
-        guard persistenceEnabled, folder != nil, !isClosing else { return }
+        guard folder != nil, !isClosing else { return }
         let snapshots = tabs.map(\.snapshot)
         guard snapshots != lastSaved, let data = try? JSONEncoder().encode(snapshots) else { return }
         lastSaved = snapshots
