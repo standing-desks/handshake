@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-27
+
+### Added
+
+- Browse websites in tabs with an address bar, navigation controls, keyboard shortcuts,
+  sibling popup tabs, native dialogs, and file uploads. Keep pages and history while
+  switching tabs or sessions; use experimental tab management to rename, reorder, pin,
+  search, reopen, and restore browser page addresses across relaunch.
+- Preview PDFs, images, and videos in file tabs without the text editor's 2 MiB limit.
+  Videos include playback and seek controls and pause when hidden; text images such as
+  SVG retain their Source editor.
+- Keep the Mac awake with an app-wide toolbar control, including on the start page.
+  Keep Awake lasts until disabled or Handshake quits and starts Off after relaunch.
+- Refresh shared project memories at each prompt in Codex and Claude Code conversations
+  launched with sharing enabled, including while other agents are active. Local
+  consolidation makes no model calls.
+- Archive shared memories for the whole project, inspect their retained full content,
+  and explicitly restore them in Memory settings. Confirmed deletion of a known native
+  memory archives its shared claim and suppresses known derived copies across restarts.
+- Use Individual mode after graph-based multi-agent workflows finish to follow up with
+  agents without starting another workflow cycle.
+
+### Changed
+
+- Place the new-workflow button beside the tabs and keep it reachable during overflow.
+- Show a Done marker on completed top-level workflow tabs and remove their running,
+  exit, and unread indicators. Keep agent status visible inside multi-agent workflows.
+- Preserve existing native memory files during active sessions by delivering updated
+  shared memories in separate revision files until replacement is safe.
+- Expand the user guide for browser tabs, media previews, and cross-agent memory sharing.
+
+### Fixed
+
+- Attach memory services before restoring agents so resumed conversations receive their
+  native memory profile and prompt hooks on the first launch.
+- Honor native memory opt-outs, report unsupported Codex memory layouts, and distinguish
+  missing profile directories or temporary file replacement from intentional deletion.
+- Preserve concurrent native memory edits, recover interrupted memory restoration, and
+  handle agents exiting during memory delivery checks.
+- Keep browser and preview focus, visibility, and pointer interaction correct across
+  tab changes and app zoom levels, and leave room for toolbar controls beside long folder titles.
+
 ## [0.4.2] - 2026-10-26
 
 ### Changed
@@ -313,7 +355,8 @@ Initial release of Twine, a native macOS workspace for coordinating coding agent
 - The app is ad hoc signed and not notarized. Follow the included install instructions
   to approve the first launch in macOS Privacy & Security settings.
 
-[unreleased]: https://github.com/standing-desks/twine/compare/v0.3.3...HEAD
+[unreleased]: https://github.com/standing-desks/handshake/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/standing-desks/handshake/compare/v0.4.2...v0.5.0
 [0.3.3]: https://github.com/standing-desks/twine/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/standing-desks/twine/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/standing-desks/twine/compare/v0.3.0...v0.3.1
