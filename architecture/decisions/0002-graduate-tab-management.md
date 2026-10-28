@@ -26,6 +26,9 @@ Keep tab arrangement and selection in Swift presentation state. Workflow behavio
 and durable workflow names continue to belong to `handshake-core` and use the
 existing `CoreClient` boundary.
 
+Once a window begins preserving its presentation for shutdown, session changes
+from core teardown must not rerun tab restoration or replace saved snapshots.
+
 ## Consequences
 
 Users receive one consistent tab experience. The implementation removes obsolete

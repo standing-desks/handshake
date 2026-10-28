@@ -139,10 +139,15 @@ private struct BrowserWebView: NSViewRepresentable {
 struct NewBrowserTabButton: View {
     @Environment(BrowserTabsModel.self) private var browsers
     var body: some View {
-        Button("New Browser Tab", systemImage: "globe") { browsers.create() }
-            .labelStyle(.iconOnly).buttonStyle(.glass).controlSize(.small)
-            .buttonSizing(.flexible)
-            .frame(width: WorkflowTabLayout.creationButtonWidth, height: WorkflowTabLayout.height)
-            .help("New Browser Tab (⌥⌘T)").accessibilityIdentifier("newBrowserTab")
+        Button {
+            browsers.create()
+        } label: {
+            Label("New Browser Tab", systemImage: "globe")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .labelStyle(.iconOnly).buttonStyle(.glass).controlSize(.small)
+        .buttonSizing(.flexible)
+        .frame(width: WorkflowTabLayout.creationButtonWidth, height: WorkflowTabLayout.height)
+        .help("New Browser Tab (⌥⌘T)").accessibilityIdentifier("newBrowserTab")
     }
 }

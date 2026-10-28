@@ -92,11 +92,14 @@ struct ManagedWorkflowTabs: View {
             }
             .frame(maxWidth: tabsWidth)
             .layoutPriority(1)
-            Button("New Workflow", systemImage: "plus", action: create)
-                .labelStyle(.iconOnly).buttonStyle(.glass).controlSize(.small)
-                .buttonSizing(.flexible)
-                .frame(width: WorkflowTabLayout.creationButtonWidth, height: WorkflowTabLayout.height)
-                .help("New Workflow (⌘T)").accessibilityIdentifier("newWorkflow")
+            Button(action: create) {
+                Label("New Workflow", systemImage: "plus")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .labelStyle(.iconOnly).buttonStyle(.glass).controlSize(.small)
+            .buttonSizing(.flexible)
+            .frame(width: WorkflowTabLayout.creationButtonWidth, height: WorkflowTabLayout.height)
+            .help("New Workflow (⌘T)").accessibilityIdentifier("newWorkflow")
             NewBrowserTabButton()
             Spacer(minLength: 0)
             Button {
