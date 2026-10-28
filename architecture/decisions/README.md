@@ -18,3 +18,4 @@ Do not include machine-specific paths or account details.
 | [0003](0003-keep-cross-agent-memory-an-opt-in-beta.md) | Accepted | Keep cross-agent memory an opt-in beta |
 | [0004](0004-bound-memory-context-and-record-explicit-corrections.md) | Accepted | Bound memory context and record explicit corrections |
 | [0005](0005-integrate-kiro-through-native-v3-hooks.md) | Accepted | Integrate Kiro through native V3 hooks and exact conversation profiles |
+| [0006](0006-align-and-quiet-the-folder-top-bar.md) | Accepted | Align the folder top bar and use quieter native controls |

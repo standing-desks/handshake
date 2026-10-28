@@ -29,7 +29,7 @@ struct ManagedWorkflowTabs: View {
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 6) {
-            Text("TABS").sectionLabelStyle().fixedSize().padding(.bottom, 10)
+            Text("TABS").sectionLabelStyle().fixedSize().frame(height: WorkflowTabLayout.height)
             ScrollViewReader { proxy in
                 ScrollView(.horizontal) {
                     HStack(alignment: .bottom, spacing: 6) {
@@ -64,6 +64,10 @@ struct ManagedWorkflowTabs: View {
                         withAnimation(reduceMotion ? nil : Motion.scrollToSelectedTab) { proxy.scrollTo(selected) }
                     }
                 }
+                .onScrollGeometryChange(for: CGFloat.self, of: { $0.contentSize.width }) { _, _ in
+                    // Scroll after the scroll view has laid out inserted or renamed tabs.
+                    if let selected { proxy.scrollTo(selected) }
+                }
                 .onChange(of: items.map(\.id)) {
                     if let dragging, !items.contains(where: { $0.id == dragging }) { cancelDrag() }
                     if let selected { proxy.scrollTo(selected) }
@@ -96,9 +100,8 @@ struct ManagedWorkflowTabs: View {
                 Label("New Workflow", systemImage: "plus")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .labelStyle(.iconOnly).buttonStyle(.glass).controlSize(.small)
-            .buttonSizing(.flexible)
-            .frame(width: WorkflowTabLayout.creationButtonWidth, height: WorkflowTabLayout.height)
+            .labelStyle(.iconOnly).workspaceBarControl()
+            .frame(width: WorkflowTabLayout.creationButtonWidth)
             .help("New Workflow (⌘T)").accessibilityIdentifier("newWorkflow")
             NewBrowserTabButton()
             Spacer(minLength: 0)
@@ -106,9 +109,10 @@ struct ManagedWorkflowTabs: View {
                 showsSwitcher.toggle()
             } label: {
                 Label("\(items.count)", systemImage: "chevron.down")
+                    .frame(maxHeight: .infinity)
             }
-            .buttonStyle(.glass).controlSize(.small).help("Find an Open Tab (⌘⇧A)")
-            .fixedSize()
+            .workspaceBarControl().help("Find an Open Tab (⌘⇧A)")
+            .fixedSize(horizontal: true, vertical: false)
             .accessibilityLabel("Find an open tab, \(items.count) tabs")
             .accessibilityIdentifier("tabSwitcher")
             .popover(isPresented: $showsSwitcher) {
