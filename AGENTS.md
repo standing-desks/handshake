@@ -28,6 +28,9 @@ For identity, interface design, and compatibility changes, follow the [brand and
 
 ## Repository content rules
 
+- **Architecture decisions:** Keep ADRs in [architecture/decisions/](architecture/decisions/README.md),
+  with one index and stable record numbers.
+
 - **`docs/` is reserved exclusively for the GitHub Pages website.** Only add
   content and assets intended for the published site. Never use it for scratch
   documents, development plans, design experiments, trial reports, or agent
