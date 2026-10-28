@@ -102,13 +102,35 @@ extension HandshakeUITests {
         pathlib.Path('agent-launch.json').write_text(json.dumps({'arguments':sys.argv, 'memory_directory':memory}))
         pathlib.Path('agent-pid').write_text(str(os.getpid()))
         for line in sys.stdin:
-            payload = json.dumps({'session_id':'ui-session','prompt':line})
+            payload = json.dumps({'hook_event_name':'UserPromptSubmit','session_id':'ui-session','prompt':line})
             result = subprocess.run(command, shell=True, input=payload, text=True, capture_output=True)
             pathlib.Path('prompt-memory-response.json').write_text(result.stdout)
             sys.stdout.write('Prompt refreshed\\n')
             sys.stdout.flush()
         """.write(to: folder.appending(path: "memory-prompt-agent.py"), atomically: true, encoding: .utf8)
         return bin
+    }
+
+}
+
+extension HandshakeUITests {
+    @MainActor
+    func revealHandshakeDetail(_ element: XCUIElement, in app: XCUIApplication) {
+        XCTAssertTrue(element.waitForExistence(timeout: 5), app.debugDescription)
+        let viewport = app.scrollViews["handshakeMemoryViewport"]
+        for _ in 0..<12 {
+            let visible = viewport.frame.intersection(element.frame)
+            let needsHitTarget = element.elementType == .button || element.elementType == .disclosureTriangle
+            let fullyVisible = visible.height >= min(element.frame.height, viewport.frame.height) - 2
+            let canActivate = !needsHitTarget || element.isHittable
+            if fullyVisible && canActivate { return }
+            let delta = min(90, max(-90, (viewport.frame.midY - element.frame.midY) / 2))
+            viewport.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).scroll(byDeltaX: 0, deltaY: delta)
+        }
+        XCTAssertGreaterThanOrEqual(
+            viewport.frame.intersection(element.frame).height,
+            min(element.frame.height, viewport.frame.height) - 2, app.debugDescription)
+        if element.elementType == .button { XCTAssertTrue(element.isHittable, app.debugDescription) }
     }
 
 }

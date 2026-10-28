@@ -50,10 +50,23 @@ pub struct Request {
 pub enum Action {
     Status,
     Sync,
-    SetEnabled { enabled: bool },
-    Withdraw { id: String },
-    ReadArchive { id: String },
-    Restore { id: String },
+    SetEnabled {
+        enabled: bool,
+    },
+    Withdraw {
+        id: String,
+    },
+    ReadArchive {
+        id: String,
+    },
+    Restore {
+        id: String,
+    },
+    Correct {
+        id: String,
+        revision: String,
+        text: String,
+    },
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -81,6 +94,7 @@ pub struct Summary {
     pub title: String,
     pub sources: usize,
     pub preview: String,
+    pub revision: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -192,6 +206,13 @@ fn execute_library(library: &mut storage::Library, request: &Request) -> Result<
         Action::SetEnabled { enabled } => library.set_enabled(&project, *enabled)?,
         Action::Withdraw { id } => library.withdraw(&project, id)?,
         Action::Restore { id } => library.restore(&project, id)?,
+        Action::Correct { id, revision, text } => {
+            match library.sync(&project) {
+                Ok(()) | Err(Error::NativeActive) => {}
+                Err(error) => return Err(error),
+            }
+            library.correct(&project, id, revision, text)?;
+        }
         Action::Status | Action::Sync | Action::ReadArchive { .. } => {}
     }
     if !matches!(request.action, Action::Status | Action::ReadArchive { .. }) {

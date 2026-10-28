@@ -8,6 +8,7 @@ struct MemorySharingControls: View {
     let folder: String
     let refreshSources: () -> Void
     @State private var showsSettings = false
+    @State private var correction: HandshakeMemorySummary?
     @State private var ownerWindowNumber: Int?
 
     var body: some View {
@@ -43,12 +44,15 @@ struct MemorySharingControls: View {
             .buttonStyle(.plain).accessibilityLabel("Memory settings")
             .help("Memory settings").accessibilityIdentifier("openNativeMemory")
             .popover(isPresented: $showsSettings, arrowEdge: .trailing) {
-                MemorySharingSettings(model: model, folder: folder, refreshSources: refreshSources)
-                    .background {
-                        MemorySharingPopoverDismissal(ownerWindowNumber: ownerWindowNumber) { showsSettings = false }
-                            .frame(width: 0, height: 0)
-                    }
-                    .appZoom()
+                MemorySharingSettings(model: model, folder: folder, refreshSources: refreshSources) { record in
+                    showsSettings = false
+                    correction = record
+                }
+                .background {
+                    MemorySharingPopoverDismissal(ownerWindowNumber: ownerWindowNumber) { showsSettings = false }
+                        .frame(width: 0, height: 0)
+                }
+                .appZoom()
             }
         }
         .padding(.horizontal, 6).padding(.vertical, 2)
@@ -56,6 +60,12 @@ struct MemorySharingControls: View {
         .overlay { RoundedRectangle(cornerRadius: 6).strokeBorder(.quaternary, lineWidth: 0.5) }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Project memory sharing")
-        .onChange(of: folder) { showsSettings = false }
+        .sheet(item: $correction) { record in
+            MemoryCorrectionSheet(model: model, folder: folder, record: record).appZoom()
+        }
+        .onChange(of: folder) {
+            showsSettings = false
+            correction = nil
+        }
     }
 }

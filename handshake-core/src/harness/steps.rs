@@ -324,7 +324,7 @@ impl StepInbox {
 
     pub(crate) fn prompt_context_command(&self) -> String {
         format!(
-            "handshake_session=$(/usr/bin/plutil -extract session_id raw -o - - 2>/dev/null) || handshake_session=''; case \"$handshake_session\" in *[!a-zA-Z0-9_-]*) handshake_session='' ;; esac; handshake_reply=$(/usr/bin/mktemp '{}/memory-response.XXXXXXXX') || exit 0; trap '/bin/rm -f \"$handshake_reply\"' EXIT; if /usr/bin/printf '{{\"handshake_memory_context\":true,\"session_id\":\"%s\"}}' \"$handshake_session\" | /usr/bin/curl --silent --fail --max-time 5 --header 'Expect:' --unix-socket '{}' --output \"$handshake_reply\" --data-binary @- http://localhost/ && /bin/cat \"$handshake_reply\" 2>/dev/null; then :; else /usr/bin/printf '%s\\n' '{{\"systemMessage\":\"Handshake shared-memory refresh is unavailable for this prompt. Check Memory settings before relying on new shared memories.\"}}'; fi",
+            "handshake_reply=$(/usr/bin/mktemp '{}/memory-response.XXXXXXXX') || exit 0; trap '/bin/rm -f \"$handshake_reply\"' EXIT; if /usr/bin/curl --silent --fail --max-time 5 --header 'Expect:' --unix-socket '{}' --output \"$handshake_reply\" --data-binary @- http://localhost/ && /bin/cat \"$handshake_reply\" 2>/dev/null; then :; else /usr/bin/printf '%s\\n' '{{\"systemMessage\":\"Handshake shared-memory refresh is unavailable for this prompt. Check Memory settings before relying on new shared memories.\"}}'; fi",
             self.directory
                 .path()
                 .to_string_lossy()
@@ -549,7 +549,8 @@ mod tests {
         let current = Arc::new(Mutex::new(String::from("First saved preference.")));
         let reader = Arc::clone(&current);
         inbox
-            .set_prompt_context(Arc::new(move |_, _| {
+            .set_prompt_context(Arc::new(move |_, _, prompt| {
+                assert_eq!(prompt.len(), 16_384);
                 Ok(Some(reader.lock().unwrap().clone()))
             }))
             .unwrap();
@@ -590,7 +591,7 @@ mod tests {
         let entered = Arc::new(AtomicBool::new(false));
         let signal = Arc::clone(&entered);
         inbox
-            .set_prompt_context(Arc::new(move |cancelled, _| {
+            .set_prompt_context(Arc::new(move |cancelled, _, _| {
                 signal.store(true, Ordering::Release);
                 while !cancelled.load(Ordering::Acquire) {
                     std::thread::sleep(Duration::from_millis(5));
@@ -600,9 +601,15 @@ mod tests {
             .unwrap();
         let mut child = Command::new("/bin/sh")
             .args(["-c", &inbox.prompt_context_command()])
-            .stdin(Stdio::null())
+            .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(br#"{"hook_event_name":"UserPromptSubmit"}"#)
             .unwrap();
         let deadline = Instant::now() + Duration::from_secs(2);
         while !entered.load(Ordering::Acquire) {

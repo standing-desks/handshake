@@ -43,8 +43,8 @@ impl super::Application {
             .find(|(key, _)| key == "CODEX_HOME")
             .map(|(_, home)| std::path::PathBuf::from(home).join("config.toml"));
         let reader = worker.prompt_context(folder.to_owned(), provider, native_config);
-        hooks.set_prompt_context(std::sync::Arc::new(move |cancelled, session| {
-            reader(cancelled, session).map_err(io::Error::other)
+        hooks.set_prompt_context(std::sync::Arc::new(move |cancelled, session, prompt| {
+            reader(cancelled, session, prompt).map_err(io::Error::other)
         }))?;
         let command = hooks.prompt_context_command();
         match harness {

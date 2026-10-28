@@ -45,12 +45,12 @@ impl Worker {
         folder: PathBuf,
         provider: &'static str,
         native_config: Option<PathBuf>,
-    ) -> impl Fn(&AtomicBool, &str) -> Result<Option<String>, super::Error> + Send + Sync + 'static
+    ) -> impl Fn(&AtomicBool, &str, &str) -> Result<Option<String>, super::Error> + Send + Sync + 'static
     {
         let root = self.root.clone();
         let enabled = Arc::clone(&self.enabled);
         let stopping = Arc::clone(&self.stop);
-        move |cancelled, _session| {
+        move |cancelled, _session, prompt| {
             let deadline = std::time::Instant::now() + Duration::from_secs(4);
             let active = || {
                 !cancelled.load(Ordering::Acquire)
@@ -110,7 +110,7 @@ impl Worker {
                 Ok(()) | Err(super::Error::NativeActive) => {}
                 Err(error) => return Err(error),
             }
-            let context = library.prompt_context(&project, provider)?;
+            let context = library.prompt_context_for(&project, provider, prompt)?;
             if std::time::Instant::now() >= deadline {
                 return Err(super::Error::Busy);
             }
@@ -323,8 +323,8 @@ mod tests {
             Some(project.codex.join("config.toml")),
         );
         codex_inbox
-            .set_prompt_context(Arc::new(move |cancel, session| {
-                read(cancel, session).map_err(std::io::Error::other)
+            .set_prompt_context(Arc::new(move |cancel, session, prompt| {
+                read(cancel, session, prompt).map_err(std::io::Error::other)
             }))
             .unwrap();
         codex::append_prompt_context(&mut codex_args, &codex_inbox.prompt_context_command())
@@ -333,8 +333,8 @@ mod tests {
             claude::prepare(Arc::new(ReplayPosition::default())).unwrap();
         let read = worker.prompt_context(folder.clone(), "claude_code", None);
         claude_inbox
-            .set_prompt_context(Arc::new(move |cancel, session| {
-                read(cancel, session).map_err(std::io::Error::other)
+            .set_prompt_context(Arc::new(move |cancel, session, prompt| {
+                read(cancel, session, prompt).map_err(std::io::Error::other)
             }))
             .unwrap();
         claude::append_prompt_context(&mut claude_args, &claude_inbox.prompt_context_command())
@@ -353,8 +353,12 @@ mod tests {
             "claude_memory":project.claude, "codex_args":strings(codex_args),
             "claude_args":strings(claude_args), "codex_hook":codex_inbox.prompt_context_command()
         })).unwrap()).unwrap();
+        let control = std::env::var_os("HANDSHAKE_NATIVE_LIVE_CONTROL").map(PathBuf::from);
         let deadline = std::time::Instant::now() + Duration::from_secs(600);
         while !stop.exists() {
+            if let Some(path) = control.as_ref().filter(|path| path.is_file()) {
+                native_live_control(&worker, &folder, path);
+            }
             assert!(
                 std::time::Instant::now() < deadline,
                 "native driver timed out"
@@ -363,5 +367,28 @@ mod tests {
         }
         drop((codex_inbox, claude_inbox, worker, codex_lease, claude_lease));
         fs::remove_dir_all(&project.claude).unwrap();
+    }
+    fn native_live_control(worker: &Worker, folder: &std::path::Path, path: &std::path::Path) {
+        use std::fs;
+        let action = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+        fs::remove_file(path).unwrap();
+        let result = super::super::execute_guarded(
+            worker.directory(),
+            &super::super::Request {
+                folder: folder.to_owned(),
+                data_directory: None,
+                action,
+            },
+            || Ok(super::super::feature_enabled()),
+        );
+        let response = match result {
+            Ok(snapshot) => serde_json::json!({"snapshot":snapshot}),
+            Err(error) => serde_json::json!({"error":error.to_string()}),
+        };
+        fs::write(
+            path.with_extension("response.json"),
+            serde_json::to_vec(&response).unwrap(),
+        )
+        .unwrap();
     }
 }

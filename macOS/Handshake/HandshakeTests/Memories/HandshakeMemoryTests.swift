@@ -5,6 +5,19 @@ import Testing
 
 @MainActor
 struct HandshakeMemoryTests {
+    @Test func correctionResultReportsFailureAndSuccessToTheEditor() async throws {
+        let transport = DeferredMemoryTransport()
+        let client = CoreClient(transport: transport)
+        let model = HandshakeMemoryModel()
+        let action = HandshakeMemoryAction.correct(id: "memory", revision: "revision", text: "Current fact")
+        await transport.setHandshakeResult(.failure(.failed("The selected memory changed.")))
+        #expect(await model.perform(client: client, folder: "/project", action: action) == false)
+        #expect(model.failure?.contains("selected memory changed") == true)
+        await transport.setHandshakeResult(.success(snapshot()))
+        #expect(await model.perform(client: client, folder: "/project", action: action))
+        #expect(model.failure == nil)
+    }
+
     @Test func statusAndActionsDoNotOverlap() async throws {
         let transport = DeferredMemoryTransport()
         await transport.deferHandshakeRequests()

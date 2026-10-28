@@ -8,7 +8,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-pub(super) type Reader = Arc<dyn Fn(&AtomicBool, &str) -> io::Result<Option<String>> + Send + Sync>;
+pub(super) type Reader =
+    Arc<dyn Fn(&AtomicBool, &str, &str) -> io::Result<Option<String>> + Send + Sync>;
 
 pub(super) struct Inbox {
     cancelled: Arc<AtomicBool>,
@@ -52,9 +53,10 @@ impl Inbox {
                 };
                 let request = super::steps::read_request(&mut stream)
                     .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok());
-                let Some(request) =
-                    request.filter(|value| value["handshake_memory_context"] == true)
-                else {
+                let Some(request) = request.filter(|value| {
+                    value["handshake_memory_context"] == true
+                        || value["hook_event_name"] == "UserPromptSubmit"
+                }) else {
                     continue;
                 };
                 let session = request["session_id"].as_str().unwrap_or_default();
@@ -65,7 +67,9 @@ impl Inbox {
                 {
                     continue;
                 }
-                let result = reader(&stop, session);
+                let prompt = request["prompt"].as_str().unwrap_or_default();
+                let prompt = &prompt[..prompt.floor_char_boundary(prompt.len().min(16_384))];
+                let result = reader(&stop, session, prompt);
                 let response = match result {
                     Ok(Some(context)) => serde_json::json!({"hookSpecificOutput":{
                         "hookEventName":"UserPromptSubmit", "additionalContext":context

@@ -27,17 +27,19 @@ final class HandshakeMemoryModel {
         }
     }
 
-    func perform(client: CoreClient, folder: String, action: HandshakeMemoryAction) async {
-        guard !isUpdating else { return }
+    @discardableResult
+    func perform(client: CoreClient, folder: String, action: HandshakeMemoryAction) async -> Bool {
+        guard !isUpdating else { return false }
         isUpdating = true
         defer { isUpdating = false }
-        await update(client: client, folder: folder, action: action, token: generation)
+        return await update(client: client, folder: folder, action: action, token: generation)
     }
 
-    private func update(client: CoreClient, folder: String, action: HandshakeMemoryAction, token: UUID) async {
+    @discardableResult
+    private func update(client: CoreClient, folder: String, action: HandshakeMemoryAction, token: UUID) async -> Bool {
         do {
             let snapshot = try await client.handshakeMemories(folder: folder, action: action)
-            guard !Task.isCancelled, generation == token else { return }
+            guard !Task.isCancelled, generation == token else { return false }
             self.snapshot = snapshot
             if let detail = snapshot.archiveDetail {
                 archiveDetail = detail
@@ -48,12 +50,14 @@ final class HandshakeMemoryModel {
                 failure = nil
                 failureIsAction = false
             }
+            return true
         } catch {
-            guard !Task.isCancelled, generation == token else { return }
+            guard !Task.isCancelled, generation == token else { return false }
             if action != .status || !failureIsAction {
                 failure = error.localizedDescription
                 failureIsAction = action != .status
             }
+            return false
         }
     }
 }
