@@ -49,7 +49,7 @@ extension HandshakeUITests {
             """#
         let agent = folder.appending(path: "kiro-agent.py")
         try script.write(to: agent, atomically: true, encoding: .utf8)
-        let command = bin.appending(path: "kiro-cli")
+        let command = folder.appending(path: "kiro-wrapper.txt")
         let wrapper = """
             #!/bin/sh
             case "$*" in *--list-models*)
@@ -59,7 +59,17 @@ extension HandshakeUITests {
             exec /usr/bin/python3 '\(agent.path)' "$@"
             """
         try wrapper.write(to: command, atomically: true, encoding: .utf8)
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: command.path)
+    }
+
+    @MainActor
+    func installKiroFixture(in folder: URL, app: XCUIApplication) {
+        app.buttons["workflowChoice-Terminal"].click()
+        app.typeText(
+            "cat kiro-wrapper.txt > bin/kiro-cli; chmod +x bin/kiro-cli; "
+                + "./bin/kiro-cli chat --v3 --list-models --format json > model-probe.json 2>&1\r"
+        )
+        waitForFile(folder.appending(path: "model-probe.json"), containing: "fixture-fast", in: app)
+        app.buttons["newWorkflow"].click()
     }
 
     func kiroLaunches(in folder: URL) -> [KiroLaunch] {

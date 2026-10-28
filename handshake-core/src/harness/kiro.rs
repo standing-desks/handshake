@@ -96,7 +96,7 @@ fn prepare_in(
     })
     .collect();
     file.write_all(&serde_json::to_vec(
-        &json!({"name":profile,"description":description,"hooks":hooks}),
+        &json!({"name":profile,"description":description,"tools":["*"],"hooks":hooks}),
     )?)?;
     let (file, path) = if file.path() == target {
         file.keep().map_err(|error| error.error)?
@@ -324,6 +324,10 @@ mod tests {
     fn native_hooks_keep_exact_sessions_turns_and_complete_tool_observations() {
         let root = tempfile::tempdir().unwrap();
         let (inbox, _) = prepare_in(Arc::default(), None, root.path()).unwrap();
+        let config = profile(&inbox);
+        assert_eq!(config["tools"], json!(["*"]));
+        assert!(config.get("permissions").is_none());
+        assert!(config.get("allowedTools").is_none());
         let native = "sess_fixture";
         hook(&inbox, "SessionStart", json!({"session_id":native}));
         hook(

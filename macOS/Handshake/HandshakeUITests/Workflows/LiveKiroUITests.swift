@@ -14,6 +14,8 @@ extension HandshakeUITests {
         XCTAssertTrue(yolo.waitForExistence(timeout: 10))
         yolo.click()
         chooseHarness("kiro", displayName: "Kiro CLI", in: app)
+        var accepted = Set<URL>()
+        acceptLiveKiroConsent(in: app, accepted: &accepted)
         let initial =
             "Kiro live check: remember the fictional token ORION_1847. "
             + "Write first.txt containing exactly KIRO_FIRST_OK, then reply done.\r"
@@ -23,6 +25,7 @@ extension HandshakeUITests {
         app.terminate()
         app.launch()
         XCTAssertTrue(app.buttons["workflowTab-1"].waitForExistence(timeout: 20))
+        acceptLiveKiroConsent(in: app, accepted: &accepted)
         let followUp =
             "Resume check: without reading any files, write second.txt with the fictional token "
             + "I asked you to remember, then reply done.\r"
@@ -54,10 +57,16 @@ extension HandshakeUITests {
         XCTAssertTrue(start.waitForExistence(timeout: 10))
         start.click()
         XCTAssertTrue(app.buttons["workflowMarkDone"].waitForExistence(timeout: 20), app.debugDescription)
+        var accepted = Set<URL>()
+        acceptLiveKiroConsent(in: app, accepted: &accepted)
         let task =
             "Write workflow-result.txt containing exactly KIRO_WORKFLOW_OK. "
             + "The reviewer should accept if it matches. Only change that file.\r"
         app.typeText(task)
+        let reviewer = app.buttons["agentSubtab-2"]
+        XCTAssertTrue(reviewer.waitForExistence(timeout: 60), app.debugDescription)
+        reviewer.click()
+        acceptLiveKiroConsent(in: app, accepted: &accepted)
         XCTAssertTrue(app.staticTexts["Completed"].waitForExistence(timeout: 180), app.debugDescription)
         let contents = try String(contentsOf: folder.appending(path: "workflow-result.txt"), encoding: .utf8)
         XCTAssertTrue(contents.contains("KIRO_WORKFLOW_OK"), contents)

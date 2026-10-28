@@ -14,6 +14,7 @@ extension HandshakeUITests {
         app.launch()
         XCTAssertTrue(app.buttons["workflowTab-1"].waitForExistence(timeout: 10), app.debugDescription)
         resizeWindow(app.windows.firstMatch, to: CGSize(width: 1100, height: 800))
+        installKiroFixture(in: folder, app: app)
         chooseHarness("kiro", displayName: "Kiro CLI", in: app)
         waitForKiroLaunches(1, in: folder, app: app)
         let first = try XCTUnwrap(kiroLaunches(in: folder).first)
@@ -32,7 +33,7 @@ extension HandshakeUITests {
         app.typeText("Kiro second task\r")
         waitForFile(folder.appending(path: "kiro-input-\(second.session)"), containing: "Kiro second task", in: app)
         try assertKiroResumeIsolation([first, second], in: folder, app: app)
-        app.buttons["workflowTab-1"].click()
+        app.buttons["workflowTab-2"].click()
         app.typeText("Kiro resumed first task\r")
         waitForFile(
             folder.appending(path: "kiro-input-\(first.session)"), containing: "Kiro resumed first task", in: app)
