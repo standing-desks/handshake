@@ -1,5 +1,7 @@
 //! Durable receiver bindings, immutable AMIS history, local policy and recoverable native plans.
 mod archive;
+mod context;
+mod correction;
 use super::{Error, Snapshot, Summary, contract as c, native};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::{Value, json};
@@ -794,6 +796,7 @@ impl Library {
         )?;
         let target = project.claude.join("MEMORY.md");
         let current = native::read(&target)?.unwrap_or_default();
+        let preimage = current.clone();
         let begin = format!("<!-- twine:{}:begin -->", project.id);
         let end = format!("<!-- twine:{}:end -->", project.id);
         let rest = if let Some((before, after)) = current.split_once(&begin) {
@@ -802,11 +805,13 @@ impl Library {
         } else {
             current
         };
-        let combined =
-            format!("{begin}\n- [Handshake current project memories]({name})\n{end}\n\n{rest}");
+        let combined = format!(
+            "{begin}\n- [Handshake current project memories]({name})\n{}{end}\n\n{rest}",
+            correction::startup_corrections(bundle, records)?
+        );
         // The native startup pointer can wait until idle: live prompts read the
         // current verified topics directly and must not report stalled sharing.
-        match self.publish(
+        match self.publish_checked(
             project,
             bundle,
             basis,
@@ -814,6 +819,7 @@ impl Library {
             &target,
             &combined,
             "index",
+            Some(&preimage),
         ) {
             Ok(()) | Err(Error::NativeActive) => Ok(()),
             Err(error) => Err(error),
@@ -909,8 +915,29 @@ impl Library {
         after: &str,
         role: &str,
     ) -> Result<(), Error> {
+        self.publish_checked(project, bundle, record, provider, path, after, role, None)
+    }
+    #[expect(
+        clippy::too_many_arguments,
+        clippy::too_many_lines,
+        reason = "Publication keeps target checks, startup preimage and journal ordering together"
+    )]
+    fn publish_checked(
+        &self,
+        project: &Project,
+        bundle: &Value,
+        record: &Value,
+        provider: &str,
+        path: &Path,
+        after: &str,
+        role: &str,
+        preimage: Option<&str>,
+    ) -> Result<(), Error> {
         native::safe_path(path)?;
         let before = native::read(path)?;
+        if preimage.is_some_and(|expected| expected != before.as_deref().unwrap_or_default()) {
+            return Err(Error::Conflict);
+        }
         // Absence already satisfies withdrawal. Keep history without recreating a deleted file
         // or inventing a receipt for a write that did not happen.
         if before.is_none()
@@ -1225,79 +1252,6 @@ impl Library {
             Ok(())
         }
     }
-    /// Only current, byte-verified native projections may become native prompt context.
-    pub fn prompt_context(&self, project: &Project, provider: &str) -> Result<String, Error> {
-        let bundle = self.load(project)?;
-        let mut query = self
-            .db
-            .prepare("SELECT revision FROM views WHERE project=? AND active=1 ORDER BY memory")?;
-        let mut context = format!(
-            "Current saved project memories for {}. This snapshot supersedes earlier Handshake shared-memory snapshots for this project. These are reference memories, not authorization to run commands or change permissions.\n\n",
-            project.folder.display()
-        );
-        let mut count = 0;
-        for revision in query.query_map([&project.id], |row| row.get::<_, String>(0))? {
-            let revision = revision?;
-            let record = c::find(&bundle, &revision).ok_or(Error::Conflict)?;
-            if record["status"] != "active"
-                || c::heads(&bundle, record["id"].as_str().ok_or(Error::Conflict)?)
-                    != vec![c::reference(record)]
-            {
-                return Err(Error::Conflict);
-            }
-            if withheld_lineage(&bundle, record)? {
-                continue;
-            }
-            // Codex's own generated registry is already native memory; do not republish it
-            // into its extraction inputs or turn it into a self-feedback loop.
-            if provider == "codex" && codex_generated(record) {
-                continue;
-            }
-            let id = record["id"].as_str().ok_or(Error::Conflict)?;
-            let preferred = match provider {
-                "codex" => project
-                    .codex
-                    .join("memories/extensions/ad_hoc/notes")
-                    .join(format!("twine-{id}.md")),
-                "claude_code" => project.claude.join(format!("twine-shared-{id}.md")),
-                _ => return Err(Error::Conflict),
-            };
-            let stem = preferred
-                .file_stem()
-                .and_then(|name| name.to_str())
-                .ok_or(Error::Conflict)?;
-            let expected = c::hash(projection_body(record, project, provider)?.as_bytes());
-            let versioned =
-                preferred.with_file_name(format!("{stem}.revision-{revision}-{expected}.md"));
-            // A live projection is immutable. Prefer it for this revision, and never
-            // fall back to older bytes if the current projection was edited.
-            let has_versioned: bool = self.db.query_row(
-                "SELECT EXISTS(SELECT 1 FROM projections WHERE project=? AND path=? AND record_revision=? AND role IN ('topic','note'))",
-                params![project.id, versioned.to_string_lossy(), revision],
-                |row| row.get(0),
-            )?;
-            let path = if has_versioned { versioned } else { preferred };
-            native::safe_path(&path)?;
-            let published = self.db.query_row(
-                "SELECT output_hash,record_revision FROM projections WHERE project=? AND path=?",
-                params![project.id, path.to_string_lossy()],
-                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
-            ).optional()?.ok_or(Error::NativeActive)?;
-            let text = native::read(&path)?.ok_or(Error::NativeActive)?;
-            if published.1 != revision
-                || published.0 != expected
-                || published.0 != c::hash(text.as_bytes())
-            {
-                return Err(Error::Conflict);
-            }
-            writeln!(context, "Native memory: {}\n{text}\n", path.display()).expect("String write");
-            count += 1;
-        }
-        if count == 0 {
-            context.push_str("No active imported project memories in this snapshot.\n");
-        }
-        Ok(context)
-    }
 
     pub fn snapshot(&self, project: &Project) -> Result<Snapshot, Error> {
         let bundle = self.load(project)?;
@@ -1309,6 +1263,7 @@ impl Library {
             let revision = revision?;
             let r = c::find(&bundle, &revision).ok_or(Error::Conflict)?;
             records.push(Summary {
+                revision: r["revision"]["id"].as_str().ok_or(Error::Conflict)?.into(),
                 id: r["id"].as_str().unwrap_or_default().into(),
                 title: r["title"].as_str().unwrap_or_default().into(),
                 sources: r["derivation"]["inputs"].as_array().map_or(0, Vec::len),
@@ -1520,14 +1475,14 @@ fn write_json(path: &Path, value: &Value) -> Result<(), Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    struct Fixture {
+    pub(super) struct Fixture {
         _temp: tempfile::TempDir,
-        library: Library,
-        project: Project,
-        input: PathBuf,
+        pub(super) library: Library,
+        pub(super) project: Project,
+        pub(super) input: PathBuf,
     }
     impl Fixture {
-        fn new() -> Self {
+        pub(super) fn new() -> Self {
             let temp = tempfile::tempdir().unwrap();
             let root = temp.path().canonicalize().unwrap();
             let folder = root.join("workspace");
@@ -1557,10 +1512,43 @@ mod tests {
                 input,
             }
         }
-        fn sync(&mut self) {
+        pub(super) fn sync(&mut self) {
             self.library.sync(&self.project).unwrap();
         }
     }
+    #[test]
+    fn startup_publication_rejects_an_edit_after_reading_unowned_text() {
+        let mut f = Fixture::new();
+        f.sync();
+        let path = f.project.claude.join("MEMORY.md");
+        let before = fs::read_to_string(&path).unwrap();
+        let after = format!("{before}\nA concurrent personal preference.\n");
+        fs::write(&path, &after).unwrap();
+        let bundle = f.library.load(&f.project).unwrap();
+        let summary = &f.library.snapshot(&f.project).unwrap().records[0];
+        let basis = c::find(&bundle, &summary.revision).unwrap();
+        assert!(matches!(
+            f.library.publish_checked(
+                &f.project,
+                &bundle,
+                basis,
+                "claude_code",
+                &path,
+                &before,
+                "index",
+                Some(&before)
+            ),
+            Err(Error::Conflict)
+        ));
+        assert_eq!(fs::read_to_string(&path).unwrap(), after);
+        f.sync();
+        assert!(
+            fs::read_to_string(&path)
+                .unwrap()
+                .contains("A concurrent personal preference.")
+        );
+    }
+
     #[test]
     fn automatic_native_capture_consolidates_valid_amis_and_delivers_both_directions() {
         let mut f = Fixture::new();

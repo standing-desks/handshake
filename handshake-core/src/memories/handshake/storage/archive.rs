@@ -108,6 +108,12 @@ impl Library {
         if head["status"] != "active" {
             return Err(Error::Conflict);
         }
+        Self::append_archive(bundle, &head)?;
+        Self::save(project, bundle)?;
+        self.recover_metadata(project, bundle)
+    }
+
+    pub(super) fn append_archive(bundle: &mut Value, head: &Value) -> Result<(), Error> {
         // The view carries the explicit suppression decision. Its source observations become
         // obsolete, allowing a filename to hold genuinely new content without restoring this view.
         for input in head["derivation"]["inputs"]
@@ -126,15 +132,19 @@ impl Library {
                 c::append(bundle, withdrawn(&source, "obsolete")?);
             }
         }
-        let mut archived = withdrawn(&head, "user_request")?;
-        archived["extensions"]["com.twine.archive"] = json!({"content":c::reference(&head)});
+        let mut archived = withdrawn(head, "user_request")?;
+        archived["extensions"]["com.twine.archive"] = json!({"content":c::reference(head)});
         c::seal(&mut archived)?;
         c::append(bundle, archived);
-        Self::save(project, bundle)?;
-        self.recover_metadata(project, bundle)
+        Ok(())
     }
 
-    fn view_head(&self, project: &Project, bundle: &Value, id: &str) -> Result<Value, Error> {
+    pub(super) fn view_head(
+        &self,
+        project: &Project,
+        bundle: &Value,
+        id: &str,
+    ) -> Result<Value, Error> {
         let revision = self
             .db
             .query_row(
@@ -208,6 +218,10 @@ impl Library {
             }
             let original = Self::archived_body(bundle, head)?;
             records.push(Summary {
+                revision: head["revision"]["id"]
+                    .as_str()
+                    .ok_or(Error::Conflict)?
+                    .into(),
                 id: head["id"].as_str().ok_or(Error::Conflict)?.into(),
                 title: original["title"].as_str().unwrap_or_default().into(),
                 sources: original["derivation"]["inputs"]

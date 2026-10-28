@@ -16,3 +16,4 @@ Do not include machine-specific paths or account details.
 | [0001](0001-preserve-native-controls-and-add-accessible-motion.md) | Accepted | Preserve native controls and add accessible layout motion |
 | [0002](0002-graduate-tab-management.md) | Accepted | Graduate tab management from the feature-flag catalog |
 | [0003](0003-keep-cross-agent-memory-an-opt-in-beta.md) | Accepted | Keep cross-agent memory an opt-in beta |
+| [0004](0004-bound-memory-context-and-record-explicit-corrections.md) | Accepted | Bound memory context and record explicit corrections |

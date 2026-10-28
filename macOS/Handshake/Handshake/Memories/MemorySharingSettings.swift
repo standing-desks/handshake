@@ -8,6 +8,7 @@ struct MemorySharingSettings: View {
     @Bindable var model: HandshakeMemoryModel
     let folder: String
     let refreshSources: () -> Void
+    var correct: (HandshakeMemorySummary) -> Void = { _ in }
     @State private var showsMemories = false
     @State private var showsStorage = false
     @State private var showsArchive = false
@@ -130,6 +131,8 @@ struct MemorySharingSettings: View {
                     }
                 }
                 .contextMenu {
+                    Button("Correct memory…") { correct(record) }
+                        .disabled(model.isUpdating || model.snapshot?.enabled != true || record.revision == nil)
                     Button("Archive for this project") { perform(.withdraw(record.id)) }
                         .disabled(model.isUpdating)
                 }

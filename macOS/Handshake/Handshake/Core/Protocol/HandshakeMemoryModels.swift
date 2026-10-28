@@ -6,8 +6,9 @@ nonisolated enum HandshakeMemoryAction: Encodable, Sendable, Equatable {
     case withdraw(String)
     case readArchive(String)
     case restore(String)
+    case correct(id: String, revision: String, text: String)
 
-    private enum CodingKeys: String, CodingKey { case type, enabled, id }
+    private enum CodingKeys: String, CodingKey { case type, enabled, id, revision, text }
     func encode(to encoder: any Encoder) throws {
         var values = encoder.container(keyedBy: CodingKeys.self)
         switch self {
@@ -22,6 +23,11 @@ nonisolated enum HandshakeMemoryAction: Encodable, Sendable, Equatable {
         case .readArchive(let id):
             try values.encode("readArchive", forKey: .type)
             try values.encode(id, forKey: .id)
+        case .correct(let id, let revision, let text):
+            try values.encode("correct", forKey: .type)
+            try values.encode(id, forKey: .id)
+            try values.encode(revision, forKey: .revision)
+            try values.encode(text, forKey: .text)
         case .restore(let id):
             try values.encode("restore", forKey: .type)
             try values.encode(id, forKey: .id)
@@ -62,6 +68,7 @@ nonisolated struct HandshakeMemorySummary: Decodable, Identifiable, Sendable {
     let title: String
     let sources: Int
     let preview: String
+    var revision: String?
 }
 
 nonisolated struct HandshakeMemoryResponse: Decodable, Sendable {
