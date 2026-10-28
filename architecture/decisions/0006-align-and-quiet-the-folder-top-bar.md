@@ -23,6 +23,7 @@ buttons, the tab switcher, and split-control hit areas. Center their labels and
 symbols vertically and let the existing app zoom scale the row together.
 Reveal the selected tab again when measured tab content grows, so inserting a
 tab or disambiguating its title cannot leave it clipped in an overflowing row.
+When revealing the last tab, explicitly align its trailing edge with the viewport.
 
 Use native bordered buttons with a shared rounded-rectangle shape for creation
 and tab switching, replacing the glass style specified in ADR 0001. Keep split
