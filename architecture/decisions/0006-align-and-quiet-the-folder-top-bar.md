@@ -21,8 +21,10 @@ switcher and terminal split controls stay at the trailing edge of the tab row.
 Use the existing 32-point base tab height for selected and inactive tabs, creation
 buttons, the tab switcher, and split-control hit areas. Center their labels and
 symbols vertically and let the existing app zoom scale the row together.
-Reveal the selected tab again when measured tab content grows, so inserting a
-tab or disambiguating its title cannot leave it clipped in an overflowing row.
+Reveal the selected tab again when the native scroll content or viewport width
+changes, so insertion animations, zoom, and title changes cannot leave it clipped.
+Make this geometry correction nonanimated, and exclude scroll offset from its
+trigger so users can still scroll the row manually.
 When revealing the last tab, explicitly align its trailing edge with the viewport.
 
 Use native bordered buttons with a shared rounded-rectangle shape for creation

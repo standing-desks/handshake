@@ -27,6 +27,11 @@ struct ManagedWorkflowTabs: View {
     @State private var tabsWidth: CGFloat?
     @State private var scrollEdge = 0
 
+    private struct ScrollWidths: Equatable {
+        let content: CGFloat
+        let viewport: CGFloat
+    }
+
     var body: some View {
         HStack(alignment: .bottom, spacing: 6) {
             Text("TABS").sectionLabelStyle().fixedSize().frame(height: WorkflowTabLayout.height)
@@ -60,35 +65,22 @@ struct ManagedWorkflowTabs: View {
                 .onGeometryChange(for: CGFloat.self, of: { $0.size.width }, action: { viewportWidth = $0 })
                 .scrollIndicators(.never)
                 .onChange(of: selected) {
-                    if let selected {
-                        withAnimation(reduceMotion ? nil : Motion.scrollToSelectedTab) {
-                            proxy.scrollTo(selected, anchor: selected == items.last?.id ? .trailing : nil)
-                        }
-                    }
+                    withAnimation(reduceMotion ? nil : Motion.scrollToSelectedTab) { revealSelection(using: proxy) }
                 }
                 .onScrollGeometryChange(
-                    for: CGFloat.self, of: { $0.contentSize.width },
+                    for: ScrollWidths.self,
+                    of: { ScrollWidths(content: $0.contentSize.width, viewport: $0.containerSize.width) },
                     action: { _, _ in
-                        // Scroll after the scroll view has laid out inserted or renamed tabs.
-                        if let selected {
-                            proxy.scrollTo(selected, anchor: selected == items.last?.id ? .trailing : nil)
-                        }
+                        // The native viewport can still be animating after the outer layout reports its final size.
+                        var transaction = Transaction(animation: nil)
+                        transaction.disablesAnimations = true
+                        withTransaction(transaction) { revealSelection(using: proxy) }
                     }
                 )
                 .onChange(of: items.map(\.id)) {
                     if let dragging, !items.contains(where: { $0.id == dragging }) { cancelDrag() }
-                    if let selected {
-                        proxy.scrollTo(selected, anchor: selected == items.last?.id ? .trailing : nil)
-                    }
+                    revealSelection(using: proxy)
                 }
-                .onGeometryChange(
-                    for: CGFloat.self, of: { $0.size.width },
-                    action: { _ in
-                        if let selected {
-                            proxy.scrollTo(selected, anchor: selected == items.last?.id ? .trailing : nil)
-                        }
-                    }
-                )
                 .task(id: scrollEdge) {
                     guard scrollEdge != 0 else { return }
                     var index =
@@ -133,6 +125,11 @@ struct ManagedWorkflowTabs: View {
         .frame(height: WorkflowTabLayout.height, alignment: .bottom)
         .animation(reduceMotion ? nil : Motion.tabChange, value: items.map(\.id))
         .contextMenu { Button("Reopen Closed Tab", action: reopen).disabled(!canReopen) }
+    }
+
+    private func revealSelection(using proxy: ScrollViewProxy) {
+        guard let selected else { return }
+        proxy.scrollTo(selected, anchor: selected == items.last?.id ? .trailing : nil)
     }
 
     private func tab(_ item: WorkspaceTabItem) -> some View {
