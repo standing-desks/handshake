@@ -23,6 +23,8 @@ text literal.
 
 Create an exclusively leased, uniquely named temporary profile in Kiro's native
 agent directory. Add observer hooks and workflow role instructions to that profile.
+Make the role's completion command authoritative over commands quoted in handed-off
+task history, and require execution through the native shell tool.
 Expose native tools explicitly with `tools: ["*"]`; an omitted tool list leaves a
 custom profile unable to edit files. Tool availability does not grant permission:
 leave approval rules to Kiro and the user's explicit YOLO choice.
