@@ -748,6 +748,16 @@ mod tests {
             .execute_test_sql("DROP TRIGGER reject_trace");
     }
 
+    // Local macOS/Codex runs: Bash tests timing out here with one live `Shell` span
+    // can inherit Apple Terminal's session-saving EXIT trap from
+    // /etc/bashrc_Apple_Terminal (TERM_PROGRAM=Apple_Terminal and TERM_SESSION_ID).
+    // Our shell/bash hook preserves existing traps by using the lifetime-span fallback.
+    // Clear the inherited session ID for the test command; temporary HOME alone cannot
+    // prevent the system startup script from installing that trap. From the repo root:
+    //   env -u TERM_SESSION_ID make test-lib LIB_TEST_ARGS='application::traces::tests::bash_'
+    //   env -u TERM_SESSION_ID make check-lib
+    // This scopes the workaround to the test process and its children. Tests still need
+    // permission to spawn shells, open PTYs, and write their temporary profiles.
     fn wait_shell_trace(
         application: &Application,
         workflow: &Workflow,
