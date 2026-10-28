@@ -44,6 +44,10 @@ without recreating terminal emulators, restarting processes, or delaying input
 and output. Selection and divider dragging respond directly to the user. Respect
 the current focus and accessibility behavior throughout a transition.
 
+Group each agent pane's geometry so the pane frame interpolates as a unit while
+its header appears or disappears. Keep the layout and terminal identities stable;
+no separate animation state is needed.
+
 Forward Reduce Motion through native hosting boundaries so nested terminal
 presentation follows the same accessibility policy as the folder window. Use a
 writable effective-motion environment value that falls back to SwiftUI's read-only

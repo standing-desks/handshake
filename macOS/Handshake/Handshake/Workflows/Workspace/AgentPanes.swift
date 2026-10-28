@@ -46,6 +46,7 @@ struct AgentPanes: View {
                         }
                     }
                 )
+                .geometryGroup()
                 .layoutValue(key: PaneSlot.self, value: .agent(agent.id))
             }
             if arrangement.columns.count > 1, let size {
