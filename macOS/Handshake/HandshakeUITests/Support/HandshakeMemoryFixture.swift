@@ -118,7 +118,8 @@ extension HandshakeUITests {
     func revealHandshakeDetail(_ element: XCUIElement, in app: XCUIApplication) {
         XCTAssertTrue(element.waitForExistence(timeout: 5), app.debugDescription)
         let viewport = app.scrollViews["handshakeMemoryViewport"]
-        for _ in 0..<12 {
+        // Long lists need more scroll steps in small windows and with different native scroll-wheel settings.
+        for _ in 0..<24 {
             let visible = viewport.frame.intersection(element.frame)
             let needsHitTarget = element.elementType == .button || element.elementType == .disclosureTriangle
             let fullyVisible = visible.height >= min(element.frame.height, viewport.frame.height) - 2
