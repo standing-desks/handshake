@@ -58,7 +58,7 @@ struct ManagedWorkflowTabs: View {
                 }
                 .coordinateSpace(name: dragScope)
                 .onGeometryChange(for: CGFloat.self, of: { $0.size.width }, action: { viewportWidth = $0 })
-                .scrollIndicators(.hidden)
+                .scrollIndicators(.never)
                 .onChange(of: selected) {
                     if let selected {
                         withAnimation(reduceMotion ? nil : Motion.scrollToSelectedTab) { proxy.scrollTo(selected) }

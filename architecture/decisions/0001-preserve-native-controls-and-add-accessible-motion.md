@@ -33,6 +33,11 @@ different app zoom levels. Use native SwiftUI glass buttons with flexible sizing
 and explicit shared dimensions rather than relying on OS-dependent intrinsic
 control heights or drawing replacement controls.
 
+Keep scroll indicators absent from the fixed-height tab strip even when the
+system scrollbar preference is Always. A classic scrollbar must not consume tab
+height or move click targets. Horizontal scrolling, keyboard navigation, and the
+tab switcher continue to reach overflowing tabs.
+
 Add motion in Swift presentation code using shared values. Use approximately
 180 ms for tab insertion/removal and 220 ms for pane layout
 changes. Retain existing expansion and workflow-choice motion where it already
