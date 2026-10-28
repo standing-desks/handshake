@@ -21,6 +21,7 @@ pub(crate) mod claude;
 pub(crate) mod codex;
 pub(crate) mod history;
 pub(crate) mod instructions;
+pub(crate) mod kiro;
 pub(crate) mod launch;
 pub(crate) mod models;
 pub(crate) mod opencode;
@@ -44,6 +45,7 @@ pub enum HarnessId {
     Antigravity,
     Omp,
     Opencode,
+    Kiro,
 }
 
 /// How to launch one harness. Adding a harness means adding a definition here.
@@ -103,6 +105,14 @@ static OPENCODE: HarnessDefinition = HarnessDefinition {
     subcommand: Some("mini"),
 };
 
+static KIRO: HarnessDefinition = HarnessDefinition {
+    name: "Kiro CLI",
+    binary: "kiro-cli",
+    reads_at_prefix_as_file: true,
+    prompt_option: None,
+    subcommand: Some("chat"),
+};
+
 impl HarnessId {
     pub(crate) fn definition(self) -> &'static HarnessDefinition {
         match self {
@@ -112,6 +122,7 @@ impl HarnessId {
             Self::Antigravity => &ANTIGRAVITY,
             Self::Omp => &OMP,
             Self::Opencode => &OPENCODE,
+            Self::Kiro => &KIRO,
         }
     }
 }

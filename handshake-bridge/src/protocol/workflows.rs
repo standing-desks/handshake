@@ -122,6 +122,7 @@ impl<'a> From<&'a Workflow> for WireWorkflow<'a> {
                 HarnessId::Antigravity => "antigravity",
                 HarnessId::Omp => "omp",
                 HarnessId::Opencode => "opencode",
+                HarnessId::Kiro => "kiro",
             }),
             terminal_id: workflow.terminal_id.value(),
             agents: workflow
@@ -176,6 +177,7 @@ enum RawHarness {
     Antigravity,
     Omp,
     Opencode,
+    Kiro,
 }
 
 #[derive(Deserialize)]
@@ -349,6 +351,7 @@ fn decode_start_agent(raw: &Value) -> Result<Command, BridgeError> {
             RawHarness::Antigravity => HarnessId::Antigravity,
             RawHarness::Omp => HarnessId::Omp,
             RawHarness::Opencode => HarnessId::Opencode,
+            RawHarness::Kiro => HarnessId::Kiro,
         },
         prompt: command.prompt,
         size: TerminalSize {
@@ -366,6 +369,28 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    #[test]
+    fn start_agent_accepts_every_harness_wire_identifier() {
+        for harness in [
+            "codex",
+            "claudeCode",
+            "pi",
+            "antigravity",
+            "omp",
+            "opencode",
+            "kiro",
+        ] {
+            let command = decode_start_agent(&json!({"workflowId":1,"harness":harness,"prompt":"task","size":{"rows":24,"columns":80,"pixelWidth":800,"pixelHeight":480}})).unwrap();
+            let Command::StartAgent {
+                harness: decoded, ..
+            } = command
+            else {
+                panic!("expected start agent");
+            };
+            assert_eq!(serde_json::to_value(decoded).unwrap(), harness);
+        }
+    }
 
     #[test]
     fn agent_workflows_serialize_the_names_the_app_decodes() {

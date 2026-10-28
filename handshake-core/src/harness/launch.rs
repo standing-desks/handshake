@@ -75,6 +75,7 @@ pub(crate) fn launch_arguments(harness: HarnessId, options: LaunchOptions<'_>) -
                 OsString::from("--no-alt-screen"),
             ]);
         }
+        HarnessId::Kiro => arguments.push(OsString::from("--v3")),
         HarnessId::Pi => {
             arguments.extend([OsString::from("--tui-mode"), OsString::from("regular")]);
         }
@@ -92,6 +93,7 @@ pub(crate) fn launch_arguments(harness: HarnessId, options: LaunchOptions<'_>) -
             HarnessId::ClaudeCode | HarnessId::Antigravity => {
                 arguments.push(OsString::from("--dangerously-skip-permissions"));
             }
+            HarnessId::Kiro => arguments.push(OsString::from("--trust-all-tools")),
             HarnessId::Pi | HarnessId::Opencode => {}
             HarnessId::Omp => {
                 arguments.push(OsString::from("--auto-approve"));
@@ -115,7 +117,7 @@ pub(crate) fn launch_arguments(harness: HarnessId, options: LaunchOptions<'_>) -
                     OsString::from(format!("model_reasoning_effort=\"{effort}\"")),
                 ]);
             }
-            HarnessId::ClaudeCode | HarnessId::Antigravity => {
+            HarnessId::ClaudeCode | HarnessId::Antigravity | HarnessId::Kiro => {
                 arguments.extend([OsString::from("--effort"), OsString::from(effort)]);
             }
             HarnessId::Pi | HarnessId::Omp => {
@@ -246,6 +248,21 @@ mod tests {
         assert_eq!(
             launch_arguments(HarnessId::Pi, LaunchOptions::default()),
             ["--tui-mode", "regular"]
+        );
+        assert_eq!(
+            arguments(HarnessId::Kiro),
+            [
+                "--v3",
+                "--trust-all-tools",
+                "--model",
+                "m1",
+                "--effort",
+                "high"
+            ]
+        );
+        assert_eq!(
+            launch_arguments(HarnessId::Kiro, LaunchOptions::default()),
+            ["--v3"]
         );
         assert_eq!(
             arguments(HarnessId::Omp),

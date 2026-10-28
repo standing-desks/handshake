@@ -35,6 +35,10 @@ pub(crate) fn append(
                 OsString::from(instructions),
             ]);
         }
+        HarnessId::Kiro => super::kiro::append_instructions(
+            hooks.ok_or_else(|| io::Error::other("Could not prepare Kiro role instructions."))?,
+            instructions,
+        )?,
         HarnessId::Opencode => {
             let inbox = hooks
                 .ok_or_else(|| io::Error::other("Could not prepare OpenCode role instructions."))?;

@@ -30,6 +30,7 @@ impl HarnessId {
             Self::Antigravity => &["models"],
             Self::Omp => &["models", "--json"],
             Self::Opencode => &["api", "model.list"],
+            Self::Kiro => &["chat", "--v3", "--list-models", "--format", "json"],
         }
     }
 }
@@ -198,7 +199,7 @@ fn list_models(
         HarnessId::Pi => Some("--thinking <level>"),
         HarnessId::Antigravity => Some("--effort"),
         HarnessId::Omp => Some("--thinking=<value>"),
-        HarnessId::Codex | HarnessId::ClaudeCode | HarnessId::Opencode => None,
+        HarnessId::Codex | HarnessId::ClaudeCode | HarnessId::Opencode | HarnessId::Kiro => None,
     };
     if let Some(option) = effort_option {
         models.efforts = help_levels(&run(&["--help"])?, option);

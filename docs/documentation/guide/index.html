@@ -209,14 +209,15 @@ makes no model calls.</p>
 <h2 id="agent-workflows">Agent workflows<a class="headerlink" href="#agent-workflows" title="Permanent link">#</a></h2>
 <p>Choose <strong>Adversarial</strong>, <strong>Coordinator</strong>, or a saved workflow from a new tab.
 Pick a harness for each agent, and optionally its model and effort level, then start it.
-Supported harnesses are Codex, Claude Code, pi, Antigravity (<code>agy</code>), OMP (<code>omp</code>), and OpenCode (<code>opencode</code>), installed on your shell's PATH.
+Supported harnesses are Codex, Claude Code, pi, Antigravity (<code>agy</code>), OMP (<code>omp</code>), OpenCode (<code>opencode</code>), and Kiro CLI (<code>kiro-cli</code>), installed on your shell's PATH.
 Choose a model and effort level from the options shown in the launch form. Claude Code
 also accepts a model name you type yourself. Where available, <strong>YOLO</strong> lets the harness
 run without asking for permission before each action. Pi does not ask for permission,
 so it has no YOLO option. Built-in workflows wait for a task in the first agent's terminal.
 Instructions use the harness instruction channel. Setup does not start agent work.
 Work moves through the graph's links. Harnesses run directly in the open folder.
-Each agent has a terminal subtab. Review rounds reuse the agent's live harness conversation
+Kiro uses its V3 engine and native login (<code>kiro-cli login</code>). Handshake supplies a temporary named profile for its hooks and role instructions. Kiro may ask you to trust a newly opened folder before continuing.</p>
+<p>Each agent has a terminal subtab. Review rounds reuse the agent's live harness conversation
 when it remains available. After an agent completes its work, its terminal stays interactive.
 After a workflow completes or reaches its review limit, give a start agent another task
 to start a new cycle with the same conversations and trace history. Older stage workflows
@@ -292,7 +293,7 @@ changes, completions, and handoffs; this history survives reopening the app.</p>
 the selected step on a timeline of elapsed time: tool calls, parallel subagents, and previews of
 their inputs and outputs. Search the activity, show only failures, and jump from an activity to
 its recorded output.</p>
-<p>Claude Code, Codex, pi, and OMP can show prompts, tool calls, and responses in
+<p>Claude Code, Codex, pi, OMP, and Kiro can show prompts, tool calls, and responses in
 <strong>Traces</strong>. Select a step to jump to its recorded terminal output. Antigravity and
 OpenCode show workflow activity but do not record individual prompts or tool calls, so
 <strong>In Depth</strong> has no detailed activity for them.
@@ -476,7 +477,7 @@ scrollable without a guessed point. Historical output also has its own minimap.<
 Terminal IDs remain unique across launches. Closing a terminal preserves output already accepted
 for recording. Reopening a folder restores recorded output and scrollback. Shells append a fresh
 prompt. Single agents resume their exact recorded harness session, retaining earlier output.
-Codex and Claude Code use session IDs; pi and OMP use session files. Antigravity and OpenCode
+Codex and Claude Code use session IDs; pi and OMP use session files. Kiro conversations started in Handshake restore both their exact session ID and managed profile identity. Antigravity and OpenCode
 support exact-ID resume but don't expose launch observers, so use <strong>Resume Session…</strong> to supply
 the conversation/session ID once. The same action is available for older tabs without a captured
 session. Handshake never guesses the latest conversation. Cancelled or failed agents remain stopped.

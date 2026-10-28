@@ -32,7 +32,7 @@ enum TraceLaneStyle {
         case "terminal": return .roleGreen
         case "codex": return .roleBlue
         case "claude", "claude-code": return .roleOrange
-        case "pi": return .rolePurple
+        case "pi", "kiro", "kiro-cli": return .rolePurple
         case "antigravity": return .roleGreen
         case "omp": return .rolePurple
         case "opencode": return .roleBlue
@@ -52,7 +52,7 @@ enum TraceLaneStyle {
         case "codex": "terminal.fill"
         case "claude", "claude-code": "sparkle"
         case "pi": "circle.grid.2x2"
-        case "antigravity": "sparkles"
+        case "antigravity", "kiro", "kiro-cli": "sparkles"
         case "omp": "circle.hexagongrid"
         case "opencode": "chevron.left.forwardslash.chevron.right"
         default: "person.crop.circle"
