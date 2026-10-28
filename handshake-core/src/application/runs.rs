@@ -2430,6 +2430,11 @@ $prompt" ;; esac
         });
         let old_terminal = original.agents[0].terminal_id;
         let profile = std::fs::read_to_string(folder.path().join("kiro-profile")).unwrap();
+        let initial = std::fs::read_to_string(folder.path().join("kiro-arguments")).unwrap();
+        assert!(
+            !initial.lines().any(|argument| argument == "--"),
+            "{initial}"
+        );
         app.lock_inner()
             .unwrap()
             .folders

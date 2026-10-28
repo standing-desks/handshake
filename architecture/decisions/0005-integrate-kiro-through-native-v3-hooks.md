@@ -16,6 +16,10 @@ Kiro in the same folder.
 Implement Kiro as a built-in harness in `handshake-core`. Launch `kiro-cli chat
 --v3`, preserve native login and approval flows, discover models through its CLI,
 and map Handshake's explicit YOLO choice to `--trust-all-tools`.
+Pass initial tasks as space-prefixed positional arguments. Kiro CLI 2.35.1's V3
+launcher consumes a prompt following `--`; omitting that separator preserves task
+delivery, while the space keeps flag-shaped, file-shaped, and command-shaped task
+text literal.
 
 Create an exclusively leased, uniquely named temporary profile in Kiro's native
 agent directory. Add observer hooks and workflow role instructions to that profile.

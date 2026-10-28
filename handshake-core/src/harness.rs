@@ -130,6 +130,11 @@ impl HarnessId {
 impl HarnessDefinition {
     /// An interactive prompt, protected from being read as a flag even with a leading dash.
     pub(crate) fn arguments(&self, prompt: &str) -> Vec<OsString> {
+        // Kiro V3 treats `--` as an unknown option and consumes the next argument.
+        // A leading space preserves literal prompts, including flags and `chat`.
+        if self.binary == KIRO.binary {
+            return vec![OsString::from(format!(" {prompt}"))];
+        }
         let prompt = if self.reads_at_prefix_as_file && prompt.starts_with('@') {
             format!(" {prompt}")
         } else {
@@ -341,6 +346,16 @@ mod tests {
     fn prompt_follows_a_double_dash() {
         let arguments = HarnessId::ClaudeCode.definition().arguments("-fix it");
         assert_eq!(arguments, ["--", "-fix it"].map(OsString::from));
+    }
+
+    #[test]
+    fn kiro_passes_literal_initial_prompts_without_a_double_dash() {
+        for prompt in ["-fix it", "@README.md", "chat", "line one\nline two"] {
+            assert_eq!(
+                KIRO.arguments(prompt),
+                [OsString::from(format!(" {prompt}"))]
+            );
+        }
     }
 
     #[test]
