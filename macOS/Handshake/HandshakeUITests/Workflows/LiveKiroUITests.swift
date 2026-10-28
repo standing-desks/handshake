@@ -97,8 +97,9 @@ extension HandshakeUITests {
         ).firstMatch
         XCTAssertTrue(span.waitForExistence(timeout: 15), app.debugDescription)
         span.click()
-        let finished = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Show output: Finished responding'"))
-            .firstMatch
+        let finished = app.staticTexts.matching(
+            NSPredicate(format: "value == %@ OR label == %@", "Finished responding", "Finished responding")
+        ).firstMatch
         XCTAssertTrue(finished.waitForExistence(timeout: 60), app.debugDescription)
         app.buttons["tracesHeader"].click()
     }
