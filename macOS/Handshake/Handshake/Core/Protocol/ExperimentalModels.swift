@@ -3,18 +3,22 @@ import Foundation
 nonisolated enum ExperimentalFeatureID: String, Codable, Identifiable, Sendable {
     case crossAgentMemoryConsolidation
     case browserControl
+    case workflowAssistant
     var id: Self { self }
 }
 
 nonisolated struct CoreExperimentalConfiguration: Decodable, Equatable, Sendable {
     let crossAgentMemoryConsolidation: Bool
     let browserControl: Bool
-    init(crossAgentMemoryConsolidation: Bool = false, browserControl: Bool = false) {
+    let workflowAssistant: Bool
+    init(crossAgentMemoryConsolidation: Bool = false, browserControl: Bool = false, workflowAssistant: Bool = false) {
         self.crossAgentMemoryConsolidation = crossAgentMemoryConsolidation
         self.browserControl = browserControl
+        self.workflowAssistant = workflowAssistant
     }
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
+        workflowAssistant = try values.decodeIfPresent(Bool.self, forKey: .workflowAssistant) ?? false
         browserControl = try values.decodeIfPresent(Bool.self, forKey: .browserControl) ?? false
         crossAgentMemoryConsolidation =
             try values.decodeIfPresent(Bool.self, forKey: .crossAgentMemoryConsolidation) ?? false
@@ -22,6 +26,7 @@ nonisolated struct CoreExperimentalConfiguration: Decodable, Equatable, Sendable
     private enum CodingKeys: String, CodingKey {
         case crossAgentMemoryConsolidation = "cross_agent_memory_consolidation"
         case browserControl = "browser_control"
+        case workflowAssistant = "workflow_assistant"
     }
 }
 

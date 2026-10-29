@@ -35,6 +35,34 @@ impl From<&ValidationIssue> for WireValidationIssue {
 }
 
 pub(super) fn decode_command(kind: &str, raw: &Value) -> Result<Command, BridgeError> {
+    if kind == "generateWorkflowType" {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Request {
+            generation_id: String,
+            harness: handshake_core::HarnessId,
+            model: Option<String>,
+            messages: Vec<handshake_core::WorkflowChatMessage>,
+            definition: WorkflowTypeDefinition,
+        }
+        let raw: Request =
+            serde_json::from_value(raw.clone()).map_err(|_| BridgeError::MalformedCommand)?;
+        return Ok(Command::GenerateWorkflowType {
+            generation_id: raw.generation_id,
+            harness: raw.harness,
+            model: raw.model,
+            messages: raw.messages,
+            definition: raw.definition,
+        });
+    }
+    if kind == "cancelWorkflowGeneration" {
+        let generation_id = raw
+            .get("generationId")
+            .and_then(Value::as_str)
+            .ok_or(BridgeError::MalformedCommand)?
+            .to_owned();
+        return Ok(Command::CancelWorkflowGeneration { generation_id });
+    }
     if kind == "deleteWorkflowType" {
         let raw: RawDeletion =
             serde_json::from_value(raw.clone()).map_err(|_| BridgeError::MalformedCommand)?;

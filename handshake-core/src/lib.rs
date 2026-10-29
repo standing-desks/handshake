@@ -20,8 +20,10 @@ mod store;
 mod terminal;
 mod trace;
 mod workflow;
+mod workflow_assistant;
 mod workflow_run;
 mod workflow_type;
+pub use workflow_assistant::{WorkflowChatMessage, WorkflowDraft};
 pub use workflow_run::{
     Assignment, CompletionSignal, Decision, GraphOutput, GraphRun, RoleLaunch, RunAgent,
     RunAgentStatus, RunError, RunStatus, WorkflowRun, WorkflowTrace,

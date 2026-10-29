@@ -35,3 +35,4 @@ revert. Historical source inventories retain the paths recorded at that time.
 | [0015](0015-show-tabs-in-the-sidebar-by-default.md) | Accepted | Show tabs in the sidebar by default |
 | [0016](0016-sessions-own-their-file-and-browser-tabs.md) | Accepted | Sessions own their file and browser tabs |
 | [0017](0017-move-workflows-between-sessions.md) | Accepted | Move workflows between sessions in core |
+| [0018](0018-create-workflows-with-a-left-side-assistant.md) | Accepted | Create workflows with an opt-in left-side assistant |

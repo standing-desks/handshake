@@ -58,6 +58,16 @@ pub enum Command {
     Ping,
     /// Applies the current user config to this runtime without restarting its processes.
     ReloadConfig,
+    GenerateWorkflowType {
+        generation_id: String,
+        harness: HarnessId,
+        model: Option<String>,
+        messages: Vec<crate::WorkflowChatMessage>,
+        definition: crate::WorkflowTypeDefinition,
+    },
+    CancelWorkflowGeneration {
+        generation_id: String,
+    },
     ValidateWorkflowType {
         definition: crate::WorkflowTypeDefinition,
     },
@@ -274,6 +284,7 @@ pub struct Application {
     /// Shared with threads that list harness models.
     login_path: Arc<LoginPath>,
     model_lists: crate::harness::models::ModelListWorkers,
+    workflow_assistant: crate::workflow_assistant::Workers,
     /// Makes harness lookup search only this `PATH`, so tests don't depend on installed tools.
     #[cfg(test)]
     harness_path: Option<std::ffi::OsString>,
@@ -479,6 +490,7 @@ impl Application {
             terminal_output: Arc::clone(&terminal_output),
             terminals,
             model_lists: crate::harness::models::ModelListWorkers::default(),
+            workflow_assistant: crate::workflow_assistant::Workers::default(),
             // Unit tests must not start the developer's login shell.
             #[cfg(test)]
             login_path: Arc::new(LoginPath::ready(None)),
@@ -527,6 +539,30 @@ impl Application {
         self.poll_shell_observations()?;
         let disposition = match command {
             Command::ReloadConfig => self.reload_config()?,
+            Command::GenerateWorkflowType {
+                generation_id,
+                harness,
+                model,
+                messages,
+                definition,
+            } => self.generate_workflow(
+                request_id,
+                generation_id,
+                harness,
+                model,
+                &messages,
+                &definition,
+            )?,
+            Command::CancelWorkflowGeneration { generation_id } => {
+                self.workflow_assistant.cancel(&generation_id);
+                self.lock_inner()?
+                    .events
+                    .append(EventKind::CommandCompleted {
+                        request_id,
+                        result: CommandResult::Pong,
+                    })?;
+                CommandDisposition::Accepted
+            }
             Command::ValidateWorkflowType { definition } => {
                 self.validate_workflow_type(request_id, &definition)?
             }
@@ -808,6 +844,7 @@ impl Drop for Application {
         // Model discovery may be waiting on the login shell. Cancel it before joining listings,
         // including requests still held by the UI after this runtime closes.
         self.login_path.cancel();
+        self.workflow_assistant.shutdown();
         self.model_lists.shutdown();
         self.login_path.shutdown();
         let _ = self.poll_harness_steps();

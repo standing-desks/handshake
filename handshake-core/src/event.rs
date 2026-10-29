@@ -32,22 +32,56 @@ pub enum StateEvent {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CommandResult {
-    WorkflowTypeValidated { issues: Vec<crate::ValidationIssue> },
-    WorkflowTypeSaved { reference: crate::WorkflowTypeRef },
-    WorkflowTypeDeleted { reference: crate::WorkflowTypeRef },
-    SessionCreated { session_id: SessionId },
-    SessionRenamed { session_id: SessionId },
-    SessionSelected { session_id: SessionId },
-    SessionDeleted { session_id: SessionId },
+    WorkflowDrafted {
+        draft: Option<Box<crate::WorkflowDraft>>,
+        error: Option<String>,
+    },
+    WorkflowTypeValidated {
+        issues: Vec<crate::ValidationIssue>,
+    },
+    WorkflowTypeSaved {
+        reference: crate::WorkflowTypeRef,
+    },
+    WorkflowTypeDeleted {
+        reference: crate::WorkflowTypeRef,
+    },
+    SessionCreated {
+        session_id: SessionId,
+    },
+    SessionRenamed {
+        session_id: SessionId,
+    },
+    SessionSelected {
+        session_id: SessionId,
+    },
+    SessionDeleted {
+        session_id: SessionId,
+    },
     Pong,
-    WorkflowCreated { workflow_id: WorkflowId },
-    WorkflowActivated { workflow_id: WorkflowId },
-    WorkflowReopened { workflow_id: WorkflowId },
-    WorkflowClosed { workflow_id: WorkflowId },
-    AgentStarted { workflow_id: WorkflowId },
-    AgentCancelled { workflow_id: WorkflowId },
-    TerminalStarted { terminal_id: TerminalId },
-    TerminalClosed { terminal_id: TerminalId },
+    WorkflowCreated {
+        workflow_id: WorkflowId,
+    },
+    WorkflowActivated {
+        workflow_id: WorkflowId,
+    },
+    WorkflowReopened {
+        workflow_id: WorkflowId,
+    },
+    WorkflowClosed {
+        workflow_id: WorkflowId,
+    },
+    AgentStarted {
+        workflow_id: WorkflowId,
+    },
+    AgentCancelled {
+        workflow_id: WorkflowId,
+    },
+    TerminalStarted {
+        terminal_id: TerminalId,
+    },
+    TerminalClosed {
+        terminal_id: TerminalId,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

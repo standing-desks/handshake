@@ -3,6 +3,10 @@ import Foundation
 nonisolated enum CoreCommand: Sendable {
     case ping
     case reloadConfig
+    case generateWorkflowType(
+        generationID: String, choice: HarnessChoice, messages: [WorkflowChatMessage],
+        definition: CoreWorkflowType.Definition)
+    case cancelWorkflowGeneration(generationID: String)
     case validateWorkflowType(definition: CoreWorkflowType.Definition)
     case saveWorkflowType(
         source: CoreWorkflowType.Reference?, definition: CoreWorkflowType.Definition,
@@ -169,6 +173,7 @@ nonisolated struct CoreEvent: Decodable, Equatable, Sendable {
 }
 
 nonisolated enum CoreCommandResult: Equatable, Sendable {
+    case workflowDrafted(draft: WorkflowDraft?, error: String?)
     case workflowTypeValidated(issues: [CoreWorkflowValidationIssue])
     case workflowTypeSaved(reference: CoreWorkflowType.Reference)
     case workflowTypeDeleted(reference: CoreWorkflowType.Reference)
@@ -287,16 +292,13 @@ nonisolated private struct CommandResultPayload: Decodable {
         case sessionID = "sessionId"
         case workflowID = "workflowId"
         case terminalID = "terminalId"
-        case type, issues, reference
+        case type, issues, reference, draft, error
     }
 
     private enum ResultType: String, Decodable {
         case sessionCreated, sessionRenamed, sessionSelected, sessionDeleted
-        case pong, workflowTypeValidated, workflowTypeSaved, workflowTypeDeleted
-        case workflowCreated
-        case workflowActivated
-        case workflowReopened
-        case workflowClosed
+        case pong, workflowDrafted, workflowTypeValidated, workflowTypeSaved, workflowTypeDeleted
+        case workflowCreated, workflowActivated, workflowReopened, workflowClosed
         case agentStarted
         case agentCancelled
         case terminalStarted
@@ -349,6 +351,10 @@ nonisolated private struct CommandResultPayload: Decodable {
             result = .sessionDeleted(sessionID: try container.decode(UInt64.self, forKey: .sessionID))
         case .workflowCreated, .workflowActivated, .workflowReopened, .workflowClosed, .agentStarted, .agentCancelled:
             result = try Self.workflowResult(type, workflowID: try container.decode(UInt64.self, forKey: .workflowID))
+        case .workflowDrafted:
+            result = .workflowDrafted(
+                draft: try container.decodeIfPresent(WorkflowDraft.self, forKey: .draft),
+                error: try container.decodeIfPresent(String.self, forKey: .error))
         case .workflowTypeValidated, .workflowTypeSaved, .workflowTypeDeleted:
             result = try Self.workflowTypeResult(type, values: container)
         case .pong:
