@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#F4F1EB">
+    <title>Handshake — Agents Together Strong</title>
+    <meta name="description" content="Handshake is a native, open-source macOS app for running coding agents together. Give each agent a role, let them hand work off, and keep every terminal in view.">
+    <link rel="canonical" href="https://standing-desks.github.io/handshake/">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Handshake — Agents Together Strong">
+    <meta property="og:description" content="Run coding agents side by side in one native Mac app.">
+    <meta property="og:url" content="https://standing-desks.github.io/handshake/">
+    <meta property="og:image" content="https://standing-desks.github.io/handshake/screens/coordinator.png">
+    <meta name="twitter:card" content="summary_large_image">
+    <link rel="icon" type="image/png" href="/favicon.png">
+    <link rel="stylesheet" href="/src/style.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="top wrap">
+      <a class="brand" href="./" aria-label="Handshake home"><img src="/handshake-transparent.svg" width="48" height="48" alt=""><span>Handshake</span></a>
+      <nav aria-label="Main navigation">
+        <a href="#workflows">workflows</a>
+        <a href="#browser">browser</a>
+        <a href="documentation/">docs</a>
+        <a href="https://github.com/standing-desks/handshake">github <span aria-hidden="true">↗</span></a>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section class="hero wrap" id="hero" aria-labelledby="slogan">
+        <h1 class="slogan" id="slogan" aria-label="Agents Together Strong">
+          <span class="line l1" aria-hidden="true">AGENTS</span>
+          <span class="line l2" aria-hidden="true">TOGETHER</span>
+          <span class="line l3" aria-hidden="true">STRONG</span>
+        </h1>
+        <div class="hero-meta label">
+          <span>native macOS · open source · <b>v%HANDSHAKE_VERSION%</b></span>
+          <span class="hero-hint">break the letters · the agents fix them · <b>click</b> to break them all</span>
+        </div>
+      </section>
+
+      <section class="install wrap" aria-label="Install">
+        <p><strong>Handshake runs coding agents side by side in one Mac app.</strong> Give each agent a role, let them hand work off, and keep every terminal in view.</p>
+        <div class="install-box">
+          <div class="install-command">
+            <span aria-hidden="true">$</span>
+            <code>brew install --cask standing-desks/tap/handshake</code>
+            <button class="copy" type="button" data-copy="brew install --cask standing-desks/tap/handshake" aria-label="Copy the Homebrew install command"><span aria-live="polite">Copy</span></button>
+          </div>
+          <p class="install-alt label">
+            <a href="https://github.com/standing-desks/handshake/releases/latest" data-macos-download="hero-download-status">download the app ↓</a>
+            <span>macOS 26+ · Apple Silicon</span>
+          </p>
+          <p class="download-feedback" id="hero-download-status" role="status" hidden><span></span> <a href="https://github.com/standing-desks/handshake/releases/latest" hidden>View releases ↗</a></p>
+        </div>
+      </section>
+
+      <section class="intro wrap">
+        <h2>A folder, its sessions, and the <b>agents working</b> in them.</h2>
+        <p>Open a folder and organize the work into sessions. Each session holds workflows, and in a workflow your agents implement, review, and coordinate through explicit handoffs. Terminals, files, and traces stay in one window.</p>
+      </section>
+
+      <section class="workflows wrap" id="workflows" aria-labelledby="workflows-title">
+        <div class="list">
+          <div class="list-head label"><span id="workflows-title">workflow types</span><span>roles</span></div>
+          <button class="row" type="button" aria-pressed="false" aria-controls="shot" data-shot="screens/terminal.png"
+            data-alt="A Terminal workflow in Handshake: two shell panes running the Trailboard tests and demo, with each command as a step in Traces.">
+            <span class="ix">01</span>
+            <span class="row-text"><span class="row-title">Terminal</span><span class="row-desc">A plain shell. Split panes, keep files nearby, and trace each command from output to exit status.</span></span>
+            <span class="num">00<small>shell only</small></span>
+          </button>
+          <button class="row" type="button" aria-pressed="false" aria-controls="shot" data-shot="screens/single-agent.png"
+            data-alt="A Single agent workflow in Handshake: Codex adds a JSON option to the Trailboard command-line tool, with its prompts as steps in Traces.">
+            <span class="ix">02</span>
+            <span class="row-text"><span class="row-title">Single agent</span><span class="row-desc">One interactive coding agent. Work with it directly in its terminal.</span></span>
+            <span class="num">01<small>role</small></span>
+          </button>
+          <button class="row" type="button" aria-pressed="false" aria-controls="shot" data-shot="screens/adversarial.png"
+            data-alt="An Adversarial workflow in Handshake: Codex implements due dates, Claude Code reviews the change, and Traces shows the four handoffs.">
+            <span class="ix">03</span>
+            <span class="row-text"><span class="row-title">Adversarial</span><span class="row-desc">One agent implements. Another reviews, then approves or requests changes, in bounded loops.</span></span>
+            <span class="num">02<small>roles</small></span>
+          </button>
+          <button class="row on" type="button" aria-pressed="true" aria-controls="shot" data-shot="screens/coordinator.png"
+            data-alt="A Coordinator workflow in Handshake: a planner, two workers, and a coordinator in four terminal panes, with their handoffs in Traces.">
+            <span class="ix">04</span>
+            <span class="row-text"><span class="row-title">Coordinator</span><span class="row-desc">A planner splits the task, two workers build their parts in parallel, and a coordinator checks the results.</span></span>
+            <span class="num">04<small>roles</small></span>
+          </button>
+          <button class="row" type="button" aria-pressed="false" aria-controls="shot" data-shot="screens/custom.png"
+            data-alt="Handshake's workflow editor with a custom Ship Check workflow: a builder hands work to a tester and a security reviewer, who both feed release notes.">
+            <span class="ix">05</span>
+            <span class="row-text"><span class="row-title">Your own</span><span class="row-desc">Design a reusable workflow type with your own roles, stages, handoffs, and review loops.</span></span>
+            <span class="num">∞<small>roles</small></span>
+          </button>
+          <p class="list-foot label"><a href="documentation/guide/#agent-workflows">how workflows work ↗</a></p>
+        </div>
+        <figure class="shot" id="shot">
+          <div class="shot-frame">
+            <img id="shot-img" src="/screens/coordinator.png" width="2744" height="1822" alt="A Coordinator workflow in Handshake: a planner, two workers, and a coordinator in four terminal panes, with their handoffs in Traces.">
+            <p class="shot-missing label" id="shot-missing" hidden>Screenshot coming soon</p>
+          </div>
+        </figure>
+      </section>
+
+      <section class="harness wrap" aria-labelledby="harness-title">
+        <h2 class="label" id="harness-title" data-decode>bring your own harness</h2>
+        <div class="harness-rows" aria-hidden="true">
+          <div class="harness-row"><span class="role">implementer</span><span class="arrow">▸</span><span class="harness-name" data-cycle="0">Codex</span></div>
+          <div class="harness-row"><span class="role">coordinator</span><span class="arrow">▸</span><span class="harness-name" data-cycle="4">OMP</span></div>
+          <div class="harness-row"><span class="role">reviewer</span><span class="arrow">▸</span><span class="harness-name" data-cycle="1">Claude Code</span></div>
+        </div>
+        <p>A role doesn't depend on the tool that fills it. Mix <span class="harness-list">Codex, Claude Code, pi, Antigravity, OMP, OpenCode, and Kiro CLI</span> across roles, or start with a plain shell. Install and sign in to each tool separately.</p>
+      </section>
+
+      <section class="browser wrap" id="browser" aria-labelledby="browser-title">
+        <h2 class="label" id="browser-title">browser use</h2>
+        <div class="browser-grid">
+          <div class="browser-copy">
+            <p class="browser-lede">Open the web beside your terminals, and let agents <b>drive it while you watch.</b></p>
+            <ul class="browser-points">
+              <li><b>Browser tabs.</b> Press ⌥⌘T or the globe button to open a page next to your work. Tabs belong to their session and come back after relaunch.</li>
+              <li><b>Agent browser control</b> <span class="beta">beta</span> An agent opens its own tabs, reads the page, and clicks, types, scrolls, and takes screenshots. Turn it on in Settings → Experimental.</li>
+              <li><b>You stay in charge.</b> The browser shows which terminal is driving it, and Stop / Take over hands the page back to you. Passwords, dialogs, and uploads stay with you.</li>
+              <li><b>Works with your harness.</b> Codex and Claude Code get a browser tool for the session. Other agents use the bundled command-line tool.</li>
+            </ul>
+          </div>
+          <div class="browser-cli" aria-label="Example browser commands">
+            <span class="cli-comment" data-decode># the agent opens a tab it owns</span>
+            <span data-decode>$ "$HANDSHAKE_CLI" browser open http://localhost:4173</span>
+            <span class="cli-comment" data-decode># reads the page, then acts on its elements</span>
+            <span data-decode>$ "$HANDSHAKE_CLI" browser --tab ID snapshot</span>
+            <span data-decode>$ "$HANDSHAKE_CLI" browser --tab ID fill e3 "Clear deadfall"</span>
+            <span data-decode>$ "$HANDSHAKE_CLI" browser --tab ID click e7</span>
+            <span data-decode>$ "$HANDSHAKE_CLI" browser --tab ID screenshot</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="thread wrap" aria-labelledby="thread-title">
+        <h2 class="label" id="thread-title">keep the thread</h2>
+        <div class="thread-grid">
+          <article><h3>A window for each folder</h3><p>Sessions and workflows live with the folder. Each folder keeps its own terminals, files, and tabs.</p></article>
+          <article><h3>Follow the handoffs</h3><p>See workflow activity in Traces, inspect what happened, and jump to recorded terminal output.</p></article>
+          <article><h3>Pick up where you left off</h3><p>Restore sessions, pane layouts, and retained output. Resume agent conversations when the harness supports it.</p></article>
+          <article><h3>Stay close to your files</h3><p>Browse the folder and make small text edits, with undo and checks for changes made on disk.</p></article>
+        </div>
+      </section>
+
+      <section class="stats wrap" aria-label="Handshake at a glance">
+        <div><span class="label">built-in workflow types</span><strong data-decode>4</strong><span class="stat-note">Terminal to Coordinator</span></div>
+        <div><span class="label">harnesses</span><strong data-decode>7</strong><span class="stat-note">from Codex to Kiro CLI</span></div>
+        <div><span class="label">current release</span><strong data-decode>%HANDSHAKE_VERSION%</strong><span class="stat-note">signed and notarized</span></div>
+        <div><span class="label">license</span><strong data-decode>MIT</strong><span class="stat-note">SwiftUI and Rust</span></div>
+      </section>
+
+      <section class="cta wrap" id="start" aria-labelledby="start-title">
+        <h2 id="start-title">Give it<br>a spin.</h2>
+        <div class="cta-side">
+          <ol class="steps">
+            <li><b>Install.</b> Run the Homebrew command, or download the app and drag Handshake to Applications.</li>
+            <li><b>Open a folder.</b> Create a session, choose a workflow type, and pick the agent tools you've installed.</li>
+            <li><b>Start with a task.</b> Type it into the first agent's terminal and follow the handoffs.</li>
+          </ol>
+          <div class="install-command">
+            <span aria-hidden="true">$</span>
+            <code>brew install --cask standing-desks/tap/handshake</code>
+            <button class="copy" type="button" data-copy="brew install --cask standing-desks/tap/handshake" aria-label="Copy the Homebrew install command"><span aria-live="polite">Copy</span></button>
+          </div>
+          <p class="install-alt label">
+            <a href="https://github.com/standing-desks/handshake/releases/latest" data-macos-download="start-download-status">download the app ↓</a>
+            <a href="documentation/development/">build from source ↗</a>
+          </p>
+          <p class="download-feedback" id="start-download-status" role="status" hidden><span></span> <a href="https://github.com/standing-desks/handshake/releases/latest" hidden>View releases ↗</a></p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer wrap label">
+      <span>Handshake · Agents Together Strong</span>
+      <nav aria-label="Footer navigation"><a href="documentation/">documentation</a><a href="https://github.com/standing-desks/handshake/releases/latest">releases</a><a href="https://github.com/standing-desks/handshake/issues">feedback</a><a href="https://github.com/standing-desks/handshake/blob/main/LICENSE">MIT license</a></nav>
+    </footer>
+    <script type="module" src="/src/home.js"></script>
+  </body>
+</html>

@@ -7,14 +7,14 @@
     <title>User guide — Handshake</title>
     <meta name="description" content="Learn how to set up Handshake, run your first workflow, and work with your coding agents.">
     <link rel="canonical" href="https://standing-desks.github.io/handshake/documentation/guide/">
-    <link rel="icon" type="image/png" href="../../assets/favicon.png">
-    <link rel="stylesheet" href="../../assets/styles.css">
+    <link rel="icon" type="image/png" href="/favicon.png">
+    <link rel="stylesheet" href="/src/style.css">
   </head>
   <body class="docs-page" id="top">
     <a class="skip-link" href="#main">Skip to content</a>
-    <header class="header wrap">
-      <a class="brand" href="../../" aria-label="Handshake home"><img src="../../assets/handshake-transparent.svg" width="48" height="48" alt=""><span>Handshake</span></a>
-      <nav aria-label="Main navigation"><a href="../../#workflows">Workflows</a><a href="../">Docs</a><a class="nav-github" href="https://github.com/standing-desks/handshake">GitHub <span aria-hidden="true">↗</span></a></nav>
+    <header class="top wrap">
+      <a class="brand" href="../../" aria-label="Handshake home"><img src="/handshake-transparent.svg" width="48" height="48" alt=""><span>Handshake</span></a>
+      <nav aria-label="Main navigation"><a href="../../#workflows">workflows</a><a href="../../#browser">browser</a><a href="../">docs</a><a href="https://github.com/standing-desks/handshake">github <span aria-hidden="true">↗</span></a></nav>
     </header>
     <div class="docs-layout wrap">
       <aside class="docs-sidebar">
@@ -34,7 +34,7 @@
 </ul>
 </div>
 </nav>
-        <a class="docs-source" href="https://github.com/standing-desks/handshake/blob/main/docs/documentation/guide/index.html">View on GitHub <span aria-hidden="true">↗</span></a>
+        <a class="docs-source" href="https://github.com/standing-desks/handshake/blob/main/site/documentation/guide/index.html">View on GitHub <span aria-hidden="true">↗</span></a>
       </aside>
       <main id="main" class="docs-content">
         <p class="eyebrow">User guide</p>
@@ -434,6 +434,24 @@ Restoration loads the saved page address; it does not restore an in-memory form 
 viewer; images fit the available space; videos have playback and seek controls and pause when hidden.
 These previews are not subject to the text editor's 2 MiB limit. Playback depends on the system's supported codecs.
 Text images such as SVG retain their Source editor.</p>
+<h3 id="agent-browser-control">Agent browser control (beta)</h3>
+<p>Agent browser control lets coding agents use the embedded browser while you watch. It is a beta and is off by
+default. Turn on <strong>Agent browser control</strong> in <strong>Settings → Experimental</strong>, then start a new
+terminal or agent. Ordinary browser tabs work without it. Turning it off immediately ends every agent's control and
+keeps the pages open.</p>
+<p>Agents that Handshake starts or resumes receive browser instructions automatically. Codex and Claude Code also get a
+browser tool for the session; their sandbox and permission settings don't change. From any Handshake terminal, use the
+bundled command-line tool, which lists its commands with <code>"$HANDSHAKE_CLI" browser --help</code>:</p>
+<pre class="highlight"><code class="language-sh">"$HANDSHAKE_CLI" browser open http://localhost:4173
+"$HANDSHAKE_CLI" browser --tab ID snapshot
+"$HANDSHAKE_CLI" browser --tab ID click e7
+</code></pre>
+<p>An agent can operate only the tabs it opens. Commands cover navigation, page snapshots, clicks, typing, hover,
+dropdowns, key presses, scrolling, screenshots, waits, and console messages. The browser shows which terminal controls
+it; <strong>Stop / Take over</strong> cancels pending commands and ends that terminal's control while leaving the page
+open. Passwords, dialogs, and uploads require you.</p>
+<p>Other sandboxed agents may need approval to run the command-line tool outside their sandbox, so it can reach
+Handshake. Approve that specific command when the agent asks; you don't need to turn off the whole sandbox.</p>
 <h3 id="experimental-tab-management">Tab management</h3>
 <p>Tab management is available in every folder, including custom
 workflow and browser names, drag reordering, pinned tabs, a searchable open-tab list, completion indicators,
@@ -508,6 +526,7 @@ If either has expired, Handshake shows <strong>Output no longer available</stron
         <p class="docs-end"><a href="#top">Back to top ↑</a><a href="https://github.com/standing-desks/handshake/issues">Questions or feedback? ↗</a></p>
       </main>
     </div>
-    <footer class="footer wrap"><div><a class="brand footer-brand" href="../../"><span>Handshake</span></a><p>A native macOS workspace for coordinating coding agents.</p></div><nav aria-label="Footer navigation"><a href="../">Documentation</a><a href="https://github.com/standing-desks/handshake/releases/latest">Releases</a><a href="https://github.com/standing-desks/handshake/blob/main/LICENSE">MIT License</a></nav></footer>
+    <footer class="site-footer wrap label"><span>Handshake · Agents Together Strong</span><nav aria-label="Footer navigation"><a href="../../">home</a><a href="../">documentation</a><a href="https://github.com/standing-desks/handshake/releases/latest">releases</a><a href="https://github.com/standing-desks/handshake/blob/main/LICENSE">MIT license</a></nav></footer>
+    <script type="module" src="/src/docs.js"></script>
   </body>
 </html>

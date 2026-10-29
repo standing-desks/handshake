@@ -310,9 +310,7 @@ regenerate-dmg-artwork: ## Regenerate the DMG background
 .PHONY: build-site
 build-site: check-site $(call needs,docs-lib docs-app) ## Build the documentation website
 	rm -rf "$(SITE_DIR)"
-	mkdir -p "$(SITE_DIR)"
-	cp docs/index.html "$(SITE_DIR)/"
-	cp -R docs/assets docs/documentation "$(SITE_DIR)/"
+	cd site && npm ci && npm run build -- --outDir "$(SITE_DIR)" --emptyOutDir
 	cp -R "$(LIB_DOC_DIR)/doc/." "$(SITE_DIR)/documentation/rust/"
 	cp -R "$(APP_DOC_DIR)/Build/Products/Debug/Handshake.doccarchive" "$(SITE_DIR)/documentation/swift"
 
@@ -340,8 +338,12 @@ docs-app: $(call needs,deps-debug) ## Build the app API reference
 		--checkout-path "$(CURDIR)"
 
 .PHONY: check-site
-check-site: check-assets ## Check website downloads and copy controls without desktop access
-	node scripts/test-site.cjs
+check-site: check-assets ## Check website downloads, copy controls, and screenshots without desktop access
+	node site/scripts/test-site.cjs
+
+.PHONY: serve-site
+serve-site: ## Serve the website locally with live reload
+	cd site && npm ci && npm run dev
 
 .PHONY: check-assets sync-assets
 check-assets: ## Verify shared brand sources and component copies
