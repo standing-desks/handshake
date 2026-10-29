@@ -1,6 +1,22 @@
 import Foundation
 
 nonisolated enum BrowserAddress {
+    /// Automation accepts explicit local paths; ordinary address entry keeps website inference.
+    static func automationURL(_ value: String) -> URL? {
+        if value.hasPrefix("/") { return URL(fileURLWithPath: value) }
+        guard let url = URL(string: value), url.user == nil, url.password == nil else { return nil }
+        if url.isFileURL {
+            guard url.host == nil || url.host == "" || url.host?.lowercased() == "localhost",
+                url.port == nil, url.path.hasPrefix("/")
+            else { return nil }
+            return url
+        }
+        guard ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
+            let host = url.host, !host.isEmpty
+        else { return nil }
+        return url
+    }
+
     static let invalidMessage = "Enter a valid website address, such as example.com or http://localhost:3000."
 
     static func parse(_ input: String) -> URL? {

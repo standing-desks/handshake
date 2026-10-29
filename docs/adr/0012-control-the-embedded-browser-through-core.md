@@ -43,6 +43,18 @@ handshake-core, and Swift accesses core through CoreClient.
   full reference. Do not write project instruction files or install global skills.
   Manually launched agents inside a plain shell inherit the CLI environment but
   do not pass through Handshake's instruction injection.
+- Agent-created tabs open in the background and retain the user's current content
+  and keyboard focus. Navigation, snapshots, waits, scrolling and console reads do
+  not select the page. Native input and viewport screenshots reveal their target,
+  since those operations require a visible native view. User-created tabs still
+  select normally.
+- The CLI accepts local paths (resolved against its working directory) and local
+  `file://` URLs as well as HTTP(S). WebKit loads an explicitly opened file with
+  read access to its canonical containing directory so relative assets work.
+  Reject remote file hosts, directories and missing/unreadable files. Permit file
+  navigation only inside that directory, resolving symlinks before checking;
+  opening another local file explicitly grants its directory. A website cannot
+  initiate local-file access. Restored local pages have ordinary user authority.
 - An agent opens its own tabs. Commands always use stable tab identifiers;
   they never infer their target from the currently focused window. Another
   terminal cannot operate those tabs. The native host serializes execution.
@@ -81,8 +93,8 @@ handshake-core, and Swift accesses core through CoreClient.
 - Use bounded asynchronous WebKit calls and native input directed at the page,
   not global desktop pointer automation. Require a visible page for input.
   Treat page text and console output as untrusted data, not instructions.
-- Current limits are explicit: HTTP(S), same-origin frames, open shadow roots,
-  ordinary text fields and single-select dropdowns, editing keys, viewport screenshots,
+- Current limits are explicit: HTTP(S), local files with directory-scoped assets,
+  same-origin frames, open shadow roots, ordinary text fields and single-select dropdowns, editing keys, viewport screenshots,
   and manual handling of passwords, dialogs and uploads. Cross-origin or transformed
   frames, closed shadow roots, rich editors,
   cookie export, network interception and annotations are separate work.

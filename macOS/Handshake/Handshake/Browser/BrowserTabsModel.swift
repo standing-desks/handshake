@@ -66,7 +66,7 @@ final class BrowserTabsModel {
     }
 
     func createControlled(id: UUID) -> BrowserTab {
-        insert(snapshot: .init(id: id), configuration: configuration(), select: true, automation: true)
+        insert(snapshot: .init(id: id), configuration: configuration(), select: false, automation: true)
     }
 
     @discardableResult
@@ -95,7 +95,9 @@ final class BrowserTabsModel {
         }
         tab.closeRequested = { [weak self, weak tab] in if let tab { self?.close(tab.id) } }
         tabs.append(tab)
-        if let value = snapshot.url, let url = BrowserAddress.parse(value) { tab.load(url) }
+        if let value = snapshot.url, let url = BrowserAddress.parse(value) ?? BrowserAddress.automationURL(value) {
+            tab.load(url)
+        }
         if select { self.select(tab.id) }
         remember()
         return tab

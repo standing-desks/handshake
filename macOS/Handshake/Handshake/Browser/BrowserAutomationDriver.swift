@@ -15,6 +15,10 @@ enum BrowserAutomationError: Error, LocalizedError {
 struct BrowserAutomationDriver {
     let tab: BrowserTab
 
+    static func requiresVisiblePage(_ action: BrowserAction) -> Bool {
+        ["click", "fill", "hover", "press", "select", "screenshot"].contains(action.action)
+    }
+
     static func configure(_ configuration: WKWebViewConfiguration) {
         guard let url = Bundle.main.url(forResource: "BrowserAutomation", withExtension: "js"),
             let script = try? String(contentsOf: url, encoding: .utf8)
@@ -79,6 +83,7 @@ struct BrowserAutomationDriver {
     }
 
     private func press(_ action: BrowserAction) async throws -> BrowserControlResult {
+        try await wait { tab.isVisible && tab.webView.window != nil && tab.webView.bounds.width > 0 }
         let generation = tab.navigationGeneration
         _ = try await script("prepareKey", arguments: ["key": action.key ?? ""])
         try Task.checkCancellation()
@@ -157,11 +162,15 @@ struct BrowserAutomationDriver {
     }
 
     private func navigate(_ value: String?) async throws -> BrowserControlResult {
-        guard let value, let url = URL(string: value),
-            ["http", "https"].contains(url.scheme?.lowercased() ?? ""), url.host != nil,
-            url.user == nil, url.password == nil
+        guard let value, let url = BrowserAddress.automationURL(value)
         else {
-            throw BrowserAutomationError.unavailable("Use an HTTP or HTTPS URL without embedded credentials.")
+            throw BrowserAutomationError.unavailable("Use an HTTP(S) URL, local file URL, or absolute file path.")
+        }
+        if url.isFileURL {
+            var directory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: url.path, isDirectory: &directory), !directory.boolValue,
+                FileManager.default.isReadableFile(atPath: url.path)
+            else { throw BrowserAutomationError.unavailable("The local file is missing, unreadable, or a directory.") }
         }
         tab.load(url)
         try await wait { !tab.isLoading }

@@ -39,6 +39,8 @@ final class BrowserTab: NSObject, Identifiable, WKNavigationDelegate, WKUIDelega
     private var stoppedURL: URL?
     private var stoppedNavigation: WKNavigation?
     private var isStopped = false
+    private var localReadRoot: URL?
+    private var localHistoryRoots: [URL: URL] = [:]
 
     init(
         id: UUID = UUID(), configuration: WKWebViewConfiguration = WKWebViewConfiguration(), customName: String? = nil,
@@ -97,7 +99,15 @@ final class BrowserTab: NSObject, Identifiable, WKNavigationDelegate, WKUIDelega
         failure = nil
         failedURL = nil
         pendingURL = url
-        navigation = webView.load(URLRequest(url: url))
+        if url.isFileURL {
+            let file = url.resolvingSymlinksInPath()
+            let root = file.deletingLastPathComponent()
+            localReadRoot = root
+            navigation = webView.loadFileURL(file, allowingReadAccessTo: root)
+        } else {
+            localReadRoot = nil
+            navigation = webView.load(URLRequest(url: url))
+        }
         syncState()
     }
 
@@ -166,8 +176,18 @@ final class BrowserTab: NSObject, Identifiable, WKNavigationDelegate, WKUIDelega
             return
         }
         let scheme = destination.scheme?.lowercased() ?? ""
-        if ["http", "https", "about", "blob", "data"].contains(scheme) {
+        let localFile = destination.resolvingSymlinksInPath()
+        if destination.isFileURL, action.targetFrame?.isMainFrame == true, action.navigationType == .backForward {
+            localReadRoot = localHistoryRoots[localFile]
+        }
+        let allowedFile = Self.allowsLocalNavigation(to: destination, root: localReadRoot)
+        if ["http", "https", "about", "blob", "data"].contains(scheme) || allowedFile {
             if action.targetFrame?.isMainFrame == true {
+                if destination.isFileURL {
+                    localHistoryRoots[localFile] = localReadRoot
+                } else {
+                    localReadRoot = nil
+                }
                 pendingURL = destination
                 hasNavigated = true
             }
@@ -186,6 +206,15 @@ final class BrowserTab: NSObject, Identifiable, WKNavigationDelegate, WKUIDelega
         userClicked && visible
             && !["", "http", "https", "file", "javascript", "about", "blob", "data", "webkit", "applewebdata"].contains(
                 scheme)
+    }
+
+    nonisolated static func allowsLocalNavigation(to destination: URL, root: URL?) -> Bool {
+        guard destination.isFileURL, let root,
+            destination.host == nil || destination.host == "" || destination.host == "localhost"
+        else { return false }
+        let directory = root.resolvingSymlinksInPath().path
+        let path = directory.hasSuffix("/") ? directory : directory + "/"
+        return destination.resolvingSymlinksInPath().path.hasPrefix(path)
     }
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation?) {
