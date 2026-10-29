@@ -85,6 +85,7 @@ UI_DEFAULT_TESTS := testFirstLaunchShowsStartPage \
 	testSessionsOwnTabsAndRestoreFreshShellsAfterRelaunch \
 	testQuitStopsShellAndDescendant \
 	testTerminalRunsLibraryInjectionAndDebugger \
+	testTerminalRenderingRemainsUsableAcrossZoomAndResize \
 	testShellAgentPresentationPreservesShellAndReturnsAfterExit \
 	testWorkflowTraceUsesPromptInsteadOfGraphAndSurvivesRelaunch \
 	testSingleAgentStartsInteractivelyTakesInputAndCancels \
@@ -231,7 +232,7 @@ ui-test-visual: ## Run the visual UI tests
 .PHONY: lint-ci
 lint-ci: check-assets ## Lint CI workflows and build scripts
 	$(ACTIONLINT) -ignore 'label "xcode-27" is unknown'
-	shellcheck scripts/*.sh macOS/HandshakeCorePackage/*.sh macOS/Handshake/Scripts/swiftlint.sh
+	shellcheck scripts/*.sh macOS/HandshakeCorePackage/*.sh macOS/Handshake/Scripts/*.sh
 
 .PHONY: check-bundle
 check-bundle: ## Test and lint the release scripts
@@ -255,12 +256,14 @@ deps-debug: $(call needs,framework-debug)
 	mkdir -p "$(OUT)/dependencies/tmp"
 	$(FRAMEWORK_SELECT) debug
 	$(XCODEBUILD_DEBUG) -derivedDataPath "$(OUT)/debug" -resolvePackageDependencies
+	sh macOS/Handshake/Scripts/prepare-swiftterm.sh "$(SWIFT_PACKAGES_DIR)/checkouts/SwiftTerm"
 
 .PHONY: deps-release
 deps-release: $(call needs,framework-release)
 	mkdir -p "$(OUT)/dependencies/tmp"
 	$(FRAMEWORK_SELECT) release
 	$(XCODEBUILD_RELEASE) -derivedDataPath "$(OUT)/release" -resolvePackageDependencies
+	sh macOS/Handshake/Scripts/prepare-swiftterm.sh "$(SWIFT_PACKAGES_DIR)/checkouts/SwiftTerm"
 
 .PHONY: build-tests
 build-tests: $(call needs,deps-debug)

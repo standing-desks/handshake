@@ -1,0 +1,101 @@
+Backport SwiftTerm PR #775 (5d6b3bf2b3667d03f753aa9f73b05175fcc4d357)
+to the pinned 1.19.0 revision. Keep the 1.x terminal API and PTY integration.
+Source: https://github.com/migueldeicaza/SwiftTerm/pull/775
+Remove this patch when adopting an upstream version containing the fix.
+
+Local cursor correction: resolve graphemes through Terminal, matching the row
+renderer and MacCaretView, instead of treating stored grapheme IDs as scalars.
+
+diff --git a/Sources/SwiftTerm/Apple/Metal/MetalTerminalRenderer.swift b/Sources/SwiftTerm/Apple/Metal/MetalTerminalRenderer.swift
+--- a/Sources/SwiftTerm/Apple/Metal/MetalTerminalRenderer.swift
++++ b/Sources/SwiftTerm/Apple/Metal/MetalTerminalRenderer.swift
+@@ -576,6 +576,13 @@
+     /// (1024 -> ... -> maxSize) can invalidate passes, then one reset, and
+     /// finally one frozen pass that is guaranteed not to invalidate.
+     private static let maxAtlasRebuildPasses = 5
++
++#if DEBUG
++    // Let regression tests inspect the same buffers sent to Metal, without GPU timing assumptions.
++    func debugBuildDrawData(scale: CGFloat) -> DrawData {
++        buildDrawData(scale: scale)
++    }
++#endif
+ 
+     private func buildDrawData(scale: CGFloat) -> DrawData {
+         defer {
+@@ -1322,7 +1329,12 @@
+                         let y0 = pxY
+                         let x1 = pxX + entry.size.width * fit.scale
+                         let y1 = pxY + entry.size.height * fit.scale
+-                        let (tx0, ty0, tx1, ty1) = transformRect(x0: x0, y0: y0, x1: x1, y1: y1)
++                        let (rawX0, rawY0, rawX1, rawY1) = transformRect(x0: x0, y0: y0, x1: x1, y1: y1)
++                        // Snap the origin after DEC transforms without changing fitted glyph sizes.
++                        let tx0 = rawX0.rounded()
++                        let ty0 = rawY0.rounded()
++                        let tx1 = tx0 + (rawX1 - rawX0)
++                        let ty1 = ty0 + (rawY1 - rawY0)
+ 
+                         let atlasSize = entry.atlasKind == .color ? colorAtlas.size : grayscaleAtlas.size
+                         let u0 = Float(entry.region.x) / Float(atlasSize)
+@@ -2407,7 +2419,7 @@
+         let attributes = terminalView.getAttributedValue(charData.attribute,
+                                                          usingFg: terminalView.effectiveCaretColor,
+                                                          andBg: caretTextColor) ?? [.font: terminalView.fontSet.normal]
+-        let attributedString = NSAttributedString(string: UnicodeUtil.textPresentationAdjusted(charData.getCharacter()), attributes: attributes)
++        let attributedString = NSAttributedString(string: UnicodeUtil.textPresentationAdjusted(terminalView.terminal.getCharacter(for: charData)), attributes: attributes)
+         let ctline = CTLineCreateWithAttributedString(attributedString)
+         guard let runs = CTLineGetGlyphRuns(ctline) as? [CTRun] else {
+             return (colorVertices, [], [])
+@@ -2448,8 +2460,9 @@
+                                       y: lineOrigin.y + yOffset + ctPos.y + fit.dy)
+                 let pxX = basePos.x * scale + entry.bearing.x * fit.scale
+                 let pxY = basePos.y * scale + entry.bearing.y * fit.scale
+-                let x0 = Float(pxX)
+-                let y0 = Float(pxY)
++                // Match the row glyph's final device-pixel grid.
++                let x0 = Float(pxX).rounded()
++                let y0 = Float(pxY).rounded()
+                 let x1 = x0 + Float(entry.size.width * fit.scale)
+                 let y1 = y0 + Float(entry.size.height * fit.scale)
+ 
+diff --git a/Sources/SwiftTerm/Apple/AppleTerminalView.swift b/Sources/SwiftTerm/Apple/AppleTerminalView.swift
+--- a/Sources/SwiftTerm/Apple/AppleTerminalView.swift
++++ b/Sources/SwiftTerm/Apple/AppleTerminalView.swift
+@@ -1751,6 +1751,12 @@
+     }
+ 
+     
++    // Include the full transform so translated carets and DEC doubled rows share one pixel grid.
++    func pixelAlignedGlyphOrigin(_ point: CGPoint, in context: CGContext) -> CGPoint {
++        let device = context.convertToDeviceSpace(point)
++        return context.convertToUserSpace(CGPoint(x: device.x.rounded(), y: device.y.rounded()))
++    }
++
+     // TODO: this should not render any lines outside the dirtyRect
+     func drawTerminalContents (dirtyRect: TTRect, context: CGContext, bufferOffset: Int)
+     {
+@@ -2110,6 +2116,10 @@
+                         if anyScaled { scaledFits = computed }
+                     }
+ 
++                    for i in glyphPositions.indices {
++                        glyphPositions[i] = pixelAlignedGlyphOrigin(glyphPositions[i], in: context)
++                    }
++
+                     if let scaledFits {
+                         // Rare path: at least one glyph overflowed its slot and is
+                         // drawn individually at a reduced point size.
+diff --git a/Sources/SwiftTerm/Apple/CaretView.swift b/Sources/SwiftTerm/Apple/CaretView.swift
+--- a/Sources/SwiftTerm/Apple/CaretView.swift
++++ b/Sources/SwiftTerm/Apple/CaretView.swift
+@@ -78,7 +78,9 @@
+             // does the same via CTFontCreateCopyWithAttributes). The caret bounds
+             // span `glyphColumnWidth` cells, so the centered glyph isn't clipped.
+             let fits = runGlyphs.map { terminal.glyphSlotFit(font: ctRunFont, glyph: $0, columnWidth: glyphColumnWidth) }
+-            var positions = fits.map { CGPoint(x: $0.dx, y: yOffset + $0.dy) }
++            var positions = fits.map {
++                terminal.pixelAlignedGlyphOrigin(CGPoint(x: $0.dx, y: yOffset + $0.dy), in: context)
++            }
+             if fits.contains(where: { $0.scale != 1 }) {
+                 for i in 0..<runGlyphsCount {
+                     let s = fits[i].scale

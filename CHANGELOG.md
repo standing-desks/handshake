@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-29
+
+### Added
+
+- Add opt-in beta browser control through the bundled CLI, with scoped agent-owned
+  tabs, page inspection, native interactions, screenshots, waits, and user takeover.
+  Codex and Claude Code receive native MCP integration; supported harnesses receive
+  browser instructions on app-managed launches. Ordinary browser tabs remain available
+  without enabling browser control.
+- Add Kiro CLI V3 integration with native trace hooks and conversation-specific resume.
+- Add explicit shared-memory corrections and bound the context delivered at prompts.
+- Recognize supported agent commands launched in Terminal tabs, show the agent's
+  identity while the command runs, and return to Terminal when it finishes.
+
+### Changed
+
+- Make tab management standard, unify top-bar control sizing, and simplify tab status.
+- Group optional features under Experimental settings and label cross-agent memory
+  sharing as a beta that remains disabled by default.
+- Use the first native prompt to name generic workflow traces while preserving
+  structured task titles and custom tab names.
+
+### Fixed
+
+- Align terminal text and cursor glyphs to device pixels to avoid extra smoothing
+  from fractional placement, without replacing SwiftTerm or changing terminal ownership.
+- Preserve emoji and combined characters beneath the terminal's block cursor.
+- Restore Kiro divider visibility and fill running trace markers consistently.
+
 ## [0.5.0] - 2026-10-27
 
 ### Added
@@ -355,7 +384,8 @@ Initial release of Twine, a native macOS workspace for coordinating coding agent
 - The app is ad hoc signed and not notarized. Follow the included install instructions
   to approve the first launch in macOS Privacy & Security settings.
 
-[unreleased]: https://github.com/standing-desks/handshake/compare/v0.5.0...HEAD
+[unreleased]: https://github.com/standing-desks/handshake/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/standing-desks/handshake/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/standing-desks/handshake/compare/v0.4.2...v0.5.0
 [0.3.3]: https://github.com/standing-desks/twine/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/standing-desks/twine/compare/v0.3.1...v0.3.2
