@@ -52,7 +52,7 @@ struct WorkflowGraphConnections: View {
             ForEach(edges) { edge in
                 WorkflowConnectionShape(
                     from: sourcePoint(edge), destination: point(edge.to), feedback: edge.event == .feedback,
-                    lane: WorkflowEditorLayout.returnLane(for: edge, edges: edges, point: point)
+                    lane: returnLane(edge), sourceSize: nodeSize(edge.from), destinationSize: nodeSize(edge.to)
                 )
                 .stroke(
                     selection == .edge(edge.id) ? Color.accentColor : linkColor(edge.from),
@@ -65,11 +65,21 @@ struct WorkflowGraphConnections: View {
                     from: startsAtInput ? (target.map(point) ?? pointer) : point(source),
                     destination: startsAtInput ? point(source) : (target.map(point) ?? pointer),
                     atPort: startsAtInput || target != nil,
-                    sourceAtPort: !startsAtInput || target != nil
+                    sourceAtPort: !startsAtInput || target != nil,
+                    sourceSize: nodeSize(startsAtInput ? target : source),
+                    destinationSize: nodeSize(startsAtInput ? source : target)
                 )
                 .stroke(Color.accentColor, style: .init(lineWidth: 1.5, lineCap: .round, dash: [5, 4]))
             }
         }.accessibilityHidden(true).allowsHitTesting(false)
+    }
+
+    private func nodeSize(_ id: String?) -> CGSize {
+        id.map { WorkflowEditorLayout.nodeSize(for: $0, in: model.definition) } ?? WorkflowEditorLayout.cardSize
+    }
+
+    private func returnLane(_ edge: CoreWorkflowType.Edge) -> CGFloat? {
+        WorkflowEditorLayout.returnLane(for: edge, edges: edges, point: point, size: { nodeSize($0) })
     }
 
     private func linkColor(_ source: String) -> Color {
@@ -90,7 +100,7 @@ struct WorkflowGraphConnections: View {
     func labelPoint(_ edge: CoreWorkflowType.Edge) -> CGPoint {
         let from = sourcePoint(edge)
         let destination = point(edge.to)
-        if let lane = WorkflowEditorLayout.returnLane(for: edge, edges: edges, point: point) {
+        if let lane = returnLane(edge) {
             return CGPoint(
                 x: (from.x + destination.x) / 2,
                 y: lane)
@@ -116,16 +126,18 @@ nonisolated struct WorkflowConnectionShape: Shape {
     var feedback = false
     var sourceAtPort = true
     var lane: CGFloat?
+    var sourceSize = WorkflowEditorLayout.cardSize
+    var destinationSize = WorkflowEditorLayout.cardSize
 
     func path(in rect: CGRect) -> Path {
         let start = CGPoint(
-            x: from.x + (sourceAtPort ? WorkflowEditorLayout.cardSize.width / 2 : 0), y: from.y)
-        let end = CGPoint(x: destination.x - (atPort ? WorkflowEditorLayout.cardSize.width / 2 : 0), y: destination.y)
+            x: from.x + (sourceAtPort ? sourceSize.width / 2 : 0), y: from.y)
+        let end = CGPoint(x: destination.x - (atPort ? destinationSize.width / 2 : 0), y: destination.y)
         let bend = max(56, abs(end.x - start.x) / 2)
         var path = Path()
         path.move(to: start)
         if sourceAtPort && atPort && (feedback || destination.x <= from.x) {
-            let lane = lane ?? max(from.y, destination.y) + WorkflowEditorLayout.cardSize.height / 2 + 56
+            let lane = lane ?? max(from.y + sourceSize.height / 2, destination.y + destinationSize.height / 2) + 56
             path.addCurve(
                 to: CGPoint(x: start.x, y: lane),
                 control1: CGPoint(x: start.x + 56, y: start.y), control2: CGPoint(x: start.x + 56, y: lane))

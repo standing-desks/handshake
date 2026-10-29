@@ -281,12 +281,20 @@ right connector to connect receiving agents or other decisions.</p>
 work directly, makes no decision, and does not require Nouli. With two or more connections,
 <strong>Nouli</strong> chooses one route. Install the <code>nouli</code> executable on your PATH and
 configure its provider before running a workflow that needs a model decision.</p>
-<p>Enter the <strong>Question</strong> Nouli should answer. The <strong>Options</strong> list is filled
-from the connected agents’ names. No separate routing criteria are required. Adding a wire adds an
-option; deleting it removes that option. Use distinct, descriptive names so Nouli can choose between
-agents. The incoming data becomes Nouli’s state, the question becomes its prompt, and the names
-become its Choice options. Incomplete or duplicate connection mappings prevent saving or starting
-the workflow. An unconnected decision needs an output.</p>
+<p>Pick an <strong>Answer type</strong> and enter the <strong>Question</strong> Nouli should answer.
+With <strong>Multiple choice</strong>, the connected agents’ names are the options. Add or remove a
+wire to change that list. Use descriptive names so Nouli can choose between agents.</p>
+<p><strong>Yes/No</strong> assigns Yes to the first connection and No to the second. Use the answer
+pickers or <strong>Swap Yes / No</strong> to change their destinations. The default cutoff sends a
+probability of yes at or above 50% to Yes, and lower values to No. Enable <strong>Use an Uncertain
+answer</strong> to use two thresholds and connect a third agent for values between them.</p>
+<p><strong>Score</strong> uses two to ten connected agents as ordered levels, starting at zero.
+Move levels up or down, or drag them, to order the scale from lowest to highest. Work goes to the
+nearest level; halfway values go higher. A score of 1.43 on a three-level scale selects level 1.
+The original score, probabilities, and rubric stay in the typed result.</p>
+<p>Changing answer type keeps existing wires. Inline errors identify incompatible counts or missing
+answer assignments; fix them before saving. A single connection remains passthrough for every type.
+The incoming data becomes Nouli’s state. The question and selected answer type determine its request.</p>
 <p>Enter a task in the launch form, or in a starting decision’s input surface. Each model decision
 captures its incoming evidence and can include the original task. Only the selected route activates
 work. Unselected terminal roles do not need to produce results. Conditional branches must use

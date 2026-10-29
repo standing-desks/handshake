@@ -30,11 +30,14 @@ extension CoreWorkflowType {
 
         var title: String {
             switch self {
-            case .choice: "Choice"
-            case .noul: "Noul (Yes/No)"
+            case .choice: "Multiple choice"
+            case .noul: "Yes/No"
             case .score: "Score"
             }
         }
+
+        var shortTitle: String { self == .choice ? "Choice" : title }
+
     }
 
     struct DecisionOption: Codable, Hashable, Identifiable, Sendable {

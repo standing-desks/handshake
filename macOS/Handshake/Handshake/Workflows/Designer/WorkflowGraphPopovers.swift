@@ -201,6 +201,16 @@ struct WorkflowLinkPopover: View {
                     Text("Passthrough: forward inputs directly.").font(.caption).foregroundStyle(.secondary)
                 } else if decision.kind == .choice && decision.minConfidence == nil {
                     Text("Nouli option: \(name(edge.to))").font(.caption).foregroundStyle(.secondary)
+                } else if decision.kind == .noul {
+                    Picker(
+                        "Answer",
+                        selection: Binding(
+                            get: { model.definition.graph?.edges.first { $0.id == edge.id }?.output ?? "" },
+                            set: { model.assignDecisionOutput(edge.from, edge: edge.id, output: $0) })
+                    ) {
+                        Text("Unassigned").tag("").disabled(true)
+                        ForEach(decision.outputs) { Text($0.name).tag($0.id) }
+                    }
                 } else {
                     Text(model.outputTitle(edge)).font(.caption).foregroundStyle(.secondary)
                 }

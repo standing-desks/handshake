@@ -18,7 +18,7 @@ struct WorkflowDecisionPopover: View {
     }
 
     private var routes: [CoreWorkflowType.Edge] {
-        model.definition.graph?.agentEdges.filter { $0.from == role.id } ?? []
+        model.decisionEdges(role.id)
     }
 
     var body: some View {
@@ -56,6 +56,14 @@ struct WorkflowDecisionPopover: View {
                 TextField("Name", text: model.roleBinding(role).name).textFieldStyle(.plain)
                     .accessibilityIdentifier("graphAgentName")
                 WorkflowAgentColorPicker(color: model.roleBinding(role).color)
+                Picker(
+                    "Answer type",
+                    selection: Binding(
+                        get: { decision.wrappedValue.kind },
+                        set: { model.setDecisionKind(role.id, kind: $0) })
+                ) {
+                    ForEach(CoreWorkflowType.DecisionKind.allCases, id: \.self) { Text($0.title).tag($0) }
+                }.pickerStyle(.menu).accessibilityIdentifier("decisionAnswerType")
             }
             if routes.count == 1 {
                 Section("Passthrough") {
@@ -67,10 +75,10 @@ struct WorkflowDecisionPopover: View {
                     TextEditor(text: decision.question).font(.body).frame(height: 80)
                         .scrollContentBackground(.hidden).accessibilityLabel("Decision question")
                         .accessibilityIdentifier("decisionQuestion")
-                    Text("Ask Nouli which connected agent should receive the work.").font(.caption).foregroundStyle(
+                    Text(questionHelp).font(.caption).foregroundStyle(
                         .secondary)
                 }
-                optionSettings
+                WorkflowDecisionAnswerSettings(model: model, id: role.id, decision: decision)
             }
             Section("Inputs") {
                 Toggle("Include the workflow task", isOn: decision.includeTask)
@@ -92,35 +100,12 @@ struct WorkflowDecisionPopover: View {
         }.formStyle(.grouped).scrollContentBackground(.hidden)
     }
 
-    private var optionSettings: some View {
-        Section("Options") {
-            if routes.isEmpty {
-                Text("Connect the right circle to the agents Nouli can choose from.").foregroundStyle(.secondary)
-                Label("Connect an output.", systemImage: "exclamationmark.circle")
-                    .foregroundStyle(Color.statusNeedsAttention)
-            } else {
-                ForEach(routes) { edge in
-                    Label(model.nodeName(edge.to), systemImage: "arrow.right")
-                        .accessibilityIdentifier("decisionOption-\(edge.id)")
-                }
-                Text("The connected agents’ names are the options. Add or remove a connection to change this list.")
-                    .font(.caption).foregroundStyle(.secondary)
-                if decision.wrappedValue.kind != .choice || decision.wrappedValue.minConfidence != nil {
-                    importedPolicy
-                }
-            }
+    private var questionHelp: String {
+        switch decision.wrappedValue.kind {
+        case .choice: "Ask Nouli which connected agent should receive the work."
+        case .noul: "Ask a question that can be answered Yes or No."
+        case .score: "Ask for a rating using the ordered scale below."
         }
-    }
-
-    private var importedPolicy: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("This workflow uses \(decision.wrappedValue.kind.title) routing.")
-            if decision.wrappedValue.kind == .noul {
-                Text("Yes at \(decision.wrappedValue.trueThreshold / 100)% or above.")
-                Text("No at \(decision.wrappedValue.falseThreshold / 100)% or below.")
-            }
-            Text("Its configured output mappings are preserved.").foregroundStyle(.secondary)
-        }.font(.caption)
     }
 
     private var launchDefaults: some View {

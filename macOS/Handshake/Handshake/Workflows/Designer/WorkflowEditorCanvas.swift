@@ -144,6 +144,7 @@ struct WorkflowEditorCanvas: View {
     }
 
     private func node(_ id: String) -> some View {
+        let size = WorkflowEditorLayout.nodeSize(for: id, in: model.definition)
         let role = model.definition.roles.first { $0.id == id }
         let graph = model.definition.graph
         return Button {
@@ -166,7 +167,7 @@ struct WorkflowEditorCanvas: View {
         .buttonStyle(.plain)
         .accessibilityIdentifier("graphNode-\(id)")
         .accessibilityAddTraits(selectedNodeID == id ? .isSelected : [])
-        .frame(width: WorkflowEditorLayout.cardSize.width, height: WorkflowEditorLayout.cardSize.height)
+        .frame(width: size.width, height: size.height)
         .highPriorityGesture(moveNodeGesture(id))
         .overlay(alignment: .leading) {
             connector(id, output: false).offset(x: -WorkflowEditorLayout.portHitSize / 2)
@@ -244,7 +245,8 @@ extension WorkflowEditorCanvas {
                 connecting = id
                 connectingFromInput = !output
                 let origin = point(id)
-                let portOffset = WorkflowEditorLayout.cardSize.width / 2 * (output ? 1 : -1)
+                let portOffset =
+                    WorkflowEditorLayout.nodeSize(for: id, in: model.definition).width / 2 * (output ? 1 : -1)
                 pointer = CGPoint(
                     x: origin.x + portOffset + value.translation.width,
                     y: origin.y + value.translation.height)
@@ -263,7 +265,9 @@ extension WorkflowEditorCanvas {
             guard let endpoints = connectionEndpoints(with: candidate),
                 model.canConnect(from: endpoints.source, to: endpoints.destination)
             else { return false }
-            let portOffset = WorkflowEditorLayout.cardSize.width / 2 * (connectingFromInput ? 1 : -1)
+            let portOffset =
+                WorkflowEditorLayout.nodeSize(for: candidate, in: model.definition).width / 2
+                * (connectingFromInput ? 1 : -1)
             let target = point(candidate)
             return abs(target.x + portOffset - pointer.x) <= WorkflowEditorLayout.portHitSize / 2
                 && abs(target.y - pointer.y) <= WorkflowEditorLayout.portHitSize / 2

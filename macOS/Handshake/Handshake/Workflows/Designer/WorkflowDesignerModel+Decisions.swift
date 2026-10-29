@@ -28,33 +28,24 @@ extension WorkflowDesignerModel {
 
     func appendDecisionRoute(_ id: String, to destination: String) {
         let link = UUID().uuidString
+        guard let node = definition.graph?.decisions[id] else { return }
+        let used = Set(definition.graph?.edges.filter { $0.from == id }.compactMap(\.output) ?? [])
+        let output = node.kind == .noul ? node.outputs.first { !used.contains($0.id) }?.id : link
         let option = CoreWorkflowType.DecisionOption(
             id: link, name: nodeName(destination), description: nodeName(destination))
         definition.graph?.decisions[id]?.options.append(option)
-        definition.graph?.edges.append(.init(id: link, from: id, to: destination, event: .done, output: link))
+        definition.graph?.edges.append(.init(id: link, from: id, to: destination, event: .done, output: output))
     }
 
     func removeGraphEdge(_ id: String) {
         guard let edge = definition.graph?.edges.first(where: { $0.id == id }) else { return }
         definition.graph?.edges.removeAll { $0.id == id }
-        if let output = edge.output {
-            definition.graph?.decisions[edge.from]?.options.removeAll { $0.id == output }
-        }
+        definition.graph?.decisions[edge.from]?.options.removeAll { $0.id == edge.output || $0.id == edge.id }
     }
 
     func nodeName(_ id: String) -> String { definition.roles.first { $0.id == id }?.name ?? id }
 
     func outputTitle(_ edge: CoreWorkflowType.Edge) -> String {
-        guard let decision = definition.graph?.decisions[edge.from] else { return edge.event.title }
-        if definition.graph?.agentEdges.filter({ $0.from == edge.from }).count == 1 { return "Passthrough" }
-        return decision.kind == .choice
-            ? nodeName(edge.to) : decision.outputs.first { $0.id == edge.output }?.name ?? "Route"
-    }
-
-    func connectDecision(_ id: String, output: String, to destination: String) {
-        definition.graph?.edges.removeAll { $0.from == id && $0.output == output }
-        guard !destination.isEmpty else { return }
-        definition.graph?.edges.append(
-            .init(id: UUID().uuidString, from: id, to: destination, event: .done, output: output))
+        WorkflowDecisionLabels.outputTitle(edge, definition: definition)
     }
 }

@@ -66,26 +66,26 @@ pub enum DecisionResultError {
 }
 
 impl DecisionNode {
-    /// Choice labels come from connected agents; persisted option IDs keep the mapping stable.
+    /// Connected labels stay current; imported Score rubrics retain their original meaning.
     pub(crate) fn with_connected_names(
         &self,
         definition: &super::WorkflowTypeDefinition,
         role: &str,
     ) -> Self {
         let mut node = self.clone();
-        if node.kind != DecisionKind::Choice {
+        if node.kind == DecisionKind::Noul {
             return node;
         }
         if let Some(graph) = &definition.graph {
             for option in &mut node.options {
-                if let Some(edge) = graph
-                    .edges
+                if let Some(edge) = graph.edges.iter().find(|edge| {
+                    edge.from == role
+                        && edge.output.as_ref() == Some(&option.id)
+                        && (node.kind == DecisionKind::Choice || edge.id == option.id)
+                }) && let Some(target) = definition
+                    .roles
                     .iter()
-                    .find(|edge| edge.from == role && edge.output.as_ref() == Some(&option.id))
-                    && let Some(target) = definition
-                        .roles
-                        .iter()
-                        .find(|target| target.id.0 == edge.to)
+                    .find(|target| target.id.0 == edge.to)
                 {
                     option.name.clone_from(&target.name);
                     option.description.clone_from(&target.name);
@@ -154,7 +154,7 @@ impl DecisionNode {
             }
             DecisionKind::Noul => json!({"type":"noul"}),
             DecisionKind::Score => {
-                json!({"type":"score","levels": self.options.iter().map(|o| json!({"label":o.name,"description":o.description})).collect::<Vec<_>>()})
+                json!({"type":"score","levels": self.options.iter().map(|o| if o.name == o.description { json!(o.name) } else { json!({"label":o.name,"description":o.description}) }).collect::<Vec<_>>()})
             }
         };
         let mut state = Vec::new();
@@ -442,6 +442,64 @@ mod tests {
             "Incoming task"
         );
         assert_eq!(request["state"][1]["text"], "Prepared evidence");
+    }
+
+    #[test]
+    fn connected_score_levels_keep_fractional_results_and_follow_saved_order() {
+        let file: toml::Value = toml::from_str(include_str!(
+            "../../../examples/workflows/decision-triage.toml"
+        ))
+        .unwrap();
+        let mut definition: crate::WorkflowTypeDefinition =
+            file["definition"].clone().try_into().unwrap();
+        let graph = definition.graph.as_mut().unwrap();
+        let mut node = graph.decisions["scope"].clone();
+        node.kind = DecisionKind::Score;
+        for edge in graph.edges.iter_mut().filter(|edge| edge.from == "scope") {
+            let option = node
+                .options
+                .iter_mut()
+                .find(|option| Some(&option.id) == edge.output.as_ref())
+                .unwrap();
+            option.id.clone_from(&edge.id);
+            option.name.clear();
+            option.description.clear();
+            edge.output = Some(edge.id.clone());
+        }
+        graph.decisions.insert("scope".into(), node.clone());
+        crate::validate(&definition).unwrap();
+        let resolved = node.with_connected_names(&definition, "scope");
+        let request = resolved.request("Task", "Evidence");
+        assert_eq!(
+            request["questions"][0]["answer_space"]["levels"],
+            json!(["Implementer", "Planner", "Architect"])
+        );
+        let answer =
+            result(&json!({"type":"score", "value":1.43, "probabilities":[0.0,0.57,0.43]}));
+        assert_eq!(resolved.route(&answer).unwrap(), "scope-medium");
+        node.options.swap(0, 1);
+        let reordered = node.with_connected_names(&definition, "scope");
+        assert_eq!(reordered.route(&answer).unwrap(), "scope-small");
+        assert_eq!(
+            answer["result"]["report"]["outcome"]["outcomes"][0]["answer"]["value"],
+            1.43
+        );
+    }
+
+    #[test]
+    fn yes_no_cutoff_routes_the_boundary_to_yes() {
+        let mut node = node(DecisionKind::Noul);
+        node.true_threshold = 5000;
+        node.false_threshold = 5000;
+        assert_eq!(node.outputs().len(), 2);
+        for (probability, expected) in [(0.49, "no"), (0.5, "yes"), (0.83, "yes")] {
+            let answer = result(&json!({"type":"noul", "probability":probability}));
+            assert_eq!(node.route(&answer).unwrap(), expected);
+            assert_eq!(
+                answer["result"]["report"]["outcome"]["outcomes"][0]["answer"]["probability"],
+                probability
+            );
+        }
     }
 
     #[test]

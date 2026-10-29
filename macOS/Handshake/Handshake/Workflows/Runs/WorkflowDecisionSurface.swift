@@ -25,10 +25,10 @@ struct WorkflowDecisionSurface: View {
 
     private func selectedName(_ output: String) -> String {
         let fallback = node?.outputs.first { $0.id == output }?.name ?? output
-        guard node?.kind == .choice else { return fallback }
-        let definition = run.workflowType?.definition
-        let destination = definition?.graph?.edges.first { $0.from == role && $0.output == output }?.to
-        return definition?.roles.first { $0.id == destination }?.name ?? fallback
+        guard let definition = run.workflowType?.definition,
+            let edge = definition.graph?.edges.first(where: { $0.from == role && $0.output == output })
+        else { return fallback }
+        return WorkflowDecisionLabels.outputTitle(edge, definition: definition)
     }
 
     private var isCompleted: Bool { run.agents.first { $0.id == agent.id }?.status == .completed }

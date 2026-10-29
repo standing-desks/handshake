@@ -81,6 +81,8 @@ extension HandshakeUITests {
         editor.saveAndReopen()
         XCTAssertTrue(app.buttons["Router to Builder: Builder"].exists)
         XCTAssertTrue(app.buttons["Router to Planner: Planner"].exists)
+        editor.verifyYesNo()
+        editor.verifyScore()
     }
 
     @MainActor
@@ -194,6 +196,54 @@ private struct WorkflowGraphExampleUI {
         XCTAssertTrue(option.waitForExistence(timeout: 5), app.debugDescription)
         option.click()
     }
+    func chooseAnswerType(_ title: String) {
+        item("decisionAnswerType").click()
+        app.menuItems[title].click()
+    }
+
+    private var router: XCUIElement {
+        app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'graphNode-' AND label CONTAINS 'Router'"))
+            .firstMatch
+    }
+
+    func verifyYesNo() {
+        router.click()
+        chooseAnswerType("Yes/No")
+        XCTAssertTrue(item("decisionAnswer-yes").waitForExistence(timeout: 5))
+        item("decisionSwapAnswers").click()
+        app.buttons["Done"].click()
+        XCTAssertTrue(app.buttons["Router to Builder: No"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Router to Planner: Yes"].exists)
+        router.click()
+        item("decisionUncertain").click()
+        app.buttons["Done"].click()
+        XCTAssertFalse(item("designerSave").isEnabled)
+        let canvas = item("designerContent")
+        canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.5)).doubleClick()
+        replace("graphAgentName", with: "Escalator")
+        app.buttons["Done"].click()
+        drag(app.buttons["Connect from Router"], to: app.buttons["Connect to Escalator"])
+        XCTAssertTrue(app.buttons["Router to Escalator: Uncertain"].waitForExistence(timeout: 5))
+        saveAndReopen()
+    }
+
+    func verifyScore() {
+        router.click()
+        chooseAnswerType("Score")
+        replace("decisionQuestion", with: "How much attention does this work need?")
+        app.buttons["Move Escalator up"].click()
+        app.buttons["Move Escalator up"].click()
+        let image = XCTAttachment(screenshot: app.screenshot())
+        image.name = "Ordered score levels and square diamond"
+        image.lifetime = .keepAlways
+        testCase.add(image)
+        app.buttons["Done"].click()
+        saveAndReopen()
+        XCTAssertTrue(app.buttons["Router to Escalator: 0 · Escalator"].exists)
+        XCTAssertTrue(app.buttons["Router to Builder: 1 · Builder"].exists)
+        XCTAssertTrue(app.buttons["Router to Planner: 2 · Planner"].exists)
+    }
+
     func saveAndReopen() {
         let save = item("designerSave")
         let ready = testCase.expectation(for: NSPredicate { _, _ in save.exists && save.isEnabled }, evaluatedWith: nil)

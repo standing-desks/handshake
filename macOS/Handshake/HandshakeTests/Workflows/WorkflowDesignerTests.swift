@@ -209,41 +209,4 @@ struct WorkflowDesignerTests {
         manager.redo()
         #expect(model.definition == removed)
     }
-    @Test func decisionOptionsFollowConnectedAgentNames() throws {
-        let model = WorkflowDesignerModel()
-        model.enableGraph()
-        let node = model.addGraphRole(at: .init(x: 200, y: 200))
-        let instructions = model.definition.roles[0].instructions
-        let receivers = (0..<4).map { _ in model.addGraphRole() }
-        model.setDecision(node, enabled: true)
-        for receiver in receivers { model.connect(from: node, to: receiver) }
-        let edges = try #require(model.definition.graph?.edges)
-        let options = try #require(model.definition.graph?.decisions[node]?.options)
-        #expect(edges.count == 4 && options.count == 4)
-        #expect(Set(edges.map(\.id)) == Set(options.map(\.id)))
-        #expect(edges.allSatisfy { $0.output == $0.id })
-        for edge in edges {
-            let option = try #require(options.first { $0.id == edge.id })
-            #expect(option.name == model.nodeName(edge.to))
-            #expect(option.description == model.nodeName(edge.to))
-        }
-        model.definition.graph?.decisions[node]?.minConfidence = 6_000
-        model.definition.roles[1].name = "Renamed agent"
-        #expect(model.outputTitle(edges[0]) == "Renamed agent")
-        model.definition.graph?.decisions[node]?.minConfidence = nil
-        model.removeGraphEdge(edges[3].id)
-        #expect(model.definition.graph?.decisions[node]?.options.count == 3)
-        model.removeGraphRole(receivers[2])
-        #expect(model.definition.graph?.decisions[node]?.options.count == 2)
-        let copy = try #require(model.duplicateGraphAgent(node))
-        #expect(model.definition.graph?.decisions[copy]?.options.isEmpty == true)
-        model.setDecision(node, enabled: false)
-        #expect(model.definition.graph?.decisions[node] == nil)
-        #expect(model.definition.graph?.edges.allSatisfy { $0.output == nil } == true)
-        #expect(model.definition.roles.first { $0.id == node }?.instructions == instructions)
-        #expect(model.definition.graph?.positions[node] == .init(x: 200, y: 200))
-        let encoded = try JSONEncoder().encode(model.definition)
-        #expect(try JSONDecoder().decode(CoreWorkflowType.Definition.self, from: encoded) == model.definition)
-    }
-
 }

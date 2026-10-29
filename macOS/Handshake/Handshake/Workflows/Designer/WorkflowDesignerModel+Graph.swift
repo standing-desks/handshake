@@ -136,7 +136,7 @@ extension WorkflowDesignerModel {
         let reviews = definition.graph?.reviewsWork(id) == true
         let receive = definition.graph?.receive[id]
         var decision = definition.graph?.decisions[id]
-        if decision?.kind == .choice && decision?.minConfidence == nil { decision?.options = [] }
+        if decision != nil { decision?.options = [] }
         definition.roles.append(agent)
         definition.graph?.decisions[agent.id] = decision
         definition.graph?.positions[agent.id] = position
@@ -164,13 +164,8 @@ extension WorkflowDesignerModel {
             definition.roles.contains(where: { $0.id == source }),
             definition.roles.contains(where: { $0.id == destination })
         else { return false }
-        if let decision = graph.decisions[source] {
-            if decision.kind == .choice && decision.minConfidence == nil {
-                return !graph.edges.contains { $0.from == source && $0.to == destination }
-            }
-            return decision.outputs.contains { output in
-                !graph.edges.contains { $0.from == source && $0.output == output.id }
-            }
+        if graph.decisions[source] != nil {
+            return graph.edges.count < 64 && !graph.edges.contains { $0.from == source && $0.to == destination }
         }
         let event = event ?? (graph.reviewsWork(source) ? .approved : .done)
         guard event != .task else { return false }
@@ -179,14 +174,8 @@ extension WorkflowDesignerModel {
 
     func connect(from: String, to destination: String, event: CoreWorkflowType.GraphEvent? = nil) {
         guard canConnect(from: from, to: destination, event: event) else { return }
-        if let decision = definition.graph?.decisions[from] {
-            if decision.kind == .choice && decision.minConfidence == nil {
-                appendDecisionRoute(from, to: destination)
-            } else if let output = decision.outputs.first(where: { output in
-                definition.graph?.edges.contains { $0.from == from && $0.output == output.id } != true
-            }) {
-                connectDecision(from, output: output.id, to: destination)
-            }
+        if definition.graph?.decisions[from] != nil {
+            appendDecisionRoute(from, to: destination)
             return
         }
         let event = event ?? (definition.graph?.reviewsWork(from) == true ? .approved : .done)

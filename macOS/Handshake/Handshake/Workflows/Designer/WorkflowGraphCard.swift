@@ -3,6 +3,20 @@ import SwiftUI
 /// Shared card geometry keeps agent cards and link hit areas in the same coordinates.
 nonisolated enum WorkflowEditorLayout {
     static let cardSize = CGSize(width: 216, height: 108)
+    static let decisionSize = CGSize(width: 144, height: 144)
+
+    static func nodeSize(for id: String, in definition: CoreWorkflowType.Definition) -> CGSize {
+        definition.graph?.decisions.keys.contains(id) == true ? decisionSize : cardSize
+    }
+
+    static func nodeRect(for id: String, in definition: CoreWorkflowType.Definition) -> CGRect {
+        let center = point(id, in: definition)
+        let size = nodeSize(for: id, in: definition)
+        return CGRect(
+            x: center.x - size.width / 2, y: center.y - size.height / 2,
+            width: size.width, height: size.height)
+    }
+
     static let portHitSize: CGFloat = 28
     static let canvasMargin: CGFloat = 52
 
@@ -14,12 +28,12 @@ nonisolated enum WorkflowEditorLayout {
     static func nextRolePosition(
         in definition: CoreWorkflowType.Definition, near preferred: CoreWorkflowType.Position? = nil
     ) -> CoreWorkflowType.Position {
-        let occupied = positions(for: definition)
+        let occupied = definition.roles.map { nodeRect(for: $0.id, in: definition) }
         var position = preferred ?? CoreWorkflowType.Position(x: 480, y: 220)
         let step = position.y + (occupied.count + 1) * 176 <= 4000 ? 176 : -176
         while occupied.contains(where: {
-            abs(CGFloat($0.x - position.x)) < cardSize.width + 32
-                && abs(CGFloat($0.y - position.y)) < cardSize.height + 32
+            abs($0.midX - CGFloat(position.x)) < ($0.width + cardSize.width) / 2 + 32
+                && abs($0.midY - CGFloat(position.y)) < ($0.height + cardSize.height) / 2 + 32
         }) {
             position.y += step
         }
@@ -33,13 +47,13 @@ nonisolated enum WorkflowEditorLayout {
             max(1, viewport.height - 24) / size.height)
     }
 
-    private static func positions(for definition: CoreWorkflowType.Definition) -> [CoreWorkflowType.Position] {
-        let nodes = definition.roles.map(\.id)
-        return nodes.map { definition.graph?.positions[$0] ?? defaultPosition(for: $0, roles: definition.roles) }
+    private static func bounds(for definition: CoreWorkflowType.Definition) -> CGRect {
+        definition.roles.reduce(CGRect.null) { $0.union(nodeRect(for: $1.id, in: definition)) }
     }
 
     static func returnLane(
-        for edge: CoreWorkflowType.Edge, edges: [CoreWorkflowType.Edge], point: (String) -> CGPoint
+        for edge: CoreWorkflowType.Edge, edges: [CoreWorkflowType.Edge], point: (String) -> CGPoint,
+        size: (String) -> CGSize = { _ in cardSize }
     ) -> CGFloat? {
         let from = point(edge.from)
         let destination = point(edge.to)
@@ -49,7 +63,8 @@ nonisolated enum WorkflowEditorLayout {
                 && ($0.event == .feedback || point($0.to).x <= point($0.from).x)
         }
         let index = siblings.firstIndex { $0.id == edge.id } ?? 0
-        return max(from.y, destination.y) + cardSize.height / 2 + 56 + CGFloat(index) * 30
+        return max(from.y + size(edge.from).height / 2, destination.y + size(edge.to).height / 2)
+            + 56 + CGFloat(index) * 30
     }
 
     private static func point(_ id: String, in definition: CoreWorkflowType.Definition) -> CGPoint {
@@ -58,38 +73,45 @@ nonisolated enum WorkflowEditorLayout {
     }
 
     static func originOffset(for definition: CoreWorkflowType.Definition) -> CGSize {
-        let positions = positions(for: definition)
-        guard !positions.isEmpty else { return .zero }
+        let bounds = bounds(for: definition)
+        guard !bounds.isNull else { return .zero }
         let edges = definition.graph?.agentEdges ?? []
         let hasReturn = edges.contains {
-            returnLane(for: $0, edges: edges, point: { point($0, in: definition) }) != nil
+            returnLane(
+                for: $0, edges: edges, point: { point($0, in: definition) },
+                size: { nodeSize(for: $0, in: definition) }) != nil
         }
         return CGSize(
-            width: max(
-                0, cardSize.width / 2 + canvasMargin + (hasReturn ? 56 : 0) - CGFloat(positions.map(\.x).min() ?? 0)),
-            height: max(0, cardSize.height / 2 + canvasMargin - CGFloat(positions.map(\.y).min() ?? 0)))
+            width: max(0, canvasMargin + (hasReturn ? 56 : 0) - bounds.minX),
+            height: max(0, canvasMargin - bounds.minY))
     }
 
     static func canvasSize(for definition: CoreWorkflowType.Definition) -> CGSize {
-        let positions = positions(for: definition)
+        let bounds = bounds(for: definition)
         let offset = originOffset(for: definition)
         let edges = definition.graph?.agentEdges ?? []
         let returns = edges.compactMap { edge -> (x: CGFloat, y: CGFloat)? in
-            guard let lane = returnLane(for: edge, edges: edges, point: { point($0, in: definition) }) else {
-                return nil
-            }
-            return (point(edge.from, in: definition).x + cardSize.width / 2 + 56, lane + 14)
+            guard
+                let lane = returnLane(
+                    for: edge, edges: edges, point: { point($0, in: definition) },
+                    size: { nodeSize(for: $0, in: definition) })
+            else { return nil }
+            return (
+                point(edge.from, in: definition).x + nodeSize(for: edge.from, in: definition).width / 2 + 56,
+                lane + 14
+            )
         }
         return CGSize(
             width: max(
                 960,
-                max(positions.map { CGFloat($0.x) + cardSize.width / 2 }.max() ?? 0, returns.map(\.x).max() ?? 0)
+                max(bounds.isNull ? 0 : bounds.maxX, returns.map(\.x).max() ?? 0)
                     + canvasMargin + offset.width),
             height: max(
                 440,
-                max(positions.map { CGFloat($0.y) + cardSize.height / 2 }.max() ?? 0, returns.map(\.y).max() ?? 0)
+                max(bounds.isNull ? 0 : bounds.maxY, returns.map(\.y).max() ?? 0)
                     + canvasMargin + offset.height))
     }
+
 }
 
 /// Interface surfaces use system colors and remain opaque over the draft terminal.
@@ -115,16 +137,19 @@ struct WorkflowGraphCard: View {
 
     var body: some View {
         Group {
-            if decision != nil {
+            if let decision {
                 VStack(spacing: 3) {
                     Text(title).font(.subheadline.weight(.semibold)).lineLimit(2).multilineTextAlignment(.center)
-                    Text("Decision").font(.caption2).foregroundStyle(.secondary)
-                }.frame(width: 112)
+                    Text(decision.kind.shortTitle).font(.caption2).foregroundStyle(.secondary)
+                }.frame(width: 84)
             } else {
                 agentContent.padding(14)
             }
         }
-        .frame(width: WorkflowEditorLayout.cardSize.width, height: WorkflowEditorLayout.cardSize.height)
+        .frame(
+            width: decision == nil ? WorkflowEditorLayout.cardSize.width : WorkflowEditorLayout.decisionSize.width,
+            height: decision == nil ? WorkflowEditorLayout.cardSize.height : WorkflowEditorLayout.decisionSize.height
+        )
         .background(WorkflowEditorStyle.card, in: shape)
         .overlay {
             shape.stroke(
@@ -150,7 +175,7 @@ struct WorkflowGraphCard: View {
     }
 }
 
-/// Both connector tips share the same coordinates as the ordinary agent card.
+/// Connector tips follow the bounds of each node shape.
 nonisolated struct WorkflowNodeShape: Shape {
     var isDecision: Bool
 
