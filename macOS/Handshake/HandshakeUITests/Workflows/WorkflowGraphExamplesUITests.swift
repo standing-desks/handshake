@@ -51,6 +51,10 @@ extension HandshakeUITests {
         let origin = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.22, dy: 0.45))
         origin.doubleClick()
         editor.replace("graphAgentName", with: "Router")
+        XCTAssertFalse(editor.item("graphNodeKind").exists)
+        app.buttons["Done"].click()
+        editor.enableDecisionNodes()
+        origin.click()
         editor.item("graphNodeKind").radioButtons["Decision"].click()
         XCTAssertTrue(editor.item("decisionSettings").waitForExistence(timeout: 5))
         app.buttons["Done"].click()
@@ -197,6 +201,22 @@ private struct WorkflowGraphExampleUI {
         XCTAssertTrue(option.waitForExistence(timeout: 5), app.debugDescription)
         option.click()
     }
+    func enableDecisionNodes() {
+        app.typeKey(",", modifierFlags: .command)
+        let section = app.sheets.radioButtons["Experimental"]
+        XCTAssertTrue(section.waitForExistence(timeout: 10))
+        section.click()
+        let toggle = item("experimentalFeature-decisionNodes")
+        XCTAssertTrue(toggle.waitForExistence(timeout: 10))
+        toggle.click()
+        let settled = testCase.expectation(
+            for: NSPredicate { _, _ in
+                toggle.isEnabled && ((toggle.value as? NSNumber)?.boolValue == true || toggle.value as? String == "1")
+            }, evaluatedWith: nil)
+        testCase.wait(for: [settled], timeout: 15)
+        app.buttons["closeSettings"].click()
+    }
+
     func saveAndReopen() {
         let save = item("designerSave")
         let ready = testCase.expectation(for: NSPredicate { _, _ in save.exists && save.isEnabled }, evaluatedWith: nil)

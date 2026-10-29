@@ -30,6 +30,10 @@ struct WorkflowLaunchForm: View {
             ForEach(type.definition.roles.filter { type.definition.graph?.decisions[$0.id] == nil }) { role in
                 rolePickers(role)
             }
+            if requiresDecisionOptIn {
+                Text("Enable Decision nodes in Settings → Experimental to start this workflow.")
+                    .font(.caption).foregroundStyle(Color.statusNeedsAttention)
+            }
             if type.definition.graph?.decisions.isEmpty == false {
                 Text("Task").font(.caption)
                 TextEditor(text: $task).font(.body).frame(height: 80).accessibilityLabel("Workflow task")
@@ -54,7 +58,7 @@ struct WorkflowLaunchForm: View {
                 Button("Start", action: start)
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(isSelected ? .defaultAction : nil)
-                    .disabled(isStarting)
+                    .disabled(isStarting || requiresDecisionOptIn)
                     .accessibilityIdentifier("workflowStart")
             }.controlSize(.small)
         }
@@ -65,6 +69,10 @@ struct WorkflowLaunchForm: View {
             }
         }
         .task(id: client.snapshot?.folders.openFolder) { await catalog.load(using: client) }
+    }
+
+    private var requiresDecisionOptIn: Bool {
+        type.definition.graph?.decisions.isEmpty == false && client.snapshot?.config.experimental.decisionNodes != true
     }
 
     /// The role that starts the run, which the user talks to first.
