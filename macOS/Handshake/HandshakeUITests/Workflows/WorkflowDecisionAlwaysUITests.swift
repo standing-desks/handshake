@@ -8,7 +8,7 @@ extension HandshakeUITests {
         app.launch()
         defer { app.terminate() }
         XCTAssertTrue(app.buttons["workflowCreateOwn"].waitForExistence(timeout: 10))
-        resizeWindow(app.windows.firstMatch, to: CGSize(width: 1200, height: 850))
+        resizeWindow(app.windows.firstMatch, to: CGSize(width: 922, height: 676))
         let editor = WorkflowGraphExampleUI(app: app, testCase: self)
         createAlwaysDecision(editor, app: app)
         verifyAlwaysAcrossAnswerTypes(editor, app: app)

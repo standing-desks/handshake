@@ -100,11 +100,13 @@ struct WorkflowDesigner: View {
             Text("Save without a name to use Untitled.").foregroundStyle(.secondary).lineLimit(2)
         } else if let issue = model.decisionValidationIssues.first {
             Button {
+                selection = nil
                 model.decisionFocus = issue
-                selection = .node(issue.nodeID)
             } label: {
                 Label("\(model.nodeName(issue.nodeID)): \(issue.message)", systemImage: "exclamationmark.circle")
                     .foregroundStyle(Color.statusNeedsAttention).lineLimit(2)
+                    .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
+                    .contentShape(.rect)
             }.buttonStyle(.plain).help("Show the field that needs attention")
                 .accessibilityIdentifier("designerDecisionValidation")
         } else if let issue = model.issues.first, !model.isValidating {

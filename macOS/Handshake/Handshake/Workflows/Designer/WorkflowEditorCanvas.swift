@@ -15,6 +15,7 @@ struct WorkflowEditorCanvas: View {
     @State private var connectingFromInput = false
     @State private var contextPoint = CGPoint.zero
     @State private var visibleRect = CGRect.zero
+    @State private var scrollPosition = ScrollPosition(point: .zero)
     @State private var showsSettings = false
 
     private var portHitSize: CGFloat { WorkflowEditorLayout.portHitSize(at: zoom) }
@@ -24,35 +25,41 @@ struct WorkflowEditorCanvas: View {
 
     var body: some View {
         GeometryReader { viewport in
-            ScrollViewReader { reader in
-                ScrollView([.horizontal, .vertical]) {
-                    graph
-                        .frame(width: size.width, height: size.height)
-                        .coordinateSpace(name: "workflowCanvas")
-                        .scaleEffect(zoom, anchor: .topLeading)
-                        .frame(width: size.width * zoom, height: size.height * zoom, alignment: .topLeading)
-                        .frame(minWidth: viewport.size.width, minHeight: viewport.size.height, alignment: .topLeading)
-                        .background { canvasBackground }
-                }
-                .defaultScrollAnchor(.topLeading, for: .sizeChanges)
-                .onScrollGeometryChange(for: CGRect.self) {
-                    $0.visibleRect
-                } action: { _, rect in
-                    visibleRect = rect
-                }
-                .overlay {
-                    if model.definition.roles.isEmpty {
-                        WorkflowFirstRoleAction {
-                            let rect = visibleRect.isEmpty ? CGRect(origin: .zero, size: viewport.size) : visibleRect
-                            addAgent(at: CGPoint(x: rect.midX, y: rect.midY))
-                        }
+            ScrollView([.horizontal, .vertical]) {
+                graph
+                    .frame(width: size.width, height: size.height)
+                    .coordinateSpace(name: "workflowCanvas")
+                    .scaleEffect(zoom, anchor: .topLeading)
+                    .frame(width: size.width * zoom, height: size.height * zoom, alignment: .topLeading)
+                    .frame(minWidth: viewport.size.width, minHeight: viewport.size.height, alignment: .topLeading)
+                    .background { canvasBackground }
+            }
+            .defaultScrollAnchor(.topLeading, for: .sizeChanges)
+            .scrollPosition($scrollPosition)
+            .onScrollGeometryChange(for: CGRect.self) {
+                $0.visibleRect
+            } action: { _, rect in
+                visibleRect = rect
+                presentFocusedDecision(in: rect)
+            }
+            .overlay {
+                if model.definition.roles.isEmpty {
+                    WorkflowFirstRoleAction {
+                        let rect = visibleRect.isEmpty ? CGRect(origin: .zero, size: viewport.size) : visibleRect
+                        addAgent(at: CGPoint(x: rect.midX, y: rect.midY))
                     }
                 }
-                .task(id: model.decisionFocus?.id) {
-                    guard let issue = model.decisionFocus else { return }
-                    await Task.yield()
-                    reader.scrollTo(issue.nodeID, anchor: .center)
-                }
+            }
+            .task(id: model.decisionFocus?.id) {
+                guard let issue = model.decisionFocus else { return }
+                await Task.yield()
+                guard !Task.isCancelled, model.decisionFocus == issue else { return }
+                let center = point(issue.nodeID)
+                scrollPosition.scrollTo(
+                    point: CGPoint(
+                        x: max(0, center.x * zoom - visibleRect.width / 2),
+                        y: max(0, center.y * zoom - visibleRect.height / 2)))
+                presentFocusedDecision(in: visibleRect)
             }
         }
         .background(WorkflowEditorStyle.canvas)
@@ -74,6 +81,14 @@ struct WorkflowEditorCanvas: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("designerContent")
+    }
+
+    private func presentFocusedDecision(in rect: CGRect) {
+        guard let issue = model.decisionFocus, selection == nil else { return }
+        let center = point(issue.nodeID)
+        guard rect.contains(CGPoint(x: center.x * zoom, y: center.y * zoom)) else { return }
+        selectedNodeID = issue.nodeID
+        selection = .node(issue.nodeID)
     }
 
     private var canvasBackground: some View {

@@ -28,16 +28,22 @@ struct WorkflowGraphExampleUI {
     }
     func reveal(_ control: XCUIElement) {
         let popover = app.popovers.firstMatch
-        guard popover.exists else { return }
-        let content = popover.scrollViews.firstMatch
+        let parent = popover.exists ? popover : app.windows.firstMatch
+        let content =
+            popover.exists
+            ? popover.scrollViews.firstMatch
+            : app.scrollViews.matching(identifier: "newTabChoices").firstMatch
         guard content.exists else { return }
         for _ in 0..<8 {
-            let visible = content.frame.intersection(popover.frame).insetBy(dx: 4, dy: 4)
+            let visible = content.frame.intersection(parent.frame).insetBy(dx: 4, dy: 4)
             let center = CGPoint(x: control.frame.midX, y: control.frame.midY)
             if visible.contains(center), control.isHittable { return }
             content.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
                 .scroll(byDeltaX: 0, deltaY: center.y < visible.minY ? 80 : -80)
         }
+        XCTAssertTrue(
+            content.frame.intersection(parent.frame).contains(CGPoint(x: control.frame.midX, y: control.frame.midY)),
+            app.debugDescription)
         XCTAssertTrue(control.isHittable, app.debugDescription)
     }
 
@@ -203,7 +209,7 @@ struct WorkflowGraphExampleUI {
         testCase.wait(for: [ready], timeout: 10)
         save.click()
         XCTAssertTrue(item("workflowEditType").waitForExistence(timeout: 10), app.debugDescription)
-        item("workflowEditType").click()
-        XCTAssertTrue(item("designerName").waitForExistence(timeout: 5))
+        click("workflowEditType")
+        XCTAssertTrue(item("designerName").waitForExistence(timeout: 5), app.debugDescription)
     }
 }

@@ -188,9 +188,12 @@ extension HandshakeUITests {
         for _ in 0..<2 {
             canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.7)).scroll(byDeltaX: -2000, deltaY: 0)
             XCTAssertFalse(router.isHittable)
-            editor.item("designerDecisionValidation").click()
+            let issue = editor.item("designerDecisionValidation")
+            XCTAssertGreaterThanOrEqual(issue.frame.height, 28)
+            issue.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).click()
             XCTAssertTrue(editor.item("decisionSettings").waitForExistence(timeout: 5))
             XCTAssertTrue(router.isHittable)
+            XCTAssertTrue(canvas.frame.contains(CGPoint(x: router.frame.midX, y: router.frame.midY)))
             XCTAssertTrue(app.staticTexts["Connect an output. One connection passes work through."].exists)
             app.buttons["Done"].click()
         }
@@ -202,7 +205,7 @@ extension HandshakeUITests {
         let app = try makeApp(lastOpenFolder: folder)
         app.launch()
         XCTAssertTrue(app.buttons["workflowCreateOwn"].waitForExistence(timeout: 10), app.debugDescription)
-        resizeWindow(app.windows.firstMatch, to: CGSize(width: 1200, height: 850))
+        resizeWindow(app.windows.firstMatch, to: CGSize(width: 922, height: 676))
         return app
     }
 }
