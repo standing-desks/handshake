@@ -38,6 +38,18 @@ actor CoreWorker: CoreTransport {
             SharedMemoryRequest(dataDirectory: dataDirectory.path, folder: folder, action: action))
     }
 
+    func browserControl(_ request: Data) throws -> Data {
+        var response = HandshakeBuffer()
+        let status = try withClient { client in
+            request.withUnsafeBytes { bytes in
+                handshake_client_browser_control(
+                    client, bytes.bindMemory(to: UInt8.self).baseAddress, bytes.count, &response)
+            }
+        }
+        try check(status)
+        return try consume(&response)
+    }
+
     func close() {
         guard let client else { return }
         _ = handshake_client_destroy(client)

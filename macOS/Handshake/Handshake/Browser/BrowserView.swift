@@ -50,6 +50,15 @@ struct BrowserView: View {
                     .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.bottom, 8)
                     .accessibilityIdentifier("browserFailure")
             }
+            if let owner = tab.controlOwner {
+                HStack {
+                    Label("Controlled by \(owner)", systemImage: "cursorarrow.rays")
+                    Spacer()
+                    Button("Stop / Take over") { tab.stopControl?() }
+                        .accessibilityIdentifier("browserStopControl")
+                }
+                .font(.caption).padding(.horizontal, 12).padding(.bottom, 8)
+            }
             Divider()
             ZStack(alignment: .top) {
                 BrowserWebView(

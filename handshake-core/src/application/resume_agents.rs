@@ -178,7 +178,7 @@ impl Application {
                 .and_then(|()| {
                     Self::append_agent_instructions(
                         harness,
-                        "",
+                        ("", self.browser_control.is_enabled()),
                         &mut arguments,
                         hooks.as_ref(),
                         &located,
@@ -282,10 +282,23 @@ mod tests {
             HarnessId::Opencode,
         ] {
             let path = bin.join(harness.definition().binary);
-            std::fs::write(&path, "#!/bin/sh\nprintf 'ARG:%s\\n' \"$@\"\nprintf 'READY\\n'\nwhile IFS= read -r line; do printf 'INPUT:%s\\n' \"$line\"; done\n").unwrap();
+            std::fs::write(&path, r#"#!/bin/sh
+if [ "$1" = app-server ]; then
+  read -r line
+  printf '%s\n' '{"id":1,"result":{}}'
+  read -r line
+  read -r line
+  printf '%s\n' '{"id":2,"result":{"config":{"developer_instructions":"Existing resume instruction"}}}'
+  exit
+fi
+printf 'ARG:%s\n' "$@"
+printf 'READY\n'
+while IFS= read -r line; do printf 'INPUT:%s\n' "$line"; done
+"#).unwrap();
             std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
         let mut app = Application::with_event_capacity(4096).unwrap();
+        app.browser_control.set_enabled(true);
         app.harness_path = Some(bin.as_os_str().to_owned());
         accepted(
             &app,

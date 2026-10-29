@@ -105,6 +105,31 @@ pub unsafe extern "C" fn handshake_client_poll_files(
     })
 }
 
+#[unsafe(no_mangle)]
+/// Exchanges browser requests, results and revocations with the native host.
+///
+/// # Safety
+/// Uses the same pointer, length, and ownership contract as `handshake_client_send_command`.
+pub unsafe extern "C" fn handshake_client_browser_control(
+    client: *mut HandshakeClient,
+    request_bytes: *const u8,
+    request_length: usize,
+    out_snapshot: *mut HandshakeBuffer,
+) -> HandshakeStatus {
+    catch_status(|| {
+        // SAFETY: The caller supplies writable, aligned output storage without a live allocation.
+        unsafe { ffi::initialize_buffer(out_snapshot) }?;
+        // SAFETY: The caller guarantees readable input and a live client for this call.
+        let response = unsafe {
+            ffi::with_input_bytes(request_bytes, request_length, 16 * 1024 * 1024, |bytes| {
+                ffi::with_client(client, |client| client.browser_control(bytes))
+            })
+        }?;
+        // SAFETY: Output was validated before allocating the response.
+        unsafe { ffi::write_buffer(out_snapshot, HandshakeBuffer::from_vec(response)) }
+    })
+}
+
 /// An exclusively owned model listing. Destroying it stops the harness if it's still running.
 pub struct HandshakeModelsRequest(handshake_core::ModelListRequest);
 

@@ -5,6 +5,13 @@ import Testing
 
 @MainActor
 struct ExperimentalTests {
+    @Test func browserControlIsOptIn() throws {
+        let decoder = JSONDecoder()
+        #expect(try !decoder.decode(CoreExperimentalConfiguration.self, from: Data("{}".utf8)).browserControl)
+        let enabled = Data("{\"browser_control\":true}".utf8)
+        #expect(try decoder.decode(CoreExperimentalConfiguration.self, from: enabled).browserControl)
+    }
+
     @Test func settingAppliesTheSavedFileAndPreservesVersionProtection() async throws {
         let transport = ExperimentalTestTransport()
         let client = CoreClient(transport: transport)

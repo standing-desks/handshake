@@ -2,6 +2,7 @@
 
 mod application;
 mod blocking_worker;
+pub mod browser_control;
 pub mod config;
 mod data_migration;
 mod event;

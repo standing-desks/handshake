@@ -624,6 +624,7 @@ mod tests {
     }
 
     fn setup(app: &mut Application, folder: &Path, bin: &Path) -> WorkflowId {
+        app.browser_control.set_enabled(true);
         let args_file = bin
             .join("arguments")
             .to_string_lossy()
@@ -908,9 +909,11 @@ exec '{}' "$@"
         assert!(extension.is_file());
         assert!(!extension.starts_with(folder));
         assert_eq!(
-            &arguments[2..],
-            ["--tui-mode", "regular", "--", "Initial prompt"]
+            &arguments[2..5],
+            ["--tui-mode", "regular", "--append-system-prompt"]
         );
+        assert!(arguments[5].contains("Handshake embedded browser"));
+        assert_eq!(&arguments[arguments.len() - 2..], ["--", "Initial prompt"]);
         assert!(
             !std::fs::read_to_string(extension)
                 .unwrap()

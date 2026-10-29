@@ -29,3 +29,4 @@ revert. Historical source inventories retain the paths recorded at that time.
 | [0009](0009-handshake-rename-inventory.md) | Accepted | Inventory Handshake rename surfaces and compatibility contracts |
 | [0010](0010-project-memory-archive.md) | Accepted | Archive forgotten memories across the project |
 | [0011](0011-keep-awake.md) | Accepted | Put Keep Awake in the top-right window toolbar |
+| [0012](0012-control-the-embedded-browser-through-core.md) | Accepted | Control the embedded browser through core and a bundled CLI |

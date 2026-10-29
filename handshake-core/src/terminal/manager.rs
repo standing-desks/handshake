@@ -37,6 +37,26 @@ type ExitCallback = Arc<
     dyn Fn(TerminalId, Result<TerminalExit, String>, TerminalObservation) + Send + Sync + 'static,
 >;
 
+struct BrowserLaunch<'a> {
+    control: Option<&'a crate::browser_control::BrowserControl>,
+    terminal: TerminalId,
+}
+impl<'a> BrowserLaunch<'a> {
+    fn new(
+        control: Option<&'a crate::browser_control::BrowserControl>,
+        terminal: TerminalId,
+    ) -> Self {
+        Self { control, terminal }
+    }
+}
+impl Drop for BrowserLaunch<'_> {
+    fn drop(&mut self) {
+        if let Some(control) = self.control {
+            control.stop_terminal(self.terminal.value());
+        }
+    }
+}
+
 struct TerminalSession {
     master: Box<dyn MasterPty + Send>,
     size: TerminalSize,
@@ -50,6 +70,7 @@ struct TerminalSession {
 }
 
 pub(crate) struct TerminalManager {
+    pub(crate) browser_control: Option<Arc<crate::browser_control::BrowserControl>>,
     output: Arc<TerminalStream>,
     #[cfg(test)]
     test_shell: Option<PathBuf>,
@@ -66,6 +87,7 @@ pub(crate) struct TerminalManager {
 impl TerminalManager {
     pub(crate) fn new(output: Arc<TerminalStream>) -> Self {
         Self {
+            browser_control: None,
             output,
             #[cfg(test)]
             test_shell: None,
@@ -244,14 +266,43 @@ impl TerminalManager {
         Ok(())
     }
 
+    fn browser_environment(
+        &self,
+        terminal_id: TerminalId,
+        command: &mut CommandBuilder,
+        on_exit: ExitCallback,
+    ) -> ExitCallback {
+        for key in [
+            "HANDSHAKE_BROWSER_SOCKET",
+            "HANDSHAKE_BROWSER_TOKEN",
+            "HANDSHAKE_CLI",
+        ] {
+            command.env_remove(key);
+        }
+        if let Some(browser) = &self.browser_control {
+            for (key, value) in browser.environment(terminal_id.value()) {
+                command.env(key, value);
+            }
+            let browser = Arc::clone(browser);
+            Arc::new(move |id, exit, observation| {
+                browser.stop_terminal(id.value());
+                on_exit(id, exit, observation);
+            })
+        } else {
+            on_exit
+        }
+    }
+
     fn start_command(
         &self,
         terminal_id: TerminalId,
-        command: CommandBuilder,
+        mut command: CommandBuilder,
         size: TerminalSize,
         working_directory_handshake: Option<PathBuf>,
         on_exit: ExitCallback,
     ) -> Result<TerminalId, TerminalError> {
+        let on_exit = self.browser_environment(terminal_id, &mut command, on_exit);
+        let mut browser_launch = BrowserLaunch::new(self.browser_control.as_deref(), terminal_id);
         let output_position = self.output.replay_position(terminal_id)?;
         if let Err(error) = size
             .validate()
@@ -349,6 +400,7 @@ impl TerminalManager {
             terminal_id = terminal_id.value(),
             "terminal process started"
         );
+        browser_launch.control = None;
         Ok(terminal_id)
     }
 
@@ -440,6 +492,9 @@ impl TerminalManager {
     }
 
     pub(crate) fn close(&self, terminal_id: TerminalId) -> Result<(), TerminalError> {
+        if let Some(browser) = &self.browser_control {
+            browser.stop_terminal(terminal_id.value());
+        }
         let session = self
             .lock_sessions()?
             .remove(&terminal_id)
@@ -457,6 +512,9 @@ impl TerminalManager {
     /// Retires a replaced terminal without holding up the new terminal's startup responses.
     /// Shutdown still waits for the retired process and both of its workers to finish.
     pub(crate) fn close_in_background(&self, terminal_id: TerminalId) -> Result<(), TerminalError> {
+        if let Some(browser) = &self.browser_control {
+            browser.stop_terminal(terminal_id.value());
+        }
         let session = self
             .lock_sessions()?
             .remove(&terminal_id)
@@ -475,6 +533,11 @@ impl TerminalManager {
     /// Closes the terminals together, so their hang-up grace periods overlap instead of adding up.
     /// Every open one closes even if another wasn't open; the first that wasn't is the error.
     pub(crate) fn close_all(&self, terminal_ids: &[TerminalId]) -> Result<(), TerminalError> {
+        if let Some(browser) = &self.browser_control {
+            for id in terminal_ids {
+                browser.stop_terminal(id.value());
+            }
+        }
         let mut result = Ok(());
         let mut sessions = Vec::with_capacity(terminal_ids.len());
         {
@@ -679,6 +742,22 @@ mod tests {
     use super::super::launcher::shell_launcher_command;
     use super::super::pty::READ_CHUNK_BYTES;
     use super::*;
+
+    #[test]
+    fn failed_start_revokes_browser_credentials() {
+        let stream = Arc::new(TerminalStream::for_test(64 * 1024, 256).unwrap());
+        let mut manager = TerminalManager::new(stream);
+        let control = Arc::new(crate::browser_control::BrowserControl::new().unwrap());
+        control.set_enabled(true);
+        manager.browser_control = Some(Arc::clone(&control));
+        let command = CommandBuilder::new("/nonexistent-handshake-test-command");
+        assert!(
+            manager
+                .start_test_command(command, test_terminal_size(), None, Arc::new(|_, _, _| {}))
+                .is_err()
+        );
+        assert_eq!(control.session_count(), 0);
+    }
 
     #[cfg(unix)]
     #[test]

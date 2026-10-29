@@ -122,6 +122,7 @@
 				F266A3E33068BD6000C1232B /* Sources */,
 				F266A3E43068BD6000C1232B /* Frameworks */,
 				F266A3E53068BD6000C1232B /* Resources */,
+				F7B000013090000100000001 /* Browser CLI */,
 			);
 			buildRules = (
 			);
@@ -254,6 +255,21 @@
 			);
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		F7B000013090000100000001 /* Browser CLI */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = ();
+			inputPaths = ();
+			outputPaths = ("$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/handshake",);
+			name = "Browser CLI";
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "profile=debug\nif [ \"$CONFIGURATION\" = Release ]; then profile=release; fi\nmkdir -p \"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers\"\ncp \"$SRCROOT/../../target/aarch64-apple-darwin/$profile/handshake\" \"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers/handshake\"\n";
+			alwaysOutOfDate = 1;
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		F266A3E33068BD6000C1232B /* Sources */ = {

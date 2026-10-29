@@ -33,6 +33,11 @@ struct FolderWindowRoot: View {
                 SettingsView(settings: settings, windows: windows).appZoom()
             }
             .background { FolderWindowLifetime(session: session, windows: windows).frame(width: 0, height: 0) }
+            .task(id: session.coreClient.snapshot?.config.experimental.browserControl) {
+                if session.coreClient.snapshot?.config.experimental.browserControl == true {
+                    await session.browserControl.run()
+                }
+            }
             .task {
                 await layouts.load()
                 await windows.start(session) { openWindow(id: "folder", value: $0) }
