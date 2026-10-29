@@ -17,7 +17,7 @@ for (const line of read('assets/SHA256SUMS').toString().trim().split('\n')) {
 
 const symbol = read('assets/handshake-transparent.svg');
 const copies = [
-  'docs/assets/handshake-transparent.svg',
+  'site/public/handshake-transparent.svg',
   'macOS/Handshake/Handshake/Assets.xcassets/HandshakeLogo.imageset/handshake-transparent.svg',
   'macOS/Handshake/AppIcon.icon/Assets/handshake-transparent.svg',
   'macOS/Handshake/AppIconDebug.icon/Assets/handshake-transparent.svg',

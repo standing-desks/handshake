@@ -145,7 +145,7 @@ unique initial ASCII letter; other options require manual selection. Hover requi
 a focused browser window and compatible WebKit. The browser shows
 which terminal controls it; **Stop / Take over** cancels pending commands and
 revokes that terminal's control while leaving the page open. Passwords, dialogs
-and uploads require the user. See [the browser-control decision](architecture/decisions/0012-control-the-embedded-browser-through-core.md)
+and uploads require the user. See [the browser-control decision](docs/adr/0012-control-the-embedded-browser-through-core.md)
 for the supported scope. Codex and Claude Code receive a session-local MCP browser tool. Their shell
 sandbox and permission settings stay unchanged. Other sandboxed agents may need approval to run the browser
 CLI outside their sandbox so it can connect to Handshake's local socket. Approve
@@ -292,7 +292,8 @@ permission configuration; production launches do not auto-approve tools.
 | `macOS/` | The SwiftUI and AppKit front end. |
 | `handshake-core/` | The Rust application library that owns behavior and saved state. |
 | `handshake-bridge/` | The C ABI adapter between the two. |
-| `docs/` | Source for the [website and guides](https://standing-desks.github.io/handshake/). |
+| `site/` | Source for the [website and guides](https://standing-desks.github.io/handshake/). |
+| `docs/` | Architecture decision records and licenses. |
 
 The [development guide](https://standing-desks.github.io/handshake/documentation/development/)
 covers setup, harness integration, and releases.

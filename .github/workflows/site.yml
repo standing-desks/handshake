@@ -27,8 +27,12 @@ jobs:
       - name: Set up macOS build tools and caches
         id: build-tools
         uses: ./.github/actions/setup-build
-      - name: Install website test dependency
-        run: command -v node >/dev/null || brew install node
+      - name: Set up Node.js for the website build
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: site/package-lock.json
       - name: Build website and API docs
         run: make build-site
       # Pull requests restore this cache; only main saves it.

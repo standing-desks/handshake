@@ -1,12 +1,21 @@
 // Exercise the shipped browser script without a browser or desktop access.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const path = require('node:path');
 const vm = require('node:vm');
-const source = fs.readFileSync('docs/assets/download.js', 'utf8');
-const html = fs.readFileSync('docs/index.html', 'utf8');
+const site = path.join(__dirname, '..');
+const read = name => fs.readFileSync(path.join(site, name), 'utf8');
+const source = read('src/download.js');
+const html = read('index.html');
 const command = 'brew install --cask standing-desks/tap/handshake';
 const copyValues = [...html.matchAll(/data-copy="([^"]+)"/g)].map(match => match[1]);
 assert.deepEqual(copyValues, [command, command]);
+
+// Every workflow type shows a real screenshot from public/.
+const shots = [...html.matchAll(/data-shot="([^"]+)"/g)].map(match => match[1]);
+assert.equal(shots.length, 5);
+const missingShots = shots.filter(shot => !fs.existsSync(path.join(site, 'public', shot)));
+assert.deepEqual(missingShots, [], `Add the missing workflow screenshots to site/public/: ${missingShots.join(', ')}`);
 
 function fixture(assets, options = {}) {
   const timers = [];
@@ -110,7 +119,7 @@ async function click(button, overrides = {}) {
     ['documentation/swift/documentation/twine/', 'documentation/swift/documentation/handshake/'],
   ]);
   for (const [oldPath, newPath] of redirects) {
-    const page = fs.readFileSync(`docs/legacy-redirects/twine/${oldPath}index.html`, 'utf8');
+    const page = read(`legacy-redirects/twine/${oldPath}index.html`);
     const target = `https://standing-desks.github.io/handshake/${newPath}`;
     assert.ok(page.includes(`rel="canonical" href="${target}"`));
     assert.ok(page.includes(`content="0; url=${target}"`));
@@ -122,5 +131,5 @@ async function click(button, overrides = {}) {
       assert.equal(destination, target + search + hash);
     }
   }
-  console.log('Website downloads, copy controls, and nine legacy redirect entry points passed');
+  console.log('Website downloads, copy controls, workflow screenshots, and nine legacy redirect entry points passed');
 })().catch(error => { console.error(error); process.exitCode = 1; });

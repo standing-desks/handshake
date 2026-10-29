@@ -24,17 +24,20 @@ For identity, interface design, and compatibility changes, follow the [brand and
 - For application library work in `handshake-core/`, read [handshake-core/AGENTS.md](handshake-core/AGENTS.md).
 - For C ABI work in `handshake-bridge/`, read [handshake-bridge/AGENTS.md](handshake-bridge/AGENTS.md).
 - For Swift app work in `macOS/`, read [macOS/AGENTS.md](macOS/AGENTS.md).
+- For website work in `site/`, read [site/AGENTS.md](site/AGENTS.md).
 - For changes spanning components, follow each component's file, and run `make fmt` and `make check` in place of the per-component targets. Give any new component its own `AGENTS.md` when it needs distinct instructions.
 
 ## Repository content rules
 
-- **Architecture decisions:** Keep ADRs in [architecture/decisions/](architecture/decisions/README.md),
+- **Architecture decisions:** Keep ADRs in [docs/adr/](docs/adr/README.md),
   with one index and stable record numbers.
 
-- **`docs/` is reserved exclusively for the GitHub Pages website.** Only add
-  content and assets intended for the published site. Never use it for scratch
-  documents, development plans, design experiments, trial reports, or agent
-  work notes.
+- **`docs/` holds lasting repository documentation**, such as ADRs and
+  licenses. Keep scratch documents, development plans, design experiments,
+  trial reports, and agent work notes outside the repository.
+
+- **`site/` holds only the published GitHub Pages website**: its pages, source,
+  and public assets.
 
 - **Never write details of a real user's or contributor's machine into the
   repository.** This applies to every tracked file, including comments,

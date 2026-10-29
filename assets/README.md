@@ -5,7 +5,8 @@ do not edit, optimize, or recolor them. `SHA256SUMS` records their hashes
 (`cd assets && shasum -a 256 -c SHA256SUMS`).
 
 This folder owns shared brand sources. Component-specific assets live with
-their consumers: published files in `docs/assets/`, app icons in
+their consumers: website files in `site/public/`, the README lockup in
+`docs/assets/`, app icons in
 `macOS/Handshake/`, bundled images in the app's asset catalog, and installer
 artwork in `.github/release/`. The DMG uses its separate intertwining artwork.
 
