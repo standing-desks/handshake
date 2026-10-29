@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-29
+
+### Added
+
+- Coordinate agents with workflow decision nodes powered by bundled Nouli 0.2,
+  including Choice, Noul, and Score questions with configurable output routing.
+- Create and refine workflows in an opt-in beta assistant beside the canvas using
+  an installed Codex, Claude Code, or Kiro CLI harness. Inspect generated TOML and
+  apply validated drafts with Undo support.
+- Open local files through agent browser control, with navigation and resource
+  access scoped to the file's directory.
+
+### Changed
+
+- Keep passive agent browser operations in the background while bringing pages
+  forward for interactions that need a visible browser.
+- Prune terminal recordings without a saved workflow or trace owner at startup
+  and after session deletion. Preserve closed workflows and trace-linked history.
+- Redesign the website and user guide, and consolidate architecture decisions
+  under `docs/adr/`.
+
+### Fixed
+
+- Reduce startup delays by validating saved terminal transcripts without
+  truncating and flushing segments that already match their committed lengths.
+
 ## [0.6.1] - 2026-10-29
 
 ### Added
@@ -404,7 +430,8 @@ Initial release of Twine, a native macOS workspace for coordinating coding agent
 - The app is ad hoc signed and not notarized. Follow the included install instructions
   to approve the first launch in macOS Privacy & Security settings.
 
-[unreleased]: https://github.com/standing-desks/handshake/compare/v0.6.1...HEAD
+[unreleased]: https://github.com/standing-desks/handshake/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/standing-desks/handshake/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/standing-desks/handshake/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/standing-desks/handshake/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/standing-desks/handshake/compare/v0.4.2...v0.5.0
