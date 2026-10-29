@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, mpsc};
@@ -122,6 +122,11 @@ impl Default for Limits {
 
 enum Job {
     Allocate(mpsc::SyncSender<Result<TerminalId, TranscriptError>>),
+    TerminalIds(mpsc::SyncSender<Result<HashSet<TerminalId>, TranscriptError>>),
+    Prune {
+        ids: HashSet<TerminalId>,
+        reply: mpsc::SyncSender<Result<(), TranscriptError>>,
+    },
     Append(Recording),
     Read {
         terminal_id: TerminalId,
@@ -135,7 +140,8 @@ impl Job {
     fn byte_count(&self) -> usize {
         match self {
             Self::Append(recording) => recording.chunk.bytes.len() + recording.sizes.len() * 32,
-            Self::Allocate(_) | Self::Read { .. } => 0,
+            Self::Prune { ids, .. } => ids.len() * size_of::<TerminalId>(),
+            Self::Allocate(_) | Self::Read { .. } | Self::TerminalIds(_) => 0,
         }
     }
 }
@@ -302,6 +308,29 @@ impl TranscriptRecorder {
     pub(crate) fn allocate(&self) -> Result<TerminalId, TranscriptError> {
         let (reply, result) = mpsc::sync_channel(1);
         self.enqueue(Job::Allocate(reply), None)?;
+        result.recv().map_err(disconnected)?
+    }
+
+    pub(crate) fn terminal_ids(&self) -> Result<HashSet<TerminalId>, TranscriptError> {
+        let (reply, result) = mpsc::sync_channel(1);
+        self.enqueue(Job::TerminalIds(reply), None)?;
+        result.recv().map_err(disconnected)?
+    }
+
+    /// Call only after the selected terminals' producers have stopped. FIFO ordering drains
+    /// accepted output first, so it cannot recreate a recording after this request expires it.
+    pub(crate) fn prune(&self, ids: &HashSet<TerminalId>) -> Result<(), TranscriptError> {
+        // Bound the maintenance payload by retained metadata, even for very old sessions.
+        let ids = self
+            .terminal_ids()?
+            .intersection(ids)
+            .copied()
+            .collect::<HashSet<_>>();
+        if ids.is_empty() {
+            return Ok(());
+        }
+        let (reply, result) = mpsc::sync_channel(1);
+        self.enqueue(Job::Prune { ids, reply }, None)?;
         result.recv().map_err(disconnected)?
     }
 
@@ -473,6 +502,16 @@ fn run_worker(mut storage: Storage, shared: &Shared) {
             (job, queue.failure.clone())
         };
         match job {
+            Job::TerminalIds(reply) => {
+                let _ = reply.send(failure.map_or_else(|| Ok(storage.terminal_ids()), unavailable));
+            }
+            Job::Prune { ids, reply } => {
+                let result = failure.map_or_else(|| storage.prune(&ids), unavailable);
+                if let Err(error) = &result {
+                    record_failure(shared, error);
+                }
+                let _ = reply.send(result);
+            }
             Job::Allocate(reply) => {
                 let result = failure.map_or_else(|| storage.allocate(), unavailable);
                 if let Err(error) = &result {
@@ -538,6 +577,34 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
+
+    #[test]
+    fn queued_output_is_committed_before_pruning_and_does_not_reappear() {
+        let directory = tempfile::tempdir().unwrap();
+        let recorder = TranscriptRecorder::open(directory.path()).unwrap();
+        let removed = recorder.allocate().unwrap();
+        let kept = recorder.allocate().unwrap();
+        let stalled = recorder.stall_worker(removed);
+        append(&recorder, removed, 0, b"old");
+        append(&recorder, kept, 0, b"new");
+        thread::scope(|scope| {
+            let pruning = scope.spawn(|| recorder.prune(&HashSet::from([removed])).unwrap());
+            drop(stalled);
+            pruning.join().unwrap();
+        });
+        assert!(matches!(
+            recorder.read(removed, 0, 8).unwrap(),
+            TranscriptRead::Expired { .. }
+        ));
+        assert_eq!(output(&recorder, kept, 0, 8).bytes, b"new");
+        drop(recorder);
+        let recorder = TranscriptRecorder::open(directory.path()).unwrap();
+        assert!(matches!(
+            recorder.read(removed, 0, 8).unwrap(),
+            TranscriptRead::Expired { .. }
+        ));
+        assert_eq!(output(&recorder, kept, 0, 8).bytes, b"new");
+    }
 
     fn output(
         recorder: &TranscriptRecorder,

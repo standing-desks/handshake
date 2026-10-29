@@ -491,6 +491,13 @@ impl TerminalStream {
         self.transcripts.shutdown();
     }
 
+    pub(crate) fn prune_transcripts(
+        &self,
+        ids: &std::collections::HashSet<TerminalId>,
+    ) -> Result<(), TranscriptError> {
+        self.transcripts.prune(ids)
+    }
+
     fn remove_drained_entry(inner: &mut StreamInner, terminal_id: TerminalId) {
         let has_chunks = inner
             .chunks

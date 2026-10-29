@@ -89,7 +89,7 @@ impl Application {
         request: RequestId,
         session_id: SessionId,
     ) -> Result<CommandDisposition, ApplicationError> {
-        let terminal_ids = {
+        let (terminal_ids, transcript_ids) = {
             let mut inner = self.lock_inner()?;
             let Some(index) = inner
                 .workflows
@@ -113,7 +113,7 @@ impl Application {
             } else {
                 inner.workflows.session.clone()
             };
-            inner.folders.store().delete_session(
+            let transcript_ids = inner.folders.store().delete_session(
                 &removed.folder,
                 session_id,
                 selected.as_ref().map(|session| session.session_id),
@@ -142,9 +142,31 @@ impl Application {
             inner.workflows.sessions = sessions;
             inner.workflows.session = selected;
             inner.publish_workflows()?;
-            terminal_ids
+            (terminal_ids, transcript_ids)
         };
-        self.terminals.close_all(&terminal_ids)?;
+        let close_result = self.terminals.close_all(&terminal_ids);
+        // close_all joins every reader even if another terminal was already gone. Pruning on
+        // the recorder's FIFO happens after all output those readers accepted for recording.
+        let cleanup = (|| -> Result<(), ApplicationError> {
+            if close_result
+                .as_ref()
+                .is_err_and(|error| !matches!(error, crate::TerminalError::NotOpen { .. }))
+            {
+                return Ok(());
+            }
+            let referenced = self
+                .lock_inner()?
+                .folders
+                .store()
+                .referenced_transcripts()?;
+            let orphaned = transcript_ids.difference(&referenced).copied().collect();
+            self.terminal_output.prune_transcripts(&orphaned)?;
+            Ok(())
+        })();
+        if let Err(error) = cleanup {
+            tracing::warn!(%error, "deleted session transcript cleanup failed");
+        }
+        close_result?;
         self.lock_inner()?
             .events
             .append(EventKind::CommandCompleted {

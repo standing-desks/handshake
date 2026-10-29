@@ -66,9 +66,14 @@ impl Application {
             Some(entry) => Arc::clone(&entry.recorder),
             None => Arc::new(TranscriptRecorder::open(&path.join("transcripts"))?),
         };
-        let mut store = Store::open(&database_path(data_directory))?;
+        let database = database_path(data_directory);
+        let reconcile_transcripts = restore && database.try_exists().unwrap_or(false);
+        let mut store = Store::open(&database)?;
         if restore {
             store.recover_interrupted_work()?;
+            if reconcile_transcripts {
+                super::prune_unreferenced_transcripts(&store, &transcripts);
+            }
         }
         let folders = Folders::for_window(store, restore)?;
         let config = Config::load_user();
@@ -108,6 +113,172 @@ mod tests {
         WorkflowKind,
     };
     use std::thread;
+
+    #[test]
+    fn startup_prunes_orphans_but_new_windows_preserve_live_unowned_terminals() {
+        let data = tempfile::tempdir().unwrap();
+        let folder = tempfile::tempdir().unwrap();
+        let recorder = TranscriptRecorder::open(&data.path().join("transcripts")).unwrap();
+        let kept = recorder.allocate().unwrap();
+        let orphan = recorder.allocate().unwrap();
+        let store = Store::open(&database_path(data.path())).unwrap();
+        store.execute_test_sql(&format!("INSERT INTO sessions(id,folder,name,started_at) VALUES(1,'/history','History',1);
+            INSERT INTO workflows(id,session_id,name,kind,closed_at) VALUES(1,1,'Closed','terminal',100);
+            INSERT INTO workflow_terminals(terminal_id,workflow_id) VALUES({},1)", kept.value()));
+        drop(store);
+        drop(recorder);
+        let first = Application::new_window(data.path()).unwrap();
+        assert!(matches!(
+            first.read_terminal_transcript(kept, 0, 8).unwrap(),
+            TranscriptRead::Output(_)
+        ));
+        assert!(matches!(
+            first.read_terminal_transcript(orphan, 0, 8).unwrap(),
+            TranscriptRead::Expired { .. }
+        ));
+        let live = first.terminals.reserve_terminal().unwrap();
+        let second = Application::new_window(data.path()).unwrap();
+        assert!(matches!(
+            second.read_terminal_transcript(live, 0, 8).unwrap(),
+            TranscriptRead::Output(_)
+        ));
+        first.terminals.cancel_reserved_terminal(live).unwrap();
+        open(&second, folder.path());
+    }
+
+    #[test]
+    fn standalone_startup_skips_cleanup_without_an_existing_database() {
+        let data = tempfile::tempdir().unwrap();
+        let recorder = TranscriptRecorder::open(&data.path().join("transcripts")).unwrap();
+        let id = recorder.allocate().unwrap();
+        drop(recorder);
+        let app = Application::with_config(data.path(), Config::default()).unwrap();
+        assert!(matches!(
+            app.read_terminal_transcript(id, 0, 8).unwrap(),
+            TranscriptRead::Output(_)
+        ));
+        drop(app);
+        let app = Application::with_config(data.path(), Config::default()).unwrap();
+        assert!(matches!(
+            app.read_terminal_transcript(id, 0, 8).unwrap(),
+            TranscriptRead::Expired { .. }
+        ));
+    }
+
+    #[test]
+    fn uncertain_startup_ownership_preserves_recordings() {
+        let data = tempfile::tempdir().unwrap();
+        let recorder = TranscriptRecorder::open(&data.path().join("transcripts")).unwrap();
+        let id = recorder.allocate().unwrap();
+        drop(recorder);
+        let store = Store::open(&database_path(data.path())).unwrap();
+        store.execute_test_sql("INSERT INTO sessions(id,folder,name,started_at) VALUES(1,'/history','History',1);
+            INSERT INTO workflows(id,session_id,name,kind,closed_at) VALUES(1,1,'Closed','terminal',100);
+            INSERT INTO trace_lanes(id,workflow_id,lane_key,name,is_agent) VALUES(1,1,'terminal','Terminal',0);
+            INSERT INTO trace_spans(id,lane_id,title,started_at,status) VALUES(1,1,'Step',1,'exited');
+            INSERT INTO trace_activities(span_id,source_id,kind,title,status,input,output,anchor)
+            VALUES(1,'tool','tool','Tool','completed','','','unreadable');");
+        drop(store);
+        let app = Application::with_config(data.path(), Config::default()).unwrap();
+        assert!(matches!(
+            app.read_terminal_transcript(id, 0, 8).unwrap(),
+            TranscriptRead::Output(_)
+        ));
+    }
+
+    #[test]
+    fn failed_transcript_cleanup_does_not_fail_a_committed_session_deletion() {
+        let data = tempfile::tempdir().unwrap();
+        let folder = tempfile::tempdir().unwrap();
+        let app = Application::new_window(data.path()).unwrap();
+        open(&app, folder.path());
+        app.handle_command(
+            RequestId(98),
+            Command::CreateSession {
+                folder: folder.path().into(),
+                name: "Session".into(),
+            },
+        )
+        .unwrap();
+        let session_id = app.snapshot().unwrap().workflows.sessions[0].session_id;
+        let id = app.terminals.reserve_terminal().unwrap();
+        app.terminals.cancel_reserved_terminal(id).unwrap();
+        app.lock_inner().unwrap().folders.store().execute_test_sql(&format!(
+            "INSERT INTO workflows(id,session_id,name,kind,closed_at) VALUES(100,{},'Closed','terminal',100);
+             INSERT INTO workflow_terminals(terminal_id,workflow_id) VALUES({},100)", session_id.0, id.value()));
+        let pending = data.path().join("transcripts/metadata.next");
+        std::fs::create_dir(&pending).unwrap();
+        let receipt = app
+            .handle_command(RequestId(99), Command::DeleteSession { session_id })
+            .unwrap();
+        assert_eq!(receipt.disposition, CommandDisposition::Accepted);
+        assert_eq!(app.snapshot().unwrap().workflows.sessions, []);
+        drop(app);
+        std::fs::remove_dir(pending).unwrap();
+        let app = Application::new_window(data.path()).unwrap();
+        assert!(matches!(
+            app.read_terminal_transcript(id, 0, 8).unwrap(),
+            TranscriptRead::Expired { .. }
+        ));
+    }
+
+    #[test]
+    fn deleting_a_session_prunes_closed_and_previous_invocations_without_affecting_other_windows() {
+        let data = tempfile::tempdir().unwrap();
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        let first = Application::new_window(data.path()).unwrap();
+        open(&first, a.path());
+        let historical = terminal(&first, a.path());
+        first
+            .handle_command(RequestId(3), Command::CloseFolder)
+            .unwrap();
+        open(&first, a.path());
+        let state = first.snapshot().unwrap().workflows;
+        let session_id = state.sessions[0].session_id;
+        let restored = state.workflows[0].terminal_id;
+        first
+            .handle_command(
+                RequestId(4),
+                Command::CloseWorkflow {
+                    workflow_id: state.workflows[0].workflow_id,
+                },
+            )
+            .unwrap();
+        let current = terminal(&first, a.path());
+        let second = Application::new_window(data.path()).unwrap();
+        open(&second, b.path());
+        let survivor = terminal(&second, b.path());
+        first
+            .handle_command(RequestId(5), Command::DeleteSession { session_id })
+            .unwrap();
+        for id in [historical, restored, current] {
+            assert!(matches!(
+                first.read_terminal_transcript(id, 0, 8).unwrap(),
+                TranscriptRead::Expired { .. }
+            ));
+        }
+        assert!(matches!(
+            second.read_terminal_transcript(survivor, 0, 8).unwrap(),
+            TranscriptRead::Output(_)
+        ));
+        second
+            .write_terminal_input(survivor, b"printf SURVIVES\n")
+            .unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            let TranscriptRead::Output(page) =
+                second.read_terminal_transcript(survivor, 0, 65536).unwrap()
+            else {
+                panic!("survivor expired");
+            };
+            if String::from_utf8_lossy(&page.bytes).contains("SURVIVES") {
+                break;
+            }
+            assert!(std::time::Instant::now() < deadline);
+            thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
     use std::time::{Duration, Instant};
 
     #[test]

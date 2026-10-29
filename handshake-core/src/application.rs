@@ -46,6 +46,22 @@ fn database_path(directory: &Path) -> PathBuf {
         directory.join("twine.db")
     }
 }
+
+fn prune_unreferenced_transcripts(store: &Store, transcripts: &TranscriptRecorder) {
+    let result = (|| -> Result<(), ApplicationError> {
+        let referenced = store.referenced_transcripts()?;
+        let orphaned = transcripts
+            .terminal_ids()?
+            .difference(&referenced)
+            .copied()
+            .collect();
+        transcripts.prune(&orphaned)?;
+        Ok(())
+    })();
+    if let Err(error) = result {
+        tracing::warn!(%error, "skipping startup transcript cleanup");
+    }
+}
 const DEFAULT_EVENT_CAPACITY: usize = 4_096;
 const DEFAULT_TERMINAL_CAPACITY_BYTES: usize = 1024 * 1024;
 const DEFAULT_TERMINAL_CAPACITY_CHUNKS: usize = 4_096;
@@ -378,13 +394,16 @@ impl Application {
         let transcripts = Arc::new(TranscriptRecorder::open(
             &data_directory.join("transcripts"),
         )?);
-        let store = Store::open(&database_path(data_directory))?;
+        let database = database_path(data_directory);
+        let reconcile_transcripts = database.try_exists().unwrap_or(false);
+        let store = Store::open(&database)?;
         Self::with_store(
             store,
             config,
             DEFAULT_EVENT_CAPACITY,
             transcripts,
             Some(data_directory),
+            reconcile_transcripts,
         )
     }
 
@@ -398,6 +417,7 @@ impl Application {
             event_capacity,
             Arc::new(TranscriptRecorder::temporary()?),
             None,
+            false,
         )?;
         application
             .terminals
@@ -411,9 +431,13 @@ impl Application {
         event_capacity: usize,
         transcripts: Arc<TranscriptRecorder>,
         memory_data_directory: Option<&Path>,
+        reconcile_transcripts: bool,
     ) -> Result<Self, ApplicationError> {
         // Recover every folder, including closed or currently unavailable folders, before ready.
         store.recover_interrupted_work()?;
+        if reconcile_transcripts {
+            prune_unreferenced_transcripts(&store, &transcripts);
+        }
         let folders = Folders::restore(store)?;
         Self::with_folders(
             folders,
