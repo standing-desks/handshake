@@ -232,10 +232,14 @@ struct WorkspaceTabBar: View {
         }
     }
 
-    /// A page an agent opened joins the agent's session; any other page joins the selected session.
+    /// A popup joins its opener's session and a page an agent opened joins the agent's session; any other page
+    /// joins the selected session.
     private func adoptUnheldPages() {
         let owners = browsers.tabs.reduce(into: [String: UInt64]()) { owners, tab in
-            owners[WorkspaceTabsModel.browser(tab.id)] = tab.agentSession
+            let opener = tab.opener.flatMap {
+                model.otherHolders(of: WorkspaceTabsModel.browser($0), besides: nil).first
+            }
+            owners[WorkspaceTabsModel.browser(tab.id)] = opener ?? tab.agentSession
         }
         model.adoptUnheld(pages, session: sessionID, sessions: Set(sessions.map(\.id)), owners: owners)
     }

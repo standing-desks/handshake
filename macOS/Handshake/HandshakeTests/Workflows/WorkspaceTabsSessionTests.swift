@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Testing
 
 @testable import Handshake
@@ -46,6 +47,36 @@ struct WorkspaceTabsSessionTests {
             session: 10, sessions: [10, 20])
         #expect(model.arrangement(10).pages == ["file:/tmp/new.swift", browser, "file:/tmp/orphan.swift"])
         #expect(model.arrangement(20).pages == ["file:/tmp/held.swift"])
+    }
+
+    @Test func movingAPageBetweenSessionsIsUndoableButReorderingIsNot() async throws {
+        let files = FileTabsModel()
+        let browsers = BrowserTabsModel(selection: files.contentSelection)
+        defer { browsers.closeAll() }
+        let model = WorkspaceTabsModel(folder: "/tmp/undo", defaults: try store())
+        let (moved, other) = (
+            WorkspaceTabsModel.browser(browsers.create().id), WorkspaceTabsModel.browser(browsers.create().id)
+        )
+        model.adoptUnheld([moved, other], session: 10, sessions: [10])
+        files.showWorkflows()
+        let navigator = WorkspaceTabNavigator(
+            client: CoreClient(transport: DeferredBrowserTransport()), model: model, files: files, browsers: browsers,
+            layouts: WorkflowLayouts(fileURL: FileManager.default.temporaryDirectory.appending(path: "\(UUID()).json")),
+            folder: "/tmp/undo", selection: .constant(WorkflowTabSelection()), currentSession: 10)
+        let undo = UndoManager()
+        undo.groupsByEvent = false
+        undo.beginUndoGrouping()
+        try await navigator.move(other, from: 10, to: 10, at: .before(moved), undoManager: undo)
+        undo.endUndoGrouping()
+        #expect(undo.undoActionName.isEmpty, "Reordering within a session registers nothing")
+        undo.beginUndoGrouping()
+        try await navigator.move(moved, from: 10, to: 20, undoManager: undo)
+        undo.endUndoGrouping()
+        #expect(model.holds(moved, session: 20) && !model.holds(moved, session: 10))
+        #expect(undo.undoActionName == "Move Tab")
+        undo.undo()
+        try await waitUntil { model.holds(moved, session: 10) && !model.holds(moved, session: 20) }
+        #expect(undo.canRedo)
     }
 
     @Test func pagesAgentsOpenJoinTheAgentsSessionWhileItExists() throws {

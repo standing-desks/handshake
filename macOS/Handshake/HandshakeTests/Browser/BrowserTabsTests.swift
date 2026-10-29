@@ -107,6 +107,11 @@ struct BrowserTabsTests {
         browsers.close(mine.id)
         #expect(browsers.selected == nil)
         #expect(files.contentSelection.content == nil)
+        // A session without pages of its own can show an agent's page; closing it shows no other page.
+        let agent = browsers.create()
+        browsers.visualOrder = []
+        browsers.close(agent.id)
+        #expect(browsers.selected == nil)
     }
 
     private func isolated() -> WKWebViewConfiguration {

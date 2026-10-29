@@ -14,7 +14,7 @@ final class BrowserTabsModel {
     private(set) var tabs: [BrowserTab] = []
     let selection: WorkspaceContentSelection
     let windowID: UUID?
-    var visualOrder: [UUID] = []
+    var visualOrder: [UUID]?
     var willClose: ((BrowserTab) -> Void)?
     private let defaults: UserDefaults
     private let configuration: @MainActor () -> WKWebViewConfiguration
@@ -90,7 +90,7 @@ final class BrowserTabsModel {
             guard let self, let tab, !isClosing, tabs.contains(where: { $0 === tab }) else { return nil }
             let popup = insert(
                 snapshot: .init(id: UUID()), configuration: configuration, select: true, hasNavigated: true)
-            popup.agentSession = tab.agentSession
+            popup.opener = tab.id
             return popup.webView
         }
         tab.closeRequested = { [weak self, weak tab] in if let tab { self?.close(tab.id) } }
@@ -110,10 +110,10 @@ final class BrowserTabsModel {
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
         let tab = tabs[index]
         willClose?(tab)
-        // The next tab comes from the shown order, which holds only the selected session's pages. Without one,
-        // any open page can be next.
+        // The next tab comes from the shown order, which holds only the selected session's pages. Without a tab
+        // bar to set it, any open page can be next.
         let known = tabs.map(\.id)
-        let order = visualOrder.isEmpty ? known : visualOrder.filter { known.contains($0) }
+        let order = visualOrder.map { $0.filter(known.contains) } ?? known
         let next = order.firstIndex(of: id).flatMap { index in
             order.dropFirst(index + 1).first ?? order.prefix(index).last
         }
@@ -130,7 +130,7 @@ final class BrowserTabsModel {
         tabs.removeAll()
         if selectedID != nil { selection.select(nil) }
         willClose = nil
-        visualOrder = []
+        visualOrder = nil
         if !preservingPresentation {
             lastSaved = []
             defaults.removeObject(forKey: key)

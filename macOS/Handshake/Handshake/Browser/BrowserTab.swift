@@ -11,6 +11,8 @@ final class BrowserTab: NSObject, Identifiable, WKNavigationDelegate, WKUIDelega
     var controlOwner: String?
     /// The session of the agent that opened this page, which holds it when it first appears.
     var agentSession: UInt64?
+    /// The page that opened this one as a popup; the popup joins whichever session holds it.
+    var opener: UUID?
     var stopControl: (() -> Void)?
     var controlDidClose: (() -> Void)?
     var customName: String? { didSet { changed?() } }

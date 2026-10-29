@@ -24,7 +24,7 @@ page state.
   ([ADR 0012](0012-control-the-embedded-browser-through-core.md)) joins the session
   of the agent's terminal. Core includes that terminal with each browser job. When
   an agent brings its page to the front while another session is selected, the page
-  stays with its own session.
+  stays with its own session. A popup joins the session that holds its opener.
 - A file can be open in several sessions. Their tabs share one editor and buffer,
   so unsaved edits can't diverge. Closing it in one session removes only that tab;
   the editor closes, and asks about unsaved changes, when no session holds it.
