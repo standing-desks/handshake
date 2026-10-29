@@ -12,6 +12,7 @@ extension HandshakeUITests {
         app.launch()
         defer { app.terminate() }
         XCTAssertTrue(app.buttons["workflowTab-1"].waitForExistence(timeout: 10))
+        resizeWindow(app.windows.firstMatch, to: CGSize(width: 820, height: 573))
         app.buttons["workflowChoice-Terminal"].click()
         app.typeText(
             "mkdir bin; printf '#!/bin/sh\\n' > bin/claude; cat inspector-stub.txt >> bin/claude; chmod +x bin/claude\r"
@@ -25,7 +26,10 @@ extension HandshakeUITests {
             picker.click()
             app.menuItems["Claude Code"].click()
         }
-        app.buttons["workflowStart"].click()
+        let start = app.buttons["workflowStart"]
+        revealWorkflowChoice(start, in: app)
+        start.click()
+        XCTAssertTrue(start.waitForNonExistence(timeout: 10), app.debugDescription)
         waitForFile(folder.appending(path: "inspector-ready"), containing: "ready", in: app)
         resizeWindow(app.windows.firstMatch, to: CGSize(width: 1100, height: 850))
         app.buttons["tracesHeader"].click()
