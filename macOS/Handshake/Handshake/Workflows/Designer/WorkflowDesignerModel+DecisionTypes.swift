@@ -14,7 +14,8 @@ extension WorkflowDesignerModel {
     func setDecisionKind(_ id: String, kind: CoreWorkflowType.DecisionKind) {
         guard var graph = definition.graph, graph.decisions[id]?.kind != kind else { return }
         let names = Dictionary(uniqueKeysWithValues: definition.roles.map { ($0.id, $0.name) })
-        decisionDrafts.switchKind(id, to: kind, edges: decisionEdges(id), graph: &graph, names: names)
+        decisionDrafts.switchKind(
+            id, to: kind, edges: decisionEdges(id).filter { !$0.always }, graph: &graph, names: names)
         definition.graph = graph
     }
 
@@ -29,15 +30,19 @@ extension WorkflowDesignerModel {
             let index = graph.edges.firstIndex(where: { $0.id == edgeID && $0.from == id })
         else { return }
         let previous = graph.edges[index].output
+        let wasAlways = graph.edges[index].always
+        graph.edges[index].always = false
         if let other = graph.edges.firstIndex(where: { $0.from == id && $0.output == output && $0.id != edgeID }) {
             graph.edges[other].output = previous
+            graph.edges[other].always = wasAlways
         }
         graph.edges[index].output = output
         definition.graph = graph
     }
 
     func swapDecisionAnswers(_ id: String) {
-        guard let yes = definition.graph?.edges.first(where: { $0.from == id && $0.output == "yes" }) else { return }
+        guard let yes = definition.graph?.edges.first(where: { $0.from == id && !$0.always && $0.output == "yes" })
+        else { return }
         assignDecisionOutput(id, edge: yes.id, output: "no")
     }
 

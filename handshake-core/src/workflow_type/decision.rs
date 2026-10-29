@@ -503,6 +503,65 @@ mod tests {
     }
 
     #[test]
+    fn always_edges_round_trip_and_do_not_satisfy_a_conditional_answer() {
+        let file: toml::Value = toml::from_str(include_str!(
+            "../../../examples/workflows/decision-triage.toml"
+        ))
+        .unwrap();
+        let mut definition: crate::WorkflowTypeDefinition =
+            file["definition"].clone().try_into().unwrap();
+        let graph = definition.graph.as_mut().unwrap();
+        graph.edges.push(crate::GraphEdge {
+            id: "ready-observer".into(),
+            from: "ready".into(),
+            to: "architect".into(),
+            event: crate::GraphEvent::Done,
+            output: None,
+            always: true,
+        });
+        crate::validate(&definition).unwrap();
+        let encoded = serde_json::to_value(&definition).unwrap();
+        assert_eq!(
+            serde_json::from_value::<crate::WorkflowTypeDefinition>(encoded).unwrap(),
+            definition
+        );
+        let graph = definition.graph.as_mut().unwrap();
+        let edge = graph
+            .edges
+            .iter_mut()
+            .find(|edge| edge.id == "ready-observer")
+            .unwrap();
+        edge.output = Some("yes".into());
+        assert!(crate::validate(&definition).is_err());
+        let graph = definition.graph.as_mut().unwrap();
+        graph
+            .edges
+            .iter_mut()
+            .find(|edge| edge.id == "ready-observer")
+            .unwrap()
+            .output = None;
+        graph.edges.retain(|edge| edge.id != "ready-yes");
+        assert!(crate::validate(&definition).is_err());
+    }
+
+    #[test]
+    fn ordinary_agent_edges_cannot_be_marked_always() {
+        let mut definition = crate::BuiltinType::Adversarial.definition();
+        definition.stages.clear();
+        definition.handoffs.clear();
+        definition.review_loops.clear();
+        definition.graph = Some(serde_json::from_value(json!({
+            "edges":[{"id":"work","from":"implementer","to":"reviewer","event":"done","always":true}]
+        })).unwrap());
+        assert!(
+            crate::validate(&definition)
+                .unwrap_err()
+                .iter()
+                .any(|issue| { issue.problem.to_string().contains("only decision links") })
+        );
+    }
+
+    #[test]
     fn four_connections_with_two_options_are_rejected() {
         let file: toml::Value = toml::from_str(include_str!(
             "../../../examples/workflows/decision-triage.toml"
@@ -518,6 +577,7 @@ mod tests {
             .options
             .truncate(2);
         graph.edges.push(crate::GraphEdge {
+            always: false,
             id: "fourth-route".into(),
             from: "classify".into(),
             to: "scope".into(),

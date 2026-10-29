@@ -517,6 +517,7 @@ impl WorkflowRun {
             edge.from == sender.role
                 && edge.event == event
                 && (passthrough
+                    || edge.always
                     || edge
                         .output
                         .as_ref()
@@ -754,6 +755,7 @@ mod tests {
                     .iter()
                     .enumerate()
                     .map(|(index, (from, to, event))| GraphEdge {
+                        always: false,
                         output: None,
                         id: index.to_string(),
                         from: (*from).into(),
@@ -1090,6 +1092,90 @@ mod tests {
             summary: summary.into(),
             assignments: vec![],
             task: String::new(),
+        }
+    }
+
+    #[test]
+    fn every_decision_kind_delivers_to_its_selected_route_and_all_always_targets() {
+        for kind in [
+            crate::DecisionKind::Choice,
+            crate::DecisionKind::Noul,
+            crate::DecisionKind::Score,
+        ] {
+            let mut run = run(
+                &[
+                    ("router", "picked", GraphEvent::Done),
+                    ("router", "other", GraphEvent::Done),
+                    ("router", "always-a", GraphEvent::Done),
+                    ("router", "always-b", GraphEvent::Done),
+                ],
+                GraphFinish::All,
+            );
+            let binary = kind == crate::DecisionKind::Noul;
+            let selected = if binary { "yes" } else { "picked" };
+            let other = if binary { "no" } else { "other" };
+            let node: crate::DecisionNode = serde_json::from_value(serde_json::json!({
+                "question":"Where should this work go?", "kind":kind,
+                "true_threshold":5000, "false_threshold":5000,
+                "options":[
+                    {"id":selected,"name":"Picked","description":"Picked"},
+                    {"id":other,"name":"Other","description":"Other"}
+                ]
+            }))
+            .unwrap();
+            assert!(
+                !node.request("Task", "Evidence")["questions"][0]["answer_space"]
+                    .to_string()
+                    .contains("always")
+            );
+            let graph = run.workflow_type.definition.graph.as_mut().unwrap();
+            graph.decisions.insert("router".into(), node);
+            for edge in &mut graph.edges {
+                edge.always = edge.to.starts_with("always-");
+                edge.output = if edge.always {
+                    None
+                } else {
+                    Some(if edge.to == "picked" { selected } else { other }.into())
+                };
+            }
+            crate::validate(&run.workflow_type.definition).unwrap();
+            let router = run
+                .agents
+                .iter_mut()
+                .find(|agent| agent.role == "router")
+                .unwrap();
+            router.harness = HarnessId::Nouli;
+            let id = router.agent_id;
+            run.graph
+                .as_mut()
+                .unwrap()
+                .decision_outputs
+                .insert(id, selected.into());
+            run.complete(
+                id,
+                run.assignment_generation(id),
+                signal(Decision::Done, "Exact captured evidence"),
+            )
+            .unwrap();
+            let active: BTreeSet<_> = run
+                .active_agents()
+                .iter()
+                .map(|agent| agent.role.as_str())
+                .collect();
+            assert_eq!(active, BTreeSet::from(["picked", "always-a", "always-b"]));
+            for agent in run.active_agents() {
+                assert!(run.incoming[&agent.agent_id].contains("Exact captured evidence"));
+            }
+            let committed = serde_json::to_value(&run).unwrap();
+            assert!(
+                run.complete(
+                    id,
+                    run.assignment_generation(id),
+                    signal(Decision::Done, "Duplicate")
+                )
+                .is_err()
+            );
+            assert_eq!(serde_json::to_value(&run).unwrap(), committed);
         }
     }
 

@@ -19,8 +19,9 @@ extension WorkflowDesignerModel {
 
     func decisionValidation(_ id: String) -> [WorkflowDecisionIssue] {
         guard let node = definition.graph?.decisions[id] else { return [] }
-        let edges = decisionEdges(id)
-        if edges.count == 1 { return [] }
+        let connections = decisionEdges(id)
+        if connections.count == 1 { return [] }
+        let edges = connections.filter { !$0.always }
         var issues: [WorkflowDecisionIssue] = []
         if node.question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             issues.append(.init(nodeID: id, field: .question, message: "Enter a question for this decision."))
@@ -28,7 +29,7 @@ extension WorkflowDesignerModel {
             issues.append(
                 .init(nodeID: id, field: .question, message: "The question is too long. Shorten it before saving."))
         }
-        if edges.isEmpty {
+        if connections.isEmpty {
             issues.append(
                 .init(
                     nodeID: id, field: .connections, message: "Connect an output. One connection passes work through."))
@@ -45,9 +46,16 @@ extension WorkflowDesignerModel {
                             "Yes/No needs \(node.outputs.count) connections. Remove the extra connections."
                     ))
             }
+        } else if node.kind == .choice && edges.count < 2 {
+            issues.append(
+                .init(
+                    nodeID: id, field: .connections,
+                    message: "Connect at least two decision destinations. Always outputs are not choices."))
         } else if node.kind == .score && !(2...10).contains(edges.count) {
             issues.append(
-                .init(nodeID: id, field: .connections, message: "Score needs between 2 and 10 connected levels."))
+                .init(
+                    nodeID: id, field: .connections,
+                    message: "Score needs between 2 and 10 decision levels. Always outputs are not levels."))
         }
         return issues
     }

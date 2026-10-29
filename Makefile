@@ -104,6 +104,7 @@ UI_DEFAULT_TESTS := testFirstLaunchShowsStartPage \
 	testWorkflowDesignerKeyboardEntryValidationAndBuiltinCopy \
 	testDecisionNodesSwitchFromAgentsAndRouteThroughSharedDragConnectors \
 	testDecisionValidationReturnsToAnOffscreenNodeRepeatedly \
+	testAlwaysDecisionOutputsAndZoomButtonHitAreas \
 	testSavedWorkflowHoverDeleteRequiresConfirmation \
 	testBentoPanesKeepEachShellAndMoveTheKeyboardBetweenThem \
 	testTerminalSplitsResizeKeepTheirNeighborAndRestoreOutput \

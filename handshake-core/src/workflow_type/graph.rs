@@ -97,6 +97,9 @@ pub struct GraphEdge {
     pub event: GraphEvent,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output: Option<String>,
+    /// Deliver alongside every successful decision, independently of its selected answer.
+    #[serde(default)]
+    pub always: bool,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -305,7 +308,7 @@ fn check_decisions(
             if graph
                 .edges
                 .iter()
-                .filter(|e| e.from == *id && e.output.as_ref() == Some(&output))
+                .filter(|e| e.from == *id && !e.always && e.output.as_ref() == Some(&output))
                 .count()
                 != 1
             {
@@ -316,10 +319,16 @@ fn check_decisions(
             }
         }
     }
+    check_decision_edges(graph, report);
+}
+
+fn check_decision_edges(graph: &AgentGraph, report: &mut impl FnMut(ElementPath, &str)) {
     for (index, edge) in graph.edges.iter().enumerate() {
         if let Some(decision) = graph.decisions.get(&edge.from) {
             if edge.event != GraphEvent::Done
-                || graph.passthrough_edge(&edge.from).is_none()
+                || edge.always && edge.output.is_some()
+                || !edge.always
+                    && graph.passthrough_edge(&edge.from).is_none()
                     && edge
                         .output
                         .as_ref()
@@ -330,10 +339,10 @@ fn check_decisions(
                     "decision links need a configured output and Work complete event",
                 );
             }
-        } else if edge.output.is_some() {
+        } else if edge.output.is_some() || edge.always {
             report(
                 ElementPath::Edge(index),
-                "only decision links can select an output",
+                "only decision links can select an output or always deliver",
             );
         }
     }
@@ -349,7 +358,7 @@ fn check_choice_options(
     let missing = graph
         .edges
         .iter()
-        .filter(|edge| edge.from == role)
+        .filter(|edge| edge.from == role && !edge.always)
         .filter(|edge| {
             !(decision
                 .options

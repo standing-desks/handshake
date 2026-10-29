@@ -30,7 +30,7 @@ struct WorkflowDecisionDrafts {
         if kind == .noul {
             assignBinary(id, node: node, previous: draft?.outputs ?? [:], graph: &graph)
         } else {
-            for index in graph.edges.indices where graph.edges[index].from == id {
+            for index in graph.edges.indices where graph.edges[index].from == id && !graph.edges[index].always {
                 let edge = graph.edges[index]
                 let saved = draft?.outputs[edge.id]
                 graph.edges[index].output =
@@ -48,7 +48,7 @@ struct WorkflowDecisionDrafts {
         guard var node = graph.decisions[id], node.kind == .noul,
             enabled != (node.trueThreshold > node.falseThreshold)
         else { return }
-        let edges = graph.agentEdges.filter { $0.from == id }
+        let edges = graph.agentEdges.filter { $0.from == id && !$0.always }
         binary[id, default: [:]][!enabled] = Draft(node, edges: edges)
         let draft = binary[id]?[enabled]
         node.trueThreshold = draft?.node.trueThreshold ?? (enabled ? 8_000 : 5_000)
@@ -80,11 +80,12 @@ struct WorkflowDecisionDrafts {
     ) {
         let outputs = node.outputs.map(\.id)
         var used = Set<String>()
-        for index in graph.edges.indices where graph.edges[index].from == id {
+        for index in graph.edges.indices where graph.edges[index].from == id && !graph.edges[index].always {
             let saved = previous[graph.edges[index].id]
             graph.edges[index].output = saved.flatMap { outputs.contains($0) && used.insert($0).inserted ? $0 : nil }
         }
-        for index in graph.edges.indices where graph.edges[index].from == id && graph.edges[index].output == nil {
+        for index in graph.edges.indices
+        where graph.edges[index].from == id && !graph.edges[index].always && graph.edges[index].output == nil {
             if let output = outputs.first(where: { !used.contains($0) }) {
                 graph.edges[index].output = output
                 used.insert(output)

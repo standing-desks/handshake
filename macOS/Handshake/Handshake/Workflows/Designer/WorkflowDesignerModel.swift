@@ -14,6 +14,7 @@ final class WorkflowDesignerModel {
     private(set) var failure: String?
     private var skipNextUndo = false
     var decisionDrafts = WorkflowDecisionDrafts()
+    var alwaysOutputSettings = Set<String>()
     var decisionFocus: WorkflowDecisionIssue?
 
     init(type: CoreWorkflowType? = nil) {

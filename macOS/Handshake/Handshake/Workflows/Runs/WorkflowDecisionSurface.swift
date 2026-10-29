@@ -31,6 +31,13 @@ struct WorkflowDecisionSurface: View {
             report: run.decisionResults[key], node: node, output: output, destination: destination)
     }
 
+    private var alwaysDestinations: [String] {
+        guard let definition = run.workflowType?.definition else { return [] }
+        return (definition.graph?.agentEdges ?? []).filter { $0.from == role && $0.always }.map { edge in
+            definition.roles.first { $0.id == edge.to }?.name ?? edge.to
+        }
+    }
+
     private var isCompleted: Bool { run.agents.first { $0.id == agent.id }?.status == .completed }
 
     var body: some View {
@@ -73,6 +80,13 @@ struct WorkflowDecisionSurface: View {
                             ? "Evaluating captured inputs…" : "Waiting for a selected incoming route."
                     )
                     .foregroundStyle(.secondary)
+                }
+                if isCompleted, passthroughDestination == nil, !alwaysDestinations.isEmpty {
+                    Label(
+                        "Also sent to: \(alwaysDestinations.joined(separator: ", "))",
+                        systemImage: "arrow.triangle.branch"
+                    )
+                    .accessibilityIdentifier("decisionAlwaysSummary")
                 }
                 if let value = run.decisionResults[key] { jsonDisclosure("Typed result", value: value) }
                 if let value = run.decisionInputs[key] { jsonDisclosure("Captured inputs", value: value) }

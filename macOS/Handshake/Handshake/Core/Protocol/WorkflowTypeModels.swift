@@ -53,6 +53,7 @@ nonisolated struct CoreWorkflowType: Codable, Equatable, Identifiable, Sendable 
         var to: String
         var event: GraphEvent
         var output: String?
+        var always = false
     }
 
     struct Position: Codable, Hashable, Sendable {
@@ -219,4 +220,23 @@ extension CoreWorkflowType.Graph {
 nonisolated struct CoreWorkflowValidationIssue: Decodable, Equatable, Sendable {
     let element: String
     let message: String
+}
+
+extension CoreWorkflowType.Edge {
+    nonisolated private enum CodingKeys: String, CodingKey {
+        case id, from, event, output, always
+        // swiftlint:disable:next identifier_name
+        case to
+    }
+
+    nonisolated init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: try values.decode(String.self, forKey: .id),
+            from: try values.decode(String.self, forKey: .from),
+            to: try values.decode(String.self, forKey: .to),
+            event: try values.decode(CoreWorkflowType.GraphEvent.self, forKey: .event),
+            output: try values.decodeIfPresent(String.self, forKey: .output),
+            always: try values.decodeIfPresent(Bool.self, forKey: .always) ?? false)
+    }
 }

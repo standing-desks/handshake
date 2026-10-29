@@ -21,6 +21,7 @@ extension WorkflowDesignerModel {
             graph.edges.removeAll { $0.from == id && !destinations.insert($0.to).inserted }
             for index in graph.edges.indices where graph.edges[index].from == id {
                 graph.edges[index].output = nil
+                graph.edges[index].always = false
             }
         }
         definition.graph = graph

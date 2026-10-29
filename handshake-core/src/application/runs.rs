@@ -2098,6 +2098,7 @@ mod tests {
                 .iter()
                 .enumerate()
                 .map(|(index, (from, to, event))| crate::GraphEdge {
+                    always: false,
                     output: None,
                     id: index.to_string(),
                     from: (*from).into(),
@@ -4876,6 +4877,7 @@ os.execvp('pi', ['pi', '--append-system-prompt', instructions, '--', prompt])
             ("scope", "large", "implementer"),
         ] {
             graph.edges.push(crate::GraphEdge {
+                always: false,
                 id: format!("{from}-{output}"),
                 from: from.into(),
                 to: to.into(),
@@ -4905,6 +4907,8 @@ os.execvp('pi', ['pi', '--append-system-prompt', instructions, '--', prompt])
                 ("ready", Some("yes")) | ("classify" | "scope", Some("continue"))
             )
         });
+        graph.edges[0].always = true;
+        graph.edges[0].output = None;
         for node in graph.decisions.values_mut() {
             node.options.clear();
             node.question.clear();

@@ -6,7 +6,7 @@ struct WorkflowDecisionAnswerSettings: View {
     let id: String
     @Binding var decision: CoreWorkflowType.DecisionNode
 
-    private var edges: [CoreWorkflowType.Edge] { model.decisionEdges(id) }
+    private var edges: [CoreWorkflowType.Edge] { model.decisionEdges(id).filter { !$0.always } }
     private var uncertain: Bool { decision.trueThreshold > decision.falseThreshold }
 
     var body: some View {
