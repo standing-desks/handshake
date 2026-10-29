@@ -247,12 +247,6 @@ impl Application {
                 Ok(workflow_type) => workflow_type,
                 Err(error) => return Ok(super::rejection("invalidWorkflowType", &error)),
             };
-        if !self.decision_workflow_enabled(&workflow_type.definition)? {
-            return Ok(super::workflows::reject(
-                "experimentalFeatureDisabled",
-                "Enable Decision nodes in Settings → Experimental before starting this workflow.",
-            ));
-        }
         let mut run = match WorkflowRun::new(workflow_type, prompt, choices) {
             Ok(run) => run,
             Err(error) => return Ok(super::rejection("invalidWorkflowRun", &error)),
@@ -2126,13 +2120,6 @@ mod tests {
         definition: &crate::WorkflowTypeDefinition,
         prompt: &str,
     ) -> WorkflowId {
-        if definition
-            .graph
-            .as_ref()
-            .is_some_and(|graph| !graph.decisions.is_empty())
-        {
-            app.lock_inner().unwrap().config.experimental.decision_nodes = true;
-        }
         let reference = WorkflowCatalog::new(app.lock_inner().unwrap().folders.store())
             .create(definition)
             .unwrap();
@@ -4900,47 +4887,6 @@ os.execvp('pi', ['pi', '--append-system-prompt', instructions, '--', prompt])
     }
 
     #[test]
-    fn decision_workflows_require_experimental_opt_in_before_launch() {
-        let folder = tempfile::tempdir().unwrap();
-        let bin = tempfile::tempdir().unwrap();
-        let app = application(folder.path(), bin.path(), "exec cat");
-        app.lock_inner().unwrap().config.experimental.decision_nodes = false;
-        let definition = decision_chain_definition();
-        let reference = WorkflowCatalog::new(app.lock_inner().unwrap().folders.store())
-            .create(&definition)
-            .unwrap();
-        accepted(
-            &app,
-            Command::CreateWorkflow {
-                folder: folder.path().into(),
-                session_id: None,
-                kind: WorkflowKind::Draft,
-                roles: vec![],
-                size: SIZE,
-            },
-        );
-        let id = app.snapshot().unwrap().workflows.workflows[0].workflow_id;
-        let receipt = app
-            .handle_command(
-                RequestId(500),
-                Command::StartWorkflowRun {
-                    workflow_id: id,
-                    workflow_type: reference,
-                    prompt: "Test".into(),
-                    roles: vec![],
-                    size: SIZE,
-                },
-            )
-            .unwrap();
-        assert!(
-            matches!(receipt.disposition, CommandDisposition::Rejected { code, .. }
-            if code == "experimentalFeatureDisabled")
-        );
-        assert!(app.snapshot().unwrap().workflows.workflows[0].run.is_none());
-        assert!(!app.run_processes.lock().unwrap().contains_key(&id));
-    }
-
-    #[test]
     fn single_output_decision_chain_forwards_without_nouli_or_decision_results() {
         let folder = tempfile::tempdir().unwrap();
         let bin = tempfile::tempdir().unwrap();
@@ -5229,7 +5175,6 @@ os.execvp('pi', ['pi', '--append-system-prompt', instructions, '--', prompt])
                 path: folder.path().to_owned(),
             },
         );
-        app.lock_inner().unwrap().config.experimental.decision_nodes = true;
         let pid_file = folder.path().join("nouli.pid");
         fake_nouli(
             bin.path(),

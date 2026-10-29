@@ -5,14 +5,6 @@ import Testing
 
 @MainActor
 struct ExperimentalTests {
-    @Test func decisionNodesDecodeOffByDefaultAndAcceptExplicitOptIn() throws {
-        let decoder = JSONDecoder()
-        #expect(try decoder.decode(CoreExperimentalConfiguration.self, from: Data("{}".utf8)).decisionNodes == false)
-        let optedIn = try decoder.decode(
-            CoreExperimentalConfiguration.self, from: Data(#"{"decision_nodes":true}"#.utf8))
-        #expect(optedIn.decisionNodes && !optedIn.crossAgentMemoryConsolidation)
-    }
-
     @Test func browserControlIsOptIn() throws {
         let decoder = JSONDecoder()
         #expect(try !decoder.decode(CoreExperimentalConfiguration.self, from: Data("{}".utf8)).browserControl)

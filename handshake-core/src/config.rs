@@ -373,8 +373,10 @@ fn parse_document<T: serde::de::DeserializeOwned + Default>(
         serde_path_to_error::Deserializer::new(toml::Deserializer::from(table), &mut track);
     let result = serde_ignored::deserialize(deserializer, |key| {
         let segments = diagnostics::ignored_segments(&key);
-        // Tab improvements are standard; keep older settings readable without a warning.
-        if segments == ["experimental", "tab_management"] {
+        // Standard features ignore their obsolete experimental settings.
+        if segments == ["experimental", "tab_management"]
+            || segments == ["experimental", "decision_nodes"]
+        {
             return;
         }
         let offset = locations

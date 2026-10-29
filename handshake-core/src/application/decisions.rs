@@ -27,17 +27,6 @@ pub(super) struct PreparedDecision {
 }
 
 impl Application {
-    pub(super) fn decision_workflow_enabled(
-        &self,
-        definition: &crate::WorkflowTypeDefinition,
-    ) -> Result<bool, ApplicationError> {
-        Ok(definition
-            .graph
-            .as_ref()
-            .is_none_or(|graph| graph.decisions.is_empty())
-            || self.lock_inner()?.config.experimental.decision_nodes)
-    }
-
     pub(super) fn locate_run_harnesses(
         &self,
         run: &WorkflowRun,

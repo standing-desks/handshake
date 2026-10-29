@@ -11,7 +11,6 @@ use crate::{FileContent, FilePreview, FileSaveOutcome, FileSaveRequest, FileVers
 pub struct ExperimentalConfig {
     pub cross_agent_memory_consolidation: bool,
     pub browser_control: bool,
-    pub decision_nodes: bool,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -19,7 +18,6 @@ pub struct ExperimentalConfig {
 pub enum ExperimentalFeature {
     CrossAgentMemoryConsolidation,
     BrowserControl,
-    DecisionNodes,
 }
 
 #[derive(Debug, Serialize)]
@@ -36,24 +34,17 @@ pub struct ExperimentalSnapshot {
 }
 
 impl ExperimentalFeature {
-    const ALL: [Self; 3] = [Self::CrossAgentMemoryConsolidation, Self::BrowserControl, Self::DecisionNodes];
+    const ALL: [Self; 2] = [Self::CrossAgentMemoryConsolidation, Self::BrowserControl];
 
     fn key(self) -> &'static str {
         match self {
             Self::CrossAgentMemoryConsolidation => "cross_agent_memory_consolidation",
             Self::BrowserControl => "browser_control",
-            Self::DecisionNodes => "decision_nodes",
         }
     }
 
     fn state(self, features: &ExperimentalConfig) -> ExperimentalFeatureState {
         match self {
-            Self::DecisionNodes => ExperimentalFeatureState {
-                id: self,
-                title: "Decision nodes",
-                description: "Use Nouli to choose a connected workflow route. Single-output nodes pass work through.",
-                enabled: features.decision_nodes,
-            },
             Self::BrowserControl => ExperimentalFeatureState {
                 id: self,
                 title: "Agent browser control",
@@ -161,13 +152,13 @@ mod tests {
     use std::fs;
 
     #[test]
-    fn retired_tab_settings_are_ignored_and_memory_remains_opt_in() {
+    fn retired_settings_are_ignored_and_memory_remains_opt_in() {
         let root = tempfile::tempdir().unwrap();
         let path = root.path().join("config.toml");
         for retired in [false, true] {
             for memory in [None, Some(false), Some(true)] {
                 let source = format!(
-                    "[experimental]\ntab_management = {retired}\n{}",
+                    "[experimental]\ntab_management = {retired}\ndecision_nodes = {retired}\n{}",
                     memory.map_or_else(String::new, |enabled| format!(
                         "cross_agent_memory_consolidation = {enabled}\n"
                     ))
@@ -180,7 +171,7 @@ mod tests {
                 );
                 let features = ExperimentalFeature::ALL
                     .map(|feature| feature.state(&loaded.config.experimental));
-                assert_eq!(features.len(), 3);
+                assert_eq!(features.len(), 2);
                 assert_eq!(features[1].id, ExperimentalFeature::BrowserControl);
                 assert!(!features[1].enabled);
                 assert_eq!(
@@ -299,26 +290,4 @@ mod tests {
         );
         assert!(fs::read_to_string(&path).unwrap().contains("1000"));
     }
-    #[test]
-    fn decision_nodes_are_opt_in_and_persist_independently() {
-        assert!(!Config::default().experimental.decision_nodes);
-        let root = tempfile::tempdir().unwrap();
-        let path = root.path().join("config.toml");
-        fs::write(
-            &path,
-            "[experimental]\ncross_agent_memory_consolidation = true # keep\n",
-        )
-        .unwrap();
-        for enabled in [true, false] {
-            let version = editing::read_file(&path).unwrap().version.unwrap();
-            set_at(&path, ExperimentalFeature::DecisionNodes, enabled, version).unwrap();
-            let current = snapshot(editing::read_file(&path).unwrap()).unwrap();
-            assert_eq!(current.features[1].id, ExperimentalFeature::DecisionNodes);
-            assert_eq!(current.features[1].enabled, enabled);
-            assert!(current.features[0].enabled);
-            assert!(fs::read_to_string(&path).unwrap().contains("true # keep"));
-        }
-    }
-
-
 }
