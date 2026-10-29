@@ -196,6 +196,20 @@ fn record_event(
     run: &WorkflowRun,
     event: &WorkflowTrace,
 ) -> Result<(), StoreError> {
+    if matches!(event.kind.as_str(), "decisionStarted" | "decisionPaused")
+        && let Some(agent) = event.agent_id
+    {
+        let span = work_span(
+            transaction,
+            workflow_id,
+            run,
+            agent,
+            event.generation,
+            run.stage_name(),
+            event.timestamp,
+        )?;
+        return write_event(transaction, workflow_id, run, event, span);
+    }
     // A handoff starts the receiver's next assignment, before its process is launched.
     if event.kind == "handoff"
         && let Some(target) = event.target_agent_id

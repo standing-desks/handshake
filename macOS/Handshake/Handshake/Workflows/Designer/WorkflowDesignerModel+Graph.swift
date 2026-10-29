@@ -135,7 +135,9 @@ extension WorkflowDesignerModel {
             in: definition, near: .init(x: min(4000, original.x + 260), y: original.y))
         let reviews = definition.graph?.reviewsWork(id) == true
         let receive = definition.graph?.receive[id]
+        let decision = definition.graph?.decisions[id]
         definition.roles.append(agent)
+        definition.graph?.decisions[agent.id] = decision
         definition.graph?.positions[agent.id] = position
         definition.graph?.receive[agent.id] = receive
         if reviews { definition.graph?.reviewAgents.append(agent.id) }
@@ -161,6 +163,11 @@ extension WorkflowDesignerModel {
             definition.roles.contains(where: { $0.id == source }),
             definition.roles.contains(where: { $0.id == destination })
         else { return false }
+        if let decision = graph.decisions[source] {
+            return decision.outputs.contains { output in
+                !graph.edges.contains { $0.from == source && $0.output == output.id }
+            }
+        }
         let event = event ?? (graph.reviewsWork(source) ? .approved : .done)
         guard event != .task else { return false }
         return !graph.edges.contains { $0.from == source && $0.to == destination && $0.event == event }
@@ -168,6 +175,15 @@ extension WorkflowDesignerModel {
 
     func connect(from: String, to destination: String, event: CoreWorkflowType.GraphEvent? = nil) {
         guard canConnect(from: from, to: destination, event: event) else { return }
+        if let decision = definition.graph?.decisions[from] {
+            guard
+                let output = decision.outputs.first(where: { output in
+                    definition.graph?.edges.contains { $0.from == from && $0.output == output.id } != true
+                })
+            else { return }
+            connectDecision(from, output: output.id, to: destination)
+            return
+        }
         let event = event ?? (definition.graph?.reviewsWork(from) == true ? .approved : .done)
         definition.graph?.edges.append(
             .init(id: UUID().uuidString, from: from, to: destination, event: event))
@@ -186,6 +202,7 @@ extension WorkflowDesignerModel {
     }
 
     func removeGraphRole(_ id: String) {
+        definition.graph?.decisions.removeValue(forKey: id)
         definition.roles.removeAll { $0.id == id }
         definition.graph?.edges.removeAll { $0.from == id || $0.to == id }
         definition.graph?.positions.removeValue(forKey: id)

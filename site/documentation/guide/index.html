@@ -263,7 +263,7 @@ start or return results. Workflow settings offer <strong>Wait for all results</s
 <strong>Choose a result</strong>, and <strong>Compare times</strong>. Each option waits for active work to stop.
 Choose keeps all outputs and lets you select one. Compare times shows the time from task delivery
 to explicit completion for each final agent. A bounded activation limit stops repeated feedback loops.
-A graph can use up to five agents and 64 links.</p>
+A graph can use up to five interactive agents, 32 total nodes including decisions, and 64 links.</p>
 <p>Enter a name and use <strong>Save</strong> or <strong>⌘S</strong>. Use <strong>⌘Z</strong> to undo edits.
 The editor enables Save when the current graph is valid. From a launch form, <strong>Edit Workflow</strong>
 opens the editor in the same tab. Changes to a built-in save as a user workflow.</p>
@@ -272,6 +272,31 @@ Adversarial connects an Implementer to a Reviewer. The Reviewer can approve the 
 Coordinator connects a Planner to Worker 1 and Worker 2. Both workers receive the plan and work on their
 named parts. Their results go to a Coordinator, which waits for both and checks the combined work.
 The default files are included in <code>Handshake.app/Contents/Resources/workflows</code>.</p>
+<h3>Decision nodes</h3>
+<p>Right-click the workflow canvas and choose <strong>Add decision</strong>. A decision uses
+<strong>Nouli</strong> as its harness. Install the <code>nouli</code> executable on your PATH and configure
+its provider before starting a run. In the node’s <strong>Decision</strong> popover, enter one focused
+question and choose <strong>Choice</strong>, <strong>Noul (Yes/No)</strong>, or <strong>Score</strong>.
+Connect each named output to a receiving node. A receiving node can itself be another decision.
+Small graphs fit at up to 80% scale; the existing zoom controls can adjust the view.</p>
+<p>Choice sends work through the selected option. Noul uses explicit Yes and No probability thresholds;
+a gap adds an Uncertain output. Score uses ordered levels starting at zero and routes to the nearest
+level, with halfway values going to the higher level. The fractional score and full probability
+distribution stay in the typed result. An optional Choice fallback uses native provider confidence,
+which is separate from the probability of the selected option; validate its threshold for your task
+and provider. Missing gated confidence pauses the workflow.</p>
+<p>Enter a task in the launch form, or in a starting decision’s input surface. Each decision captures
+its declared incoming evidence and can include the original task. Only a selected route activates
+work. Unselected terminal roles are not required to produce results. Conditional branches must use
+<strong>Start as work arrives</strong>; waiting for every alternative branch would block a join.
+Use <strong>Launch defaults</strong> in each decision to set optional Nouli provider-profile and model
+overrides. Empty fields use Nouli’s configured defaults.</p>
+<p>Select a running decision’s subtab to inspect its captured inputs and typed result. Decision
+activations also appear in Traces. Refusal and provider failure pause without selecting a regular
+output. <strong>Retry captured decision</strong> explicitly retries the frozen inputs; the external
+Nouli configuration still supplies provider settings. Calls use <code>--no-session</code>; Handshake
+keeps the workflow evidence and trace history. TOML thresholds use basis points: <code>10000</code> represents 1.0. The chained example is in
+<code>examples/workflows/decision-triage.toml</code>.</p>
 <p>Start a graph, then enter the task in the first agent's terminal.
 Use <strong>Results</strong> to read all final outputs, select a result, or compare times.</p>
 <p>Handshake saves user types as versioned TOML files in <code>$XDG_CONFIG_HOME/handshake/workflows</code>.

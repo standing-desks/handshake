@@ -45,7 +45,10 @@ struct WorkflowGraphOverview: View {
             return ([role.name] + states).joined(separator: ", ")
         }
         func name(_ id: String) -> String { definition.roles.first { $0.id == id }?.name ?? "Agent" }
-        let links = (graph?.agentEdges ?? []).map { "\(name($0.from)) to \(name($0.to)): \($0.event.title)" }
+        let links = (graph?.agentEdges ?? []).map { edge in
+            let output = graph?.decisions[edge.from]?.outputs.first { $0.id == edge.output }?.name ?? edge.event.title
+            return "\(name(edge.from)) to \(name(edge.to)): \(output)"
+        }
         return (agents + links).joined(separator: "; ")
     }
 
@@ -82,7 +85,7 @@ struct WorkflowGraphOverview: View {
                 }.accessibilityHidden(true)
                 ForEach(definition.roles) { role in
                     WorkflowGraphCard(
-                        title: role.name, tint: role.color?.tint,
+                        title: role.name, decision: definition.graph?.decisions[role.id], tint: role.color?.tint,
                         startsHere: definition.graph?.startsAgent(role.id) == true,
                         returnsResult: definition.graph?.returnsResult(role.id) == true,
                         reviewsWork: definition.graph?.reviewsWork(role.id) == true

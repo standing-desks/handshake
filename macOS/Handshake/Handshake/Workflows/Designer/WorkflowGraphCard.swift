@@ -28,7 +28,9 @@ nonisolated enum WorkflowEditorLayout {
 
     static func fitScale(for definition: CoreWorkflowType.Definition, viewport: CGSize) -> CGFloat {
         let size = canvasSize(for: definition)
-        return min(1, max(1, viewport.width - 24) / size.width, max(1, viewport.height - 24) / size.height)
+        return min(
+            definition.graph?.decisions.isEmpty == false ? 0.8 : 1, max(1, viewport.width - 24) / size.width,
+            max(1, viewport.height - 24) / size.height)
     }
 
     private static func positions(for definition: CoreWorkflowType.Definition) -> [CoreWorkflowType.Position] {
@@ -100,6 +102,7 @@ enum WorkflowEditorStyle {
 
 struct WorkflowGraphCard: View {
     let title: String
+    var decision: CoreWorkflowType.DecisionNode?
     var emphasized = false
     var tint: Color?
     var startsHere = false
@@ -111,11 +114,23 @@ struct WorkflowGraphCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 9) {
-                Circle().fill(tint ?? .secondary).frame(width: 7, height: 7).accessibilityHidden(true)
+                if decision != nil {
+                    Image(systemName: "diamond.fill").font(.system(size: 8)).foregroundStyle(.secondary)
+                } else {
+                    Circle().fill(tint ?? .secondary).frame(width: 7, height: 7).accessibilityHidden(true)
+                }
                 Text(title).font(.headline).foregroundStyle(.primary).lineLimit(1)
             }
             Spacer(minLength: 8)
-            WorkflowAgentBadges(startsHere: startsHere, returnsResult: returnsResult, reviewsWork: reviewsWork)
+            if let decision {
+                HStack(spacing: 6) {
+                    Text(decision.kind.title).padding(4).background(
+                        Color.primary.opacity(0.05), in: .rect(cornerRadius: 4))
+                    Text("Nouli")
+                }.font(.caption2).foregroundStyle(.secondary)
+            } else {
+                WorkflowAgentBadges(startsHere: startsHere, returnsResult: returnsResult, reviewsWork: reviewsWork)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(14)

@@ -61,7 +61,7 @@ impl<'a> From<&'a Session> for WireSession<'a> {
 pub(super) struct WireWorkflow<'a> {
     restored: bool,
     terminal_history: Vec<WireWorkflowTerminal>,
-    run: Option<super::runs::WireRun<'a>>,
+    run: Option<Box<super::runs::WireRun<'a>>>,
     workflow_id: u64,
     session_id: u64,
     name: &'a str,
@@ -103,7 +103,7 @@ impl<'a> From<&'a Workflow> for WireWorkflow<'a> {
                     agent_id: entry.agent_id.map(|id| id.0),
                 })
                 .collect(),
-            run: workflow.run.as_deref().map(Into::into),
+            run: workflow.run.as_deref().map(|run| Box::new(run.into())),
             workflow_id: workflow.workflow_id.0,
             session_id: workflow.session_id.0,
             name: &workflow.name,
@@ -123,6 +123,7 @@ impl<'a> From<&'a Workflow> for WireWorkflow<'a> {
                 HarnessId::Omp => "omp",
                 HarnessId::Opencode => "opencode",
                 HarnessId::Kiro => "kiro",
+                HarnessId::Nouli => "nouli",
             }),
             terminal_id: workflow.terminal_id.value(),
             agents: workflow

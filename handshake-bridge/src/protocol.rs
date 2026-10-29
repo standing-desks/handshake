@@ -372,6 +372,7 @@ pub(crate) fn decode_command(bytes: &[u8]) -> Result<CommandEnvelope, BridgeErro
         | "completeWorkflowRole"
         | "continueWorkflowRun"
         | "setWorkflowIndividualMode"
+        | "retryDecision"
         | "cancelWorkflowRun" => known(runs::decode_command(command_type, &raw.command)?),
         "ping" => known(Command::Ping),
         "reloadConfig" => known(Command::ReloadConfig),

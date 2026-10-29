@@ -25,7 +25,7 @@ impl HarnessId {
     fn model_list_arguments(self) -> &'static [&'static str] {
         match self {
             Self::Codex => &["debug", "models"],
-            Self::ClaudeCode => &["--help"],
+            Self::ClaudeCode | Self::Nouli => &["--help"],
             Self::Pi => &["--list-models"],
             Self::Antigravity => &["models"],
             Self::Omp => &["models", "--json"],
@@ -199,7 +199,11 @@ fn list_models(
         HarnessId::Pi => Some("--thinking <level>"),
         HarnessId::Antigravity => Some("--effort"),
         HarnessId::Omp => Some("--thinking=<value>"),
-        HarnessId::Codex | HarnessId::ClaudeCode | HarnessId::Opencode | HarnessId::Kiro => None,
+        HarnessId::Nouli
+        | HarnessId::Codex
+        | HarnessId::ClaudeCode
+        | HarnessId::Opencode
+        | HarnessId::Kiro => None,
     };
     if let Some(option) = effort_option {
         models.efforts = help_levels(&run(&["--help"])?, option);

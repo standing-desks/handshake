@@ -209,5 +209,35 @@ struct WorkflowDesignerTests {
         manager.redo()
         #expect(model.definition == removed)
     }
+    @Test func decisionConnectionsSelectOutputsAndReconcileRemovedBranches() throws {
+        let model = WorkflowDesignerModel()
+        model.enableGraph()
+        let decision = model.addDecision(at: .init(x: 200, y: 200))
+        let receiver = model.addGraphRole(at: .init(x: 600, y: 200))
+        model.connect(from: decision, to: receiver)
+        model.connect(from: decision, to: receiver)
+        #expect(model.definition.graph?.edges.count == 2)
+        #expect(Set(model.definition.graph?.edges.compactMap(\.output) ?? []).count == 2)
+        model.definition.graph?.decisions[decision]?.minConfidence = 6_000
+        model.connectDecision(decision, output: "fallback", to: receiver)
+        model.definition.graph?.decisions[decision]?.minConfidence = nil
+        model.reconcileDecisionOutputs(decision)
+        #expect(model.definition.graph?.edges.count == 2)
+        #expect(model.definition.graph?.edges.contains { $0.output == "fallback" } == false)
+        model.definition.graph?.decisions[decision]?.kind = .noul
+        model.resetDecisionOutputs(decision)
+        for output in ["yes", "no", "uncertain"] { model.connectDecision(decision, output: output, to: receiver) }
+        model.definition.graph?.decisions[decision]?.trueThreshold = 5_000
+        model.definition.graph?.decisions[decision]?.falseThreshold = 5_000
+        model.reconcileDecisionOutputs(decision)
+        #expect(model.definition.graph?.edges.compactMap(\.output).sorted() == ["no", "yes"])
+        let copy = try #require(model.duplicateGraphAgent(decision))
+        #expect(model.definition.graph?.decisions[copy] == model.definition.graph?.decisions[decision])
+        #expect(model.definition.graph?.edges.contains { $0.from == copy || $0.to == copy } == false)
+        let encoded = try JSONEncoder().encode(model.definition)
+        let decoded = try JSONDecoder().decode(CoreWorkflowType.Definition.self, from: encoded)
+        #expect(decoded == model.definition)
+        #expect(model.outputTitle(try #require(model.definition.graph?.edges.first { $0.output == "no" })) == "No")
+    }
 
 }

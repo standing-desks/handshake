@@ -25,7 +25,7 @@ struct WorkflowGraphConnections: View {
                     selection = .edge(edge.id)
                 } label: {
                     HStack(spacing: 4) {
-                        Text(edge.event.title)
+                        Text(model.outputTitle(edge))
                         MenuChevron()
                     }
                     .font(.caption2).foregroundStyle(.secondary)
@@ -51,7 +51,7 @@ struct WorkflowGraphConnections: View {
         ZStack(alignment: .topLeading) {
             ForEach(edges) { edge in
                 WorkflowConnectionShape(
-                    from: point(edge.from), destination: point(edge.to), feedback: edge.event == .feedback,
+                    from: sourcePoint(edge), destination: point(edge.to), feedback: edge.event == .feedback,
                     lane: WorkflowEditorLayout.returnLane(for: edge, edges: edges, point: point)
                 )
                 .stroke(
@@ -76,15 +76,26 @@ struct WorkflowGraphConnections: View {
         (model.definition.roles.first { $0.id == source }?.color?.tint ?? .secondary).opacity(0.65)
     }
 
+    private func sourcePoint(_ edge: CoreWorkflowType.Edge) -> CGPoint {
+        var source = point(edge.from)
+        guard let outputs = model.definition.graph?.decisions[edge.from]?.outputs, outputs.count <= 5 else {
+            return source
+        }
+        if let index = outputs.firstIndex(where: { $0.id == edge.output }) {
+            source.y += (CGFloat(index) - CGFloat(outputs.count - 1) / 2) * 18
+        }
+        return source
+    }
+
     func linkTitle(_ edge: CoreWorkflowType.Edge) -> String {
         func name(_ id: String) -> String {
             model.definition.roles.first { $0.id == id }?.name ?? id.capitalized
         }
-        return "\(name(edge.from)) to \(name(edge.to)): \(edge.event.title)"
+        return "\(name(edge.from)) to \(name(edge.to)): \(model.outputTitle(edge))"
     }
 
     func labelPoint(_ edge: CoreWorkflowType.Edge) -> CGPoint {
-        let from = point(edge.from)
+        let from = sourcePoint(edge)
         let destination = point(edge.to)
         if let lane = WorkflowEditorLayout.returnLane(for: edge, edges: edges, point: point) {
             return CGPoint(

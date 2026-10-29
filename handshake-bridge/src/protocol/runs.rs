@@ -24,6 +24,10 @@ pub(super) struct WireRun<'a> {
     agents: Vec<WireRunAgent<'a>>,
     outputs: Vec<&'a handshake_core::GraphOutput>,
     selected_result: Option<u64>,
+    decision_results: std::collections::BTreeMap<u64, String>,
+    decision_inputs: std::collections::BTreeMap<u64, String>,
+    decision_outputs: std::collections::BTreeMap<u64, String>,
+    decision_errors: std::collections::BTreeMap<u64, String>,
 }
 
 #[derive(Serialize)]
@@ -52,6 +56,28 @@ impl<'a> From<&'a WorkflowRun> for WireRun<'a> {
     fn from(run: &'a WorkflowRun) -> Self {
         let active = run.active_agents();
         Self {
+            decision_results: run
+                .graph
+                .iter()
+                .flat_map(|g| &g.decision_results)
+                .map(|(id, result)| (*id, result.to_string()))
+                .collect(),
+            decision_inputs: run
+                .graph
+                .iter()
+                .flat_map(|g| &g.decision_requests)
+                .map(|(id, result)| (*id, result.to_string()))
+                .collect(),
+            decision_outputs: run
+                .graph
+                .as_ref()
+                .map(|g| g.decision_outputs.clone())
+                .unwrap_or_default(),
+            decision_errors: run
+                .graph
+                .as_ref()
+                .map(|g| g.decision_errors.clone())
+                .unwrap_or_default(),
             generation: run.generation,
             individual_mode: run.individual_mode,
             mode_revision: run.mode_revision,
@@ -136,6 +162,21 @@ struct RawIndividualMode {
     individual_mode: bool,
 }
 
+fn decode_retry(raw: &Value) -> Result<Command, BridgeError> {
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase", deny_unknown_fields)]
+    struct Raw {
+        workflow_id: u64,
+        generation: u64,
+    }
+    let raw: Raw =
+        serde_json::from_value(raw.clone()).map_err(|_| BridgeError::MalformedCommand)?;
+    Ok(Command::RetryDecision {
+        workflow_id: WorkflowId(raw.workflow_id),
+        generation: raw.generation,
+    })
+}
+
 pub(super) fn decode_command(kind: &str, raw: &Value) -> Result<Command, BridgeError> {
     match kind {
         "submitWorkflowTask" => {
@@ -216,6 +257,7 @@ pub(super) fn decode_command(kind: &str, raw: &Value) -> Result<Command, BridgeE
                 individual_mode: raw.individual_mode,
             })
         }
+        "retryDecision" => decode_retry(raw),
         "cancelWorkflowRun" => raw
             .get("workflowId")
             .and_then(Value::as_u64)

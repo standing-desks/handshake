@@ -1,0 +1,207 @@
+# Three Nouli decisions route one task to a receiving agent.
+schema_version = 2
+id = 202610280001
+version = 1
+
+[definition]
+name = "Triage and assign"
+description = "Check readiness, classify the change, then assess its scope with Nouli."
+
+[[definition.roles]]
+id = "ready"
+name = "Task ready?"
+instructions = "Evaluate the incoming work with Nouli."
+instances = { min = 1, max = 1 }
+
+[[definition.roles]]
+id = "classify"
+name = "Classify change"
+instructions = "Evaluate the incoming work with Nouli."
+instances = { min = 1, max = 1 }
+
+[[definition.roles]]
+id = "scope"
+name = "Assess scope"
+instructions = "Evaluate the incoming work with Nouli."
+instances = { min = 1, max = 1 }
+
+[[definition.roles]]
+id = "implementer"
+name = "Implementer"
+instructions = "Complete the received task and report the complete result when done."
+instances = { min = 1, max = 1 }
+color = "blue"
+
+[[definition.roles]]
+id = "planner"
+name = "Planner"
+instructions = "Complete the received task and report the complete result when done."
+instances = { min = 1, max = 1 }
+color = "orange"
+
+[[definition.roles]]
+id = "architect"
+name = "Architect"
+instructions = "Complete the received task and report the complete result when done."
+instances = { min = 1, max = 1 }
+color = "orange"
+
+[[definition.roles]]
+id = "coordinator"
+name = "Coordinator"
+instructions = "Complete the received task and report the complete result when done."
+instances = { min = 1, max = 1 }
+color = "purple"
+
+[[definition.roles]]
+id = "debugger"
+name = "Debugger"
+instructions = "Complete the received task and report the complete result when done."
+instances = { min = 1, max = 1 }
+color = "green"
+
+[definition.graph]
+finish = "all"
+max_activations = 32
+
+[definition.graph.positions.ready]
+x = 160
+y = 250
+
+[definition.graph.positions.classify]
+x = 650
+y = 250
+
+[definition.graph.positions.scope]
+x = 1140
+y = 250
+
+[definition.graph.positions.implementer]
+x = 1630
+y = 80
+
+[definition.graph.positions.planner]
+x = 1630
+y = 250
+
+[definition.graph.positions.architect]
+x = 1630
+y = 420
+
+[definition.graph.positions.coordinator]
+x = 650
+y = 570
+
+[definition.graph.positions.debugger]
+x = 1140
+y = 570
+
+[definition.graph.decisions.ready]
+kind = "noul"
+question = "Does the request specify observable desired behavior and a way to verify it?"
+include_task = true
+true_threshold = 8000
+false_threshold = 2000
+
+[definition.graph.decisions.classify]
+kind = "choice"
+question = "What kind of change does the request describe?"
+include_task = true
+
+[[definition.graph.decisions.classify.options]]
+id = "feature"
+name = "Feature"
+description = "Adds or extends a capability."
+
+[[definition.graph.decisions.classify.options]]
+id = "fix"
+name = "Fix"
+description = "Corrects behavior against an existing requirement."
+
+[[definition.graph.decisions.classify.options]]
+id = "other"
+name = "Other"
+description = "Documentation, maintenance, or work outside the other categories."
+
+[definition.graph.decisions.scope]
+kind = "score"
+question = "How broad is the change based on the supplied implementation context?"
+include_task = true
+
+[[definition.graph.decisions.scope.options]]
+id = "small"
+name = "Small"
+description = "One isolated change within a component."
+
+[[definition.graph.decisions.scope.options]]
+id = "medium"
+name = "Medium"
+description = "Related changes across several components."
+
+[[definition.graph.decisions.scope.options]]
+id = "large"
+name = "Large"
+description = "Architectural changes spanning subsystems."
+
+[[definition.graph.edges]]
+id = "ready-yes"
+from = "ready"
+to = "classify"
+event = "done"
+output = "yes"
+
+[[definition.graph.edges]]
+id = "ready-no"
+from = "ready"
+to = "coordinator"
+event = "done"
+output = "no"
+
+[[definition.graph.edges]]
+id = "ready-uncertain"
+from = "ready"
+to = "coordinator"
+event = "done"
+output = "uncertain"
+
+[[definition.graph.edges]]
+id = "classify-feature"
+from = "classify"
+to = "scope"
+event = "done"
+output = "feature"
+
+[[definition.graph.edges]]
+id = "classify-fix"
+from = "classify"
+to = "debugger"
+event = "done"
+output = "fix"
+
+[[definition.graph.edges]]
+id = "classify-other"
+from = "classify"
+to = "coordinator"
+event = "done"
+output = "other"
+
+[[definition.graph.edges]]
+id = "scope-small"
+from = "scope"
+to = "implementer"
+event = "done"
+output = "small"
+
+[[definition.graph.edges]]
+id = "scope-medium"
+from = "scope"
+to = "planner"
+event = "done"
+output = "medium"
+
+[[definition.graph.edges]]
+id = "scope-large"
+from = "scope"
+to = "architect"
+event = "done"
+output = "large"

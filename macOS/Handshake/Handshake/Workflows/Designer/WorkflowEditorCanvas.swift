@@ -79,6 +79,7 @@ struct WorkflowEditorCanvas: View {
                 }
             )
             .contextMenu {
+                Button("Add decision", systemImage: "arrow.triangle.branch") { addDecision(at: contextPoint) }
                 Button("Add agent", systemImage: "plus") { addAgent(at: contextPoint) }
                     .accessibilityIdentifier("designerAddRole")
                 Button("Workflow settings", systemImage: "slider.horizontal.3") {
@@ -105,6 +106,15 @@ struct WorkflowEditorCanvas: View {
         selection = nil
         cancelConnection()
         canvasFocused = true
+    }
+
+    private func addDecision(at location: CGPoint) {
+        clearSelection()
+        showsSettings = false
+        let position = CoreWorkflowType.Position(
+            x: Int(min(4000, max(0, location.x / zoom - offset.width))),
+            y: Int(min(4000, max(0, location.y / zoom - offset.height))))
+        selection = .node(model.addDecision(at: position))
     }
 
     private func addAgent(at location: CGPoint) {
@@ -156,7 +166,7 @@ struct WorkflowEditorCanvas: View {
             }
         } label: {
             WorkflowGraphCard(
-                title: role?.name ?? "Agent",
+                title: role?.name ?? "Agent", decision: model.definition.graph?.decisions[id],
                 emphasized: connecting == id || selectedNodeID == id || connectionTarget == id,
                 tint: role?.color?.tint,
                 startsHere: graph?.startsAgent(id) == true,
@@ -172,7 +182,7 @@ struct WorkflowEditorCanvas: View {
             connector(id, output: false).offset(x: -WorkflowEditorLayout.portHitSize / 2)
         }
         .overlay(alignment: .trailing) {
-            connector(id, output: true).offset(x: WorkflowEditorLayout.portHitSize / 2)
+            outputConnector(id, name: role?.name ?? id)
         }
         .popover(isPresented: nodePresentation(id)) {
             nodeEditor(id, role: role).onExitCommand(perform: closeNodeEditor)
@@ -193,9 +203,41 @@ struct WorkflowEditorCanvas: View {
 
     }
 
+}
+
+extension WorkflowEditorCanvas {
+    @ViewBuilder
+    private func outputConnector(_ id: String, name: String) -> some View {
+        if let decision = model.definition.graph?.decisions[id], decision.outputs.count <= 5 {
+            VStack(spacing: 8) {
+                ForEach(decision.outputs) { output in
+                    Menu {
+                        ForEach(model.definition.roles.filter { $0.id != id }) { target in
+                            Button(target.name) {
+                                model.connectDecision(id, output: output.id, to: target.id)
+                                cancelConnection()
+                            }
+                        }
+                    } label: {
+                        Circle().fill(WorkflowEditorStyle.card)
+                            .overlay { Circle().stroke(Color.accentColor, lineWidth: 1.5) }
+                            .frame(width: 10, height: 10)
+                    }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                    .help("Connect \(output.name)")
+                    .accessibilityLabel("Connect \(output.name) from \(name)")
+                }
+            }.offset(x: 5)
+        } else {
+            connector(id, output: true).offset(x: WorkflowEditorLayout.portHitSize / 2)
+        }
+    }
+
     @ViewBuilder
     private func nodeEditor(_ id: String, role: CoreWorkflowType.Role?) -> some View {
-        if let role {
+        if let role, model.definition.graph?.decisions[id] != nil {
+            WorkflowDecisionPopover(model: model, role: role, close: closeNodeEditor).appZoom()
+        } else if let role {
             WorkflowGraphAgentPopover(model: model, role: role, close: closeNodeEditor).appZoom()
         }
     }

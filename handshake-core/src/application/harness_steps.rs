@@ -212,6 +212,9 @@ impl Application {
             .replay_position(terminal_id)
             .map_err(std::io::Error::other)
             .and_then(|position| match harness {
+                HarnessId::Nouli => Err(std::io::Error::other(
+                    "Nouli uses structured decision input.",
+                )),
                 HarnessId::ClaudeCode => crate::harness::claude::prepare(position),
                 HarnessId::Codex => crate::harness::codex::prepare(position),
                 HarnessId::Pi | HarnessId::Omp => crate::harness::pi::prepare(position, harness),

@@ -55,6 +55,12 @@ impl HarnessId {
     pub(crate) fn parse_models(self, output: &str) -> Result<HarnessModels, ModelListError> {
         let name = self.definition().name;
         match self {
+            Self::Nouli => Ok(HarnessModels {
+                models: Vec::new(),
+                allows_custom: true,
+                efforts: Vec::new(),
+                supports_yolo: false,
+            }),
             Self::Codex => {
                 let models = parse_codex(output).ok_or(ModelListError::Unreadable(name))?;
                 // The default model's levels aren't listed, so offer every level some model takes.

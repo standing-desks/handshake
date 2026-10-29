@@ -51,12 +51,17 @@ nonisolated struct CoreWorkflowRun: Decodable, Equatable, Sendable {
     var workflowType: CoreWorkflowType?
     var individualMode = false
     var modeRevision: UInt64 = 0
+    var decisionResults: [String: String] = [:]
+    var decisionInputs: [String: String] = [:]
+    var decisionOutputs: [String: String] = [:]
+    var decisionErrors: [String: String] = [:]
 
     var canChangeIndividualMode: Bool { status == .completed || status == .limitReached }
 
     private enum CodingKeys: String, CodingKey {
         case generation, stage, status, message, needsTask, agents, workflowType, individualMode, modeRevision, outputs,
             selectedResult
+        case decisionResults, decisionInputs, decisionOutputs, decisionErrors
         case stageID = "stageId"
     }
 
@@ -109,6 +114,10 @@ nonisolated struct CoreWorkflowRun: Decodable, Equatable, Sendable {
 extension CoreWorkflowRun {
     nonisolated init(from decoder: any Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
+        decisionResults = try values.decodeIfPresent([String: String].self, forKey: .decisionResults) ?? [:]
+        decisionInputs = try values.decodeIfPresent([String: String].self, forKey: .decisionInputs) ?? [:]
+        decisionOutputs = try values.decodeIfPresent([String: String].self, forKey: .decisionOutputs) ?? [:]
+        decisionErrors = try values.decodeIfPresent([String: String].self, forKey: .decisionErrors) ?? [:]
         generation = try values.decode(UInt64.self, forKey: .generation)
         stage = try values.decode(String.self, forKey: .stage)
         status = try values.decode(Status.self, forKey: .status)

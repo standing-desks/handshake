@@ -195,45 +195,62 @@ struct WorkflowLinkPopover: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("\(name(edge.from)) → \(name(edge.to))").font(.headline)
-            Picker(
-                "Send work when",
-                selection: Binding(
-                    get: { model.definition.graph?.edges.first { $0.id == edge.id }?.event ?? edge.event },
-                    set: { value in
-                        guard let index = model.definition.graph?.edges.firstIndex(where: { $0.id == edge.id }) else {
-                            return
-                        }
-                        model.definition.graph?.edges[index].event = value
-                        if value == .feedback || value == .approved {
-                            model.setGraphReview(edge.from, enabled: true)
-                        }
-                    })
-            ) {
-                ForEach(events, id: \.self) { event in
-                    Text(event.title).tag(event).disabled(
-                        model.definition.graph?.edges.contains {
-                            $0.id != edge.id && $0.from == edge.from && $0.to == edge.to && $0.event == event
-                        } == true)
+            if let decision = model.definition.graph?.decisions[edge.from] {
+                Picker(
+                    "Selected output",
+                    selection: Binding(
+                        get: { model.definition.graph?.edges.first { $0.id == edge.id }?.output ?? "" },
+                        set: { output in
+                            if let index = model.definition.graph?.edges.firstIndex(where: { $0.id == edge.id }) {
+                                model.definition.graph?.edges[index].output = output
+                            }
+                        })
+                ) {
+                    ForEach(decision.outputs, id: \.id) { Text($0.name).tag($0.id) }
                 }
-            }
-            .accessibilityIdentifier("graphLinkEvent")
-            Text(eventDescription).font(.caption).foregroundStyle(.secondary)
-            Menu("Add another event") {
-                ForEach(
-                    events.filter { event in
+                Text("Send work only when this decision output is selected.").font(.caption).foregroundStyle(.secondary)
+            } else {
+                Picker(
+                    "Send work when",
+                    selection: Binding(
+                        get: { model.definition.graph?.edges.first { $0.id == edge.id }?.event ?? edge.event },
+                        set: { value in
+                            guard let index = model.definition.graph?.edges.firstIndex(where: { $0.id == edge.id })
+                            else {
+                                return
+                            }
+                            model.definition.graph?.edges[index].event = value
+                            if value == .feedback || value == .approved {
+                                model.setGraphReview(edge.from, enabled: true)
+                            }
+                        })
+                ) {
+                    ForEach(events, id: \.self) { event in
+                        Text(event.title).tag(event).disabled(
+                            model.definition.graph?.edges.contains {
+                                $0.id != edge.id && $0.from == edge.from && $0.to == edge.to && $0.event == event
+                            } == true)
+                    }
+                }
+                .accessibilityIdentifier("graphLinkEvent")
+                Text(eventDescription).font(.caption).foregroundStyle(.secondary)
+                Menu("Add another event") {
+                    ForEach(
+                        events.filter { event in
+                            model.definition.graph?.edges.contains {
+                                $0.from == edge.from && $0.to == edge.to && $0.event == event
+                            } != true
+                        }, id: \.self
+                    ) { event in
+                        Button(event.title) { model.connect(from: edge.from, to: edge.to, event: event) }
+                    }
+                }.disabled(
+                    events.allSatisfy { event in
                         model.definition.graph?.edges.contains {
                             $0.from == edge.from && $0.to == edge.to && $0.event == event
-                        } != true
-                    }, id: \.self
-                ) { event in
-                    Button(event.title) { model.connect(from: edge.from, to: edge.to, event: event) }
-                }
-            }.disabled(
-                events.allSatisfy { event in
-                    model.definition.graph?.edges.contains {
-                        $0.from == edge.from && $0.to == edge.to && $0.event == event
-                    } == true
-                })
+                        } == true
+                    })
+            }
             HStack {
                 Button("Delete link", role: .destructive) {
                     close()

@@ -43,6 +43,7 @@ nonisolated enum CoreCommand: Sendable {
     case setWorkflowIndividualMode(workflowID: UInt64, generation: UInt64, modeRevision: UInt64, individualMode: Bool)
     case submitWorkflowTask(workflowID: UInt64, generation: UInt64, prompt: String)
     case chooseWorkflowResult(workflowID: UInt64, generation: UInt64, agentID: UInt64)
+    case retryDecision(workflowID: UInt64, generation: UInt64)
     case cancelWorkflowRun(workflowID: UInt64)
     case startTerminal(workingDirectory: String, size: CoreTerminalSize)
     case closeTerminal(terminalID: UInt64)

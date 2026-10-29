@@ -14,6 +14,14 @@ const MAX_QUEUED: usize = 32;
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GraphRun {
+    #[serde(default)]
+    pub decision_requests: BTreeMap<u64, serde_json::Value>,
+    #[serde(default)]
+    pub decision_results: BTreeMap<u64, serde_json::Value>,
+    #[serde(default)]
+    pub decision_outputs: BTreeMap<u64, String>,
+    #[serde(default)]
+    pub decision_errors: BTreeMap<u64, String>,
     pub started: bool,
     pub ready: BTreeSet<u64>,
     #[serde(default)]
@@ -290,6 +298,16 @@ impl WorkflowRun {
             .as_ref()
             .ok_or(RunError::InvalidType)?
             .clone();
+        if definition.decisions.contains_key(&sender.role)
+            && !self
+                .graph
+                .as_ref()
+                .expect("graph")
+                .decision_outputs
+                .contains_key(&agent_id)
+        {
+            return Err(RunError::Decision);
+        }
         let event = match signal.decision {
             Decision::Done if !self.is_reviewer(agent_id) => GraphEvent::Done,
             Decision::Approve if self.is_reviewer(agent_id) => GraphEvent::Approved,
@@ -359,7 +377,11 @@ impl WorkflowRun {
             && self
                 .agents
                 .iter()
-                .filter(|agent| definition.is_result(&agent.role))
+                .filter(|agent| {
+                    definition.is_result(&agent.role)
+                        && (definition.decisions.is_empty()
+                            || graph.activations.contains_key(&agent.agent_id))
+                })
                 .all(|agent| graph.outputs.contains_key(&agent.agent_id))
     }
 
@@ -432,11 +454,19 @@ impl WorkflowRun {
                 },
             );
         }
-        for edge in definition
-            .edges
-            .iter()
-            .filter(|edge| edge.from == sender.role && edge.event == event)
-        {
+        let selected_output = self
+            .graph
+            .as_ref()
+            .and_then(|g| g.decision_outputs.get(&sender.agent_id))
+            .cloned();
+        for edge in definition.edges.iter().filter(|edge| {
+            edge.from == sender.role
+                && edge.event == event
+                && edge
+                    .output
+                    .as_ref()
+                    .is_none_or(|output| selected_output.as_ref() == Some(output))
+        }) {
             if edge.to == "finish" {
                 let graph = self.graph.as_mut().expect("graph");
                 graph
@@ -555,6 +585,9 @@ impl WorkflowRun {
                 .or_default() += 1;
             graph.started_at.insert(agent.agent_id, timestamp());
             graph.outputs.remove(&agent.agent_id);
+            graph.decision_requests.remove(&agent.agent_id);
+            graph.decision_results.remove(&agent.agent_id);
+            graph.decision_outputs.remove(&agent.agent_id);
             for edge in definition
                 .edges
                 .iter()
@@ -661,10 +694,12 @@ mod tests {
             handoffs: vec![],
             review_loops: vec![],
             graph: Some(AgentGraph {
+                decisions: std::collections::BTreeMap::new(),
                 edges: edges
                     .iter()
                     .enumerate()
                     .map(|(index, (from, to, event))| GraphEdge {
+                        output: None,
                         id: index.to_string(),
                         from: (*from).into(),
                         to: (*to).into(),

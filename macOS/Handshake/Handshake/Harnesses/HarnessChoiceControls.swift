@@ -121,7 +121,7 @@ struct HarnessChoiceRow: View {
         let available: [CoreHarness] =
             adaptsChoiceToCatalog
             ? catalog.availableHarnesses(folder: client.snapshot?.folders.openFolder)
-            : CoreHarness.allCases
+            : CoreHarness.allCases.filter { $0 != .nouli }
         return Picker(title, selection: Binding(get: { choice.harness }, set: { choice.switchHarness(to: $0) })) {
             if available.isEmpty {
                 Text("No agents available")
