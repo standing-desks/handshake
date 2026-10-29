@@ -57,8 +57,12 @@ runs:
       uses: actions/cache/restore@v6
       with:
         path: out/dependencies/SourcePackages
+        # Never restore a checkout modified by a different dependency patch.
         key: >-
-          swift-packages-v2-xcode27-${{ runner.arch }}-${{
+          swift-packages-v3-xcode27-${{ runner.arch }}-${{
+          hashFiles('macOS/Handshake/Scripts/SwiftTerm/*.patch') }}-${{
           hashFiles('macOS/**/Package.resolved', 'macOS/**/Package.swift',
           'macOS/Handshake/Handshake.xcodeproj/project.pbxproj') }}
-        restore-keys: swift-packages-v2-xcode27-${{ runner.arch }}-
+        restore-keys: >-
+          swift-packages-v3-xcode27-${{ runner.arch }}-${{
+          hashFiles('macOS/Handshake/Scripts/SwiftTerm/*.patch') }}-

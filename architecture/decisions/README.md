@@ -31,4 +31,4 @@ revert. Historical source inventories retain the paths recorded at that time.
 | [0011](0011-keep-awake.md) | Accepted | Put Keep Awake in the top-right window toolbar |
 | [0012](0012-control-the-embedded-browser-through-core.md) | Accepted | Control the embedded browser through core and a bundled CLI |
 | [0013](0013-name-traces-and-detect-foreground-shell-agents.md) | Accepted | Name traces from prompts and recognize foreground shell agents |
-| [0014](0014-evaluate-ghostty-without-changing-terminal-ownership.md) | Proposed | Evaluate Ghostty while preserving core terminal ownership |
+| [0014](0014-evaluate-ghostty-without-changing-terminal-ownership.md) | Accepted | Retain SwiftTerm and align terminal glyphs to device pixels |

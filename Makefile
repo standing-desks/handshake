@@ -16,6 +16,7 @@ XCODEBUILD_RELEASE := $(XCODEBUILD) -configuration Release -destination 'generic
 RELEASE_SETTINGS := ARCHS=arm64 GCC_GENERATE_DEBUGGING_SYMBOLS=NO DEBUG_INFORMATION_FORMAT= \
 	ENABLE_CODE_COVERAGE=NO CLANG_ENABLE_CODE_COVERAGE=NO SWIFT_OPTIMIZATION_LEVEL=-O SWIFT_COMPILATION_MODE=wholemodule
 XCODE_BUILD_ARGS ?=
+APP_TEST_ARGS ?= -only-testing:HandshakeTests
 FRAMEWORK_BUILD := sh macOS/HandshakeCorePackage/build.sh
 FRAMEWORK_SELECT := sh macOS/HandshakeCorePackage/select.sh
 TESTS_DIR := $(OUT)/tests/build
@@ -85,6 +86,7 @@ UI_DEFAULT_TESTS := testFirstLaunchShowsStartPage \
 	testSessionsOwnTabsAndRestoreFreshShellsAfterRelaunch \
 	testQuitStopsShellAndDescendant \
 	testTerminalRunsLibraryInjectionAndDebugger \
+	testTerminalRenderingRemainsUsableAcrossZoomAndResize \
 	testShellAgentPresentationPreservesShellAndReturnsAfterExit \
 	testWorkflowTraceUsesPromptInsteadOfGraphAndSurvivesRelaunch \
 	testSingleAgentStartsInteractivelyTakesInputAndCancels \
@@ -204,7 +206,7 @@ lint-app: $(call needs,deps-debug) ## Lint the app
 	macOS/Handshake/Scripts/swiftlint.sh
 
 .PHONY: test-app
-test-app: $(call needs,build-tests) ## Run the app's unit tests
+test-app: $(call needs,build-tests) ## Run app unit tests (APP_TEST_ARGS='-only-testing:HandshakeTests/Suite')
 	@set -eu; \
 	handshake_test_data=$$(mktemp -d "$${TMPDIR:-/tmp}/handshake-unit-tests.XXXXXX"); \
 	trap 'rm -rf "$$handshake_test_data"' EXIT; \
@@ -214,7 +216,7 @@ test-app: $(call needs,build-tests) ## Run the app's unit tests
 	TEST_RUNNER_CLAUDE_CONFIG_DIR="$$handshake_test_data/native/claude" \
 	TEST_RUNNER_HANDSHAKE_DATA_DIRECTORY="$$handshake_test_data" \
 	TEST_RUNNER_XDG_CONFIG_HOME="$$handshake_test_data/config" $(TEST_ENV) \
-		$(TEST_RUN) -only-testing:HandshakeTests
+		$(TEST_RUN) $(APP_TEST_ARGS)
 
 .PHONY: check-app
 check-app: lint-app test-app ## Lint and unit-test the app
@@ -231,7 +233,7 @@ ui-test-visual: ## Run the visual UI tests
 .PHONY: lint-ci
 lint-ci: check-assets ## Lint CI workflows and build scripts
 	$(ACTIONLINT) -ignore 'label "xcode-27" is unknown'
-	shellcheck scripts/*.sh macOS/HandshakeCorePackage/*.sh macOS/Handshake/Scripts/swiftlint.sh
+	shellcheck scripts/*.sh macOS/HandshakeCorePackage/*.sh macOS/Handshake/Scripts/*.sh
 
 .PHONY: check-bundle
 check-bundle: ## Test and lint the release scripts
@@ -255,12 +257,14 @@ deps-debug: $(call needs,framework-debug)
 	mkdir -p "$(OUT)/dependencies/tmp"
 	$(FRAMEWORK_SELECT) debug
 	$(XCODEBUILD_DEBUG) -derivedDataPath "$(OUT)/debug" -resolvePackageDependencies
+	sh macOS/Handshake/Scripts/prepare-swiftterm.sh "$(SWIFT_PACKAGES_DIR)/checkouts/SwiftTerm"
 
 .PHONY: deps-release
 deps-release: $(call needs,framework-release)
 	mkdir -p "$(OUT)/dependencies/tmp"
 	$(FRAMEWORK_SELECT) release
 	$(XCODEBUILD_RELEASE) -derivedDataPath "$(OUT)/release" -resolvePackageDependencies
+	sh macOS/Handshake/Scripts/prepare-swiftterm.sh "$(SWIFT_PACKAGES_DIR)/checkouts/SwiftTerm"
 
 .PHONY: build-tests
 build-tests: $(call needs,deps-debug)
