@@ -41,6 +41,51 @@ extension HandshakeUITests {
     }
 
     @MainActor
+    func testDecisionNodesSwitchFromAgentsAndRouteThroughSharedDragConnectors() throws {
+        let app = try launchGraphDesigner()
+        defer { app.terminate() }
+        let editor = WorkflowGraphExampleUI(app: app, testCase: self)
+        editor.item("workflowCreateOwn").click()
+        editor.replace("designerName", with: "Decision routes")
+        let canvas = editor.item("designerContent")
+        let origin = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.22, dy: 0.45))
+        origin.doubleClick()
+        editor.replace("graphAgentName", with: "Router")
+        editor.item("graphNodeKind").radioButtons["Decision"].click()
+        XCTAssertTrue(editor.item("decisionSettings").waitForExistence(timeout: 5))
+        app.buttons["Done"].click()
+        for (name, vertical) in [("Builder", 0.25), ("Planner", 0.75)] {
+            canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: vertical)).doubleClick()
+            editor.replace("graphAgentName", with: name)
+            app.buttons["Done"].click()
+        }
+        editor.drag(app.buttons["Connect from Router"], to: app.buttons["Connect to Builder"])
+        XCTAssertTrue(app.buttons["Router to Builder: Passthrough"].waitForExistence(timeout: 5))
+        origin.click()
+        XCTAssertTrue(app.staticTexts["No decision is made and Nouli is not called."].waitForExistence(timeout: 5))
+        app.buttons["Done"].click()
+        editor.drag(app.buttons["Connect from Router"], to: app.buttons["Connect to Planner"])
+        XCTAssertTrue(app.buttons["Router to Planner: Option 2"].waitForExistence(timeout: 5))
+        origin.click()
+        XCTAssertTrue(editor.item("decisionQuestion").waitForExistence(timeout: 5))
+        editor.replace("decisionQuestion", with: "Which agent should handle the incoming work?")
+        let options = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH 'decisionOption-'"))
+        XCTAssertEqual(options.count, 2)
+        XCTAssertFalse(app.textFields["When should work go here?"].exists)
+        let image = XCTAttachment(screenshot: app.screenshot())
+        image.name = "Decision routing popup"
+        image.lifetime = .keepAlways
+        add(image)
+        app.buttons["Done"].click()
+        editor.saveAndReopen()
+        XCTAssertTrue(app.buttons["Router to Builder: Option 1"].exists)
+        XCTAssertTrue(app.buttons["Router to Planner: Option 2"].exists)
+        editor.verifyYesNo()
+        editor.verifyScore()
+    }
+
+    @MainActor
     func testAdversarialGraphCanBeEditedSavedAndReopened() throws {
         let app = try launchGraphDesigner()
         defer { app.terminate() }
@@ -116,48 +161,51 @@ extension HandshakeUITests {
     }
 
     @MainActor
+    func testDecisionValidationReturnsToAnOffscreenNodeRepeatedly() throws {
+        let app = try launchGraphDesigner()
+        defer { app.terminate() }
+        let editor = WorkflowGraphExampleUI(app: app, testCase: self)
+        editor.item("workflowCreateOwn").click()
+        editor.replace("designerName", with: "Validation navigation")
+        let canvas = editor.item("designerContent")
+        canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.25)).doubleClick()
+        editor.replace("graphAgentName", with: "Router")
+        editor.item("graphNodeKind").radioButtons["Decision"].click()
+        app.buttons["Done"].click()
+        canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.65, dy: 0.4)).doubleClick()
+        editor.replace("graphAgentName", with: "Far agent")
+        app.buttons["Done"].click()
+        let far = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH 'graphNode-' AND label CONTAINS 'Far agent'")
+        )
+        .firstMatch
+        let start = far.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        start.click(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 650, dy: 0)))
+        let router = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH 'graphNode-' AND label CONTAINS 'Router'")
+        )
+        .firstMatch
+        for _ in 0..<2 {
+            canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.7)).scroll(byDeltaX: -2000, deltaY: 0)
+            XCTAssertFalse(router.isHittable)
+            let issue = editor.item("designerDecisionValidation")
+            XCTAssertGreaterThanOrEqual(issue.frame.height, 28)
+            issue.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).click()
+            XCTAssertTrue(editor.item("decisionSettings").waitForExistence(timeout: 5))
+            XCTAssertTrue(router.isHittable)
+            XCTAssertTrue(canvas.frame.contains(CGPoint(x: router.frame.midX, y: router.frame.midY)))
+            XCTAssertTrue(app.staticTexts["Connect an output. One connection passes work through."].exists)
+            app.buttons["Done"].click()
+        }
+    }
+
+    @MainActor
     private func launchGraphDesigner() throws -> XCUIApplication {
         let folder = try makeTestFolder(prefix: "HandshakeGraphEditor")
         let app = try makeApp(lastOpenFolder: folder)
         app.launch()
         XCTAssertTrue(app.buttons["workflowCreateOwn"].waitForExistence(timeout: 10), app.debugDescription)
-        resizeWindow(app.windows.firstMatch, to: CGSize(width: 1200, height: 850))
+        resizeWindow(app.windows.firstMatch, to: CGSize(width: 922, height: 676))
         return app
-    }
-}
-
-@MainActor
-private struct WorkflowGraphExampleUI {
-    let app: XCUIApplication
-    let testCase: XCTestCase
-
-    func item(_ id: String) -> XCUIElement {
-        app.descendants(matching: .any).matching(identifier: id).firstMatch
-    }
-    func replace(_ id: String, with text: String) {
-        let field = item(id)
-        XCTAssertTrue(field.waitForExistence(timeout: 5), app.debugDescription)
-        field.click()
-        app.typeKey("a", modifierFlags: .command)
-        app.typeText(text)
-    }
-    func drag(_ source: XCUIElement, to destination: XCUIElement) {
-        source.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-            .click(
-                forDuration: 0.1, thenDragTo: destination.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)))
-    }
-    func chooseOption(_ title: String) {
-        let option = app.radioButtons.matching(NSPredicate(format: "label ENDSWITH %@", title)).firstMatch
-        XCTAssertTrue(option.waitForExistence(timeout: 5), app.debugDescription)
-        option.click()
-    }
-    func saveAndReopen() {
-        let save = item("designerSave")
-        let ready = testCase.expectation(for: NSPredicate { _, _ in save.exists && save.isEnabled }, evaluatedWith: nil)
-        testCase.wait(for: [ready], timeout: 10)
-        save.click()
-        XCTAssertTrue(item("workflowEditType").waitForExistence(timeout: 10), app.debugDescription)
-        item("workflowEditType").click()
-        XCTAssertTrue(item("designerName").waitForExistence(timeout: 5))
     }
 }

@@ -33,6 +33,49 @@ struct WorkflowCanvasPresentationTests {
         #expect(image.height < 130)
     }
 
+    @Test func connectorTargetsStayAtTheDefaultSizeOnScreenAtEveryCanvasZoom() {
+        for zoom in [0.25, 0.5, 0.8, 1, 1.5, 2.0] {
+            #expect(WorkflowEditorLayout.portHitSize(at: zoom) * zoom == 28)
+        }
+    }
+
+    @Test func decisionCardsUseDiamondGeometryWithSharedSideConnectors() throws {
+        let rect = CGRect(origin: .zero, size: WorkflowEditorLayout.decisionSize)
+        let path = WorkflowNodeShape(isDecision: true).path(in: rect)
+        #expect(path.contains(CGPoint(x: rect.midX, y: rect.midY)))
+        #expect(!path.contains(CGPoint(x: 8, y: 8)))
+        #expect(!path.contains(CGPoint(x: rect.maxX - 8, y: rect.maxY - 8)))
+        #expect(path.boundingRect == rect)
+        let renderer = ImageRenderer(content: WorkflowGraphCard(title: "Route work", decision: .init()))
+        let bitmap = NSBitmapImageRep(cgImage: try #require(renderer.cgImage))
+        #expect(bitmap.pixelsWide == 144 && bitmap.pixelsHigh == 144)
+        #expect((bitmap.colorAt(x: 8, y: 8)?.alphaComponent ?? 1) < 0.1)
+        #expect((bitmap.colorAt(x: bitmap.pixelsWide / 2, y: bitmap.pixelsHigh / 2)?.alphaComponent ?? 0) > 0.9)
+    }
+
+    @Test func mixedNodeConnectionsUseTheActualSideTipsAndCanvasBounds() {
+        let model = WorkflowDesignerModel()
+        model.enableGraph()
+        let router = model.addGraphRole(at: .init(x: 0, y: 0))
+        let agent = model.addGraphRole(at: .init(x: 4000, y: 4000))
+        model.setDecision(router, enabled: true)
+        let decisionSize = WorkflowEditorLayout.nodeSize(for: router, in: model.definition)
+        #expect(decisionSize.width == decisionSize.height)
+        #expect(decisionSize.width < WorkflowEditorLayout.cardSize.width)
+        let path = WorkflowConnectionShape(
+            from: CGPoint(x: 200, y: 250), destination: CGPoint(x: 600, y: 250),
+            sourceSize: decisionSize, destinationSize: WorkflowEditorLayout.cardSize
+        ).path(in: .zero)
+        #expect(path.boundingRect.minX == 272)
+        #expect(path.boundingRect.maxX == 492)
+        let offset = WorkflowEditorLayout.originOffset(for: model.definition)
+        #expect(offset.height - decisionSize.height / 2 >= WorkflowEditorLayout.canvasMargin)
+        let size = WorkflowEditorLayout.canvasSize(for: model.definition)
+        #expect(size.width >= 4000 + offset.width + WorkflowEditorLayout.cardSize.width / 2)
+        #expect(size.height >= 4000 + offset.height + WorkflowEditorLayout.cardSize.height / 2)
+        #expect(WorkflowEditorLayout.nodeRect(for: agent, in: model.definition).size == WorkflowEditorLayout.cardSize)
+    }
+
     @Test(arguments: [-600.0, 220.0, 1600.0, 4000.0])
     func draggedConnectionsKeepTheirVisibleEndsOutsideTheDrawingHeight(agentY: Double) throws {
         let model = WorkflowDesignerModel()

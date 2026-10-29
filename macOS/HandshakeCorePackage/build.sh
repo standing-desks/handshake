@@ -15,6 +15,8 @@ for file in libhandshake_bridge.a Headers/handshake_bridge.h Headers/module.modu
         echo "error: framework is missing $file" >&2; exit 1;
     }
 done
+# The static archive includes the pinned Nouli engine and its MIT notice.
+cp "$repo/macOS/Handshake/Handshake/Harnesses/Nouli-LICENSE.txt" "$staging/HandshakeCore.xcframework/Nouli-LICENSE.txt"
 # Keep unchanged framework files intact so Swift's incremental builds stay valid.
 if [ ! -d "$artifact" ] || ! diff -qr "$staging/HandshakeCore.xcframework" "$artifact" >/dev/null; then
     rm -rf "$artifact"

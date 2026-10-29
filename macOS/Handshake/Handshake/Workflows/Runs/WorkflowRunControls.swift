@@ -73,7 +73,7 @@ struct WorkflowRunControls: View {
                         WorkflowResultsPopover(workflowID: workflowID, run: run, reportFailure: reportFailure).appZoom()
                     }
             }
-            if let agent, agent.active && !agent.done {
+            if let agent, agent.harness != .nouli && agent.active && !agent.done {
                 Button {
                     showsCompletion = true
                 } label: {

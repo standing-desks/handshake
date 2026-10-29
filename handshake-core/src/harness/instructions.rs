@@ -16,6 +16,11 @@ pub(crate) fn append(
     folder: &Path,
 ) -> io::Result<()> {
     match harness {
+        HarnessId::Nouli => {
+            return Err(io::Error::other(
+                "Nouli uses structured decision input, not interactive instructions.",
+            ));
+        }
         HarnessId::Codex => {
             arguments.extend([
                 OsString::from("-c"),

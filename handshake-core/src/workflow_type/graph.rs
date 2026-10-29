@@ -10,6 +10,8 @@ use super::{
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentGraph {
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub decisions: BTreeMap<String, super::DecisionNode>,
     pub edges: Vec<GraphEdge>,
     #[serde(default)]
     pub receive: BTreeMap<String, GraphReceive>,
@@ -25,6 +27,16 @@ pub struct AgentGraph {
 }
 
 impl AgentGraph {
+    /// A single outgoing connection forwards work without evaluating a decision model.
+    pub(crate) fn passthrough_edge(&self, role: &str) -> Option<&GraphEdge> {
+        if !self.decisions.contains_key(role) {
+            return None;
+        }
+        let mut edges = self.edges.iter().filter(|edge| edge.from == role);
+        let edge = edges.next()?;
+        edges.next().is_none().then_some(edge)
+    }
+
     /// Legacy endpoint links remain readable; new graphs infer entry and result roles.
     #[must_use]
     pub fn is_start(&self, role: &str) -> bool {
@@ -83,6 +95,11 @@ pub struct GraphEdge {
     /// A role ID. Legacy files can also use `finish`.
     pub to: String,
     pub event: GraphEvent,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output: Option<String>,
+    /// Deliver alongside every successful decision, independently of its selected answer.
+    #[serde(default)]
+    pub always: bool,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -152,6 +169,9 @@ pub(super) fn validate_graph(
             "activation limit must be between 1 and 256",
         );
     }
+    if roles.len() > 32 {
+        report(ElementPath::Roles, "a graph can use at most 32 nodes");
+    }
     if roles.contains("task") || roles.contains("finish") {
         report(ElementPath::Roles, "task and finish are reserved IDs");
     }
@@ -184,7 +204,7 @@ pub(super) fn validate_graph(
         if edge.from == edge.to {
             report(element, "connect two different agents");
         }
-        if !links.insert((&edge.from, &edge.to, edge.event as u8)) {
+        if !links.insert((&edge.from, &edge.to, edge.event as u8, &edge.output)) {
             report(element, "this link already exists");
         }
     }
@@ -209,8 +229,150 @@ pub(super) fn validate_graph(
             report(ElementPath::Graph, "node position is invalid");
         }
     }
+    check_decisions(graph, &roles, definition, &mut report);
     check_events_and_count(definition, graph, &mut report);
     check_paths(definition, graph, &mut report);
+}
+
+fn check_decisions(
+    graph: &AgentGraph,
+    roles: &BTreeSet<&str>,
+    definition: &WorkflowTypeDefinition,
+    report: &mut impl FnMut(ElementPath, &str),
+) {
+    let mut conditional: BTreeSet<_> = graph
+        .decisions
+        .keys()
+        .filter(|id| graph.passthrough_edge(id).is_none())
+        .cloned()
+        .collect();
+    loop {
+        let before = conditional.len();
+        for edge in &graph.edges {
+            if conditional.contains(&edge.from) {
+                conditional.insert(edge.to.clone());
+            }
+        }
+        if conditional.len() == before {
+            break;
+        }
+    }
+    for (key, receive) in &graph.receive {
+        if *receive == GraphReceive::All
+            && conditional.contains(key)
+            && graph
+                .edges
+                .iter()
+                .filter(|e| e.to == *key && e.event != GraphEvent::Feedback)
+                .count()
+                > 1
+        {
+            report(
+                ElementPath::Graph,
+                "conditional branches need Start as work arrives; waiting for every alternative would block the workflow",
+            );
+        }
+    }
+    for (id, decision) in &graph.decisions {
+        let passthrough = graph.passthrough_edge(id).is_some();
+        let outgoing = graph.edges.iter().filter(|edge| edge.from == *id).count();
+        if outgoing == 0 {
+            report(
+                ElementPath::Graph,
+                "connect an output from each decision node",
+            );
+        }
+        if outgoing > 1 && decision.kind == super::DecisionKind::Choice {
+            check_choice_options(graph, id, decision, outgoing, report);
+        }
+        let valid = passthrough || decision.validate();
+        if !roles.contains(id.as_str()) || !valid {
+            report(
+                ElementPath::Graph,
+                "decision needs a known role, a question, valid thresholds, and distinct options",
+            );
+        }
+        if graph.is_review(id)
+            || definition
+                .roles
+                .iter()
+                .find(|r| r.id.0 == *id)
+                .is_some_and(|r| r.instances.min != 1 || r.instances.max != 1)
+        {
+            report(
+                ElementPath::Graph,
+                "a decision is a single Nouli agent and cannot review work",
+            );
+        }
+        for (output, _) in decision.outputs().into_iter().filter(|_| !passthrough) {
+            if graph
+                .edges
+                .iter()
+                .filter(|e| e.from == *id && !e.always && e.output.as_ref() == Some(&output))
+                .count()
+                != 1
+            {
+                report(
+                    ElementPath::Graph,
+                    "connect each decision output to exactly one receiving role",
+                );
+            }
+        }
+    }
+    check_decision_edges(graph, report);
+}
+
+fn check_decision_edges(graph: &AgentGraph, report: &mut impl FnMut(ElementPath, &str)) {
+    for (index, edge) in graph.edges.iter().enumerate() {
+        if let Some(decision) = graph.decisions.get(&edge.from) {
+            if edge.event != GraphEvent::Done
+                || edge.always && edge.output.is_some()
+                || !edge.always
+                    && graph.passthrough_edge(&edge.from).is_none()
+                    && edge
+                        .output
+                        .as_ref()
+                        .is_none_or(|id| !decision.outputs().iter().any(|(output, _)| output == id))
+            {
+                report(
+                    ElementPath::Edge(index),
+                    "decision links need a configured output and Work complete event",
+                );
+            }
+        } else if edge.output.is_some() || edge.always {
+            report(
+                ElementPath::Edge(index),
+                "only decision links can select an output or always deliver",
+            );
+        }
+    }
+}
+
+fn check_choice_options(
+    graph: &AgentGraph,
+    role: &str,
+    decision: &super::DecisionNode,
+    outgoing: usize,
+    report: &mut impl FnMut(ElementPath, &str),
+) {
+    let missing = graph
+        .edges
+        .iter()
+        .filter(|edge| edge.from == role && !edge.always)
+        .filter(|edge| {
+            !(decision
+                .options
+                .iter()
+                .any(|option| edge.output.as_ref() == Some(&option.id))
+                || edge.output.as_deref() == Some("fallback") && decision.min_confidence.is_some())
+        })
+        .count();
+    if missing > 0 {
+        report(
+            ElementPath::Graph,
+            &format!("{missing} of {outgoing} connections are missing options"),
+        );
+    }
 }
 
 fn check_events_and_count(
@@ -221,6 +383,7 @@ fn check_events_and_count(
     let count: usize = definition
         .roles
         .iter()
+        .filter(|role| !graph.decisions.contains_key(&role.id.0))
         .map(|role| usize::from(role.instances.max))
         .sum();
     if count > usize::from(MAX_PARALLEL_AGENTS) {

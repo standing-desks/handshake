@@ -1,4 +1,6 @@
 module HandshakeCore {
     header "handshake_bridge.h"
+    link framework "Security"
+    link framework "CoreFoundation"
     export *
 }

@@ -1,0 +1,208 @@
+# Three Nouli decisions route one task to a receiving agent.
+schema_version = 2
+id = 202610280001
+version = 1
+
+[definition]
+name = "Triage and assign"
+description = "Check readiness, classify the change, then assess its scope with Nouli."
+
+[[definition.roles]]
+id = "ready"
+name = "Task ready?"
+instructions = "Evaluate the incoming work with Nouli."
+instances = { min = 1, max = 1 }
+
+[[definition.roles]]
+id = "classify"
+name = "Classify change"
+instructions = "Evaluate the incoming work with Nouli."
+instances = { min = 1, max = 1 }
+
+[[definition.roles]]
+id = "scope"
+name = "Assess scope"
+instructions = "Evaluate the incoming work with Nouli."
+instances = { min = 1, max = 1 }
+
+[[definition.roles]]
+id = "implementer"
+name = "Implementer"
+instructions = "Complete the received task and report the complete result when done."
+instances = { min = 1, max = 1 }
+color = "blue"
+
+[[definition.roles]]
+id = "planner"
+name = "Planner"
+instructions = "Complete the received task and report the complete result when done."
+instances = { min = 1, max = 1 }
+color = "orange"
+
+[[definition.roles]]
+id = "architect"
+name = "Architect"
+instructions = "Complete the received task and report the complete result when done."
+instances = { min = 1, max = 1 }
+color = "orange"
+
+[[definition.roles]]
+id = "coordinator"
+name = "Coordinator"
+instructions = "Complete the received task and report the complete result when done."
+instances = { min = 1, max = 1 }
+color = "purple"
+
+[[definition.roles]]
+id = "debugger"
+name = "Debugger"
+instructions = "Complete the received task and report the complete result when done."
+instances = { min = 1, max = 1 }
+color = "green"
+
+[definition.graph]
+finish = "all"
+max_activations = 32
+
+[definition.graph.positions.ready]
+x = 160
+y = 250
+
+[definition.graph.positions.classify]
+x = 650
+y = 250
+
+[definition.graph.positions.scope]
+x = 1140
+y = 250
+
+[definition.graph.positions.implementer]
+x = 1630
+y = 80
+
+[definition.graph.positions.planner]
+x = 1630
+y = 250
+
+[definition.graph.positions.architect]
+x = 1630
+y = 420
+
+[definition.graph.positions.coordinator]
+x = 650
+y = 570
+
+[definition.graph.positions.debugger]
+x = 1140
+y = 570
+
+[definition.graph.decisions.ready]
+kind = "choice"
+question = "Should this request go to Classify change, or should the Coordinator resolve missing requirements first?"
+include_task = true
+
+[[definition.graph.decisions.ready.options]]
+id = "yes"
+name = "Classify change"
+description = "Classify change"
+
+[[definition.graph.decisions.ready.options]]
+id = "no"
+name = "Coordinator"
+description = "Coordinator"
+
+[definition.graph.decisions.classify]
+kind = "choice"
+question = "Which connected agent should handle this request: Assess scope, Debugger, or Coordinator?"
+include_task = true
+
+[[definition.graph.decisions.classify.options]]
+id = "feature"
+name = "Assess scope"
+description = "Assess scope"
+
+[[definition.graph.decisions.classify.options]]
+id = "fix"
+name = "Debugger"
+description = "Debugger"
+
+[[definition.graph.decisions.classify.options]]
+id = "other"
+name = "Coordinator"
+description = "Coordinator"
+
+[definition.graph.decisions.scope]
+kind = "choice"
+question = "Which agent is best suited to own this change given its scope: Implementer, Planner, or Architect?"
+include_task = true
+
+[[definition.graph.decisions.scope.options]]
+id = "small"
+name = "Implementer"
+description = "Implementer"
+
+[[definition.graph.decisions.scope.options]]
+id = "medium"
+name = "Planner"
+description = "Planner"
+
+[[definition.graph.decisions.scope.options]]
+id = "large"
+name = "Architect"
+description = "Architect"
+
+[[definition.graph.edges]]
+id = "ready-yes"
+from = "ready"
+to = "classify"
+event = "done"
+output = "yes"
+
+[[definition.graph.edges]]
+id = "ready-no"
+from = "ready"
+to = "coordinator"
+event = "done"
+output = "no"
+
+[[definition.graph.edges]]
+id = "classify-feature"
+from = "classify"
+to = "scope"
+event = "done"
+output = "feature"
+
+[[definition.graph.edges]]
+id = "classify-fix"
+from = "classify"
+to = "debugger"
+event = "done"
+output = "fix"
+
+[[definition.graph.edges]]
+id = "classify-other"
+from = "classify"
+to = "coordinator"
+event = "done"
+output = "other"
+
+[[definition.graph.edges]]
+id = "scope-small"
+from = "scope"
+to = "implementer"
+event = "done"
+output = "small"
+
+[[definition.graph.edges]]
+id = "scope-medium"
+from = "scope"
+to = "planner"
+event = "done"
+output = "medium"
+
+[[definition.graph.edges]]
+id = "scope-large"
+from = "scope"
+to = "architect"
+event = "done"
+output = "large"

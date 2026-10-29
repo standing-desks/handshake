@@ -41,6 +41,14 @@ Apply these rules to every Swift change:
 - **Formatting and checks:** Run `make fmt-app` before committing, then `make check-app`. It runs strict swift-format lint, SwiftLint, and the unit tests, and must pass with no violations. The configs are `macOS/.swift-format` and `macOS/Handshake/.swiftlint.yml`.
 - **Logging:** Emit diagnostics with `Logger` from `os`, using the app's bundle identifier (`com.twineproject.Twine`) as the subsystem and one category per feature. Never use `print`. Never log secrets, file contents, or terminal output.
 
+## Interaction targets
+
+Follow [Apple’s accessibility guidance](https://developer.apple.com/design/human-interface-guidelines/accessibility#Mobility): macOS controls have a 28 × 28 pt default target and a 20 × 20 pt minimum. Aim for the default; reserve the minimum for infrequent, compact controls.
+
+- **Row actions:** When a row performs one action, make its full visible header or row clickable, including its label, chevron, and empty space. Disclosure headers use a full-width target at least 28 pt high. This repository rule applies Apple’s target-sizing guidance to row-based controls.
+- **SwiftUI hit areas:** Put sizing, padding, and `contentShape(.rect)` inside the button’s label so the expanded area participates in hit testing. Keep independent text fields, pickers, and buttons in editable rows separately operable.
+- **Interaction verification:** Check the label, blank space near the far edge, and target corners in addition to the glyph. Confirm keyboard activation and accessibility state, and keep adjacent controls’ targets separate at supported zoom levels.
+
 ## UI testing and signing
 
 - Run macOS UI tests from the repository root with `make ui-test`. `ONLY=<test>` runs one test, for example `make ui-test ONLY=testSingleAgentStartsInteractivelyTakesInputAndCancels`.

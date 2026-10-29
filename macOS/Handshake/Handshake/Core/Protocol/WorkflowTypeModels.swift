@@ -24,6 +24,7 @@ nonisolated struct CoreWorkflowType: Codable, Equatable, Identifiable, Sendable 
     }
 
     struct Graph: Codable, Hashable, Sendable {
+        var decisions: [String: DecisionNode] = [:]
         var edges: [Edge] = []
         var receive: [String: Receive] = [:]
         var reviewAgents: [String] = []
@@ -35,6 +36,7 @@ nonisolated struct CoreWorkflowType: Codable, Equatable, Identifiable, Sendable 
 
         init(from decoder: Decoder) throws {
             let values = try decoder.container(keyedBy: CodingKeys.self)
+            decisions = try values.decodeIfPresent([String: DecisionNode].self, forKey: .decisions) ?? [:]
             edges = try values.decodeIfPresent([Edge].self, forKey: .edges) ?? []
             receive = try values.decodeIfPresent([String: Receive].self, forKey: .receive) ?? [:]
             reviewAgents = try values.decodeIfPresent([String].self, forKey: .reviewAgents) ?? []
@@ -50,6 +52,8 @@ nonisolated struct CoreWorkflowType: Codable, Equatable, Identifiable, Sendable 
         // swiftlint:disable:next identifier_name
         var to: String
         var event: GraphEvent
+        var output: String?
+        var always = false
     }
 
     struct Position: Codable, Hashable, Sendable {
@@ -177,7 +181,7 @@ extension CoreWorkflowType.ReviewLoop {
 
 extension CoreWorkflowType.Graph {
     enum CodingKeys: String, CodingKey {
-        case edges, receive, positions, finish
+        case decisions, edges, receive, positions, finish
         case reviewAgents = "review_agents"
         case maxActivations = "max_activations"
     }
@@ -216,4 +220,23 @@ extension CoreWorkflowType.Graph {
 nonisolated struct CoreWorkflowValidationIssue: Decodable, Equatable, Sendable {
     let element: String
     let message: String
+}
+
+extension CoreWorkflowType.Edge {
+    nonisolated private enum CodingKeys: String, CodingKey {
+        case id, from, event, output, always
+        // swiftlint:disable:next identifier_name
+        case to
+    }
+
+    nonisolated init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: try values.decode(String.self, forKey: .id),
+            from: try values.decode(String.self, forKey: .from),
+            to: try values.decode(String.self, forKey: .to),
+            event: try values.decode(CoreWorkflowType.GraphEvent.self, forKey: .event),
+            output: try values.decodeIfPresent(String.self, forKey: .output),
+            always: try values.decodeIfPresent(Bool.self, forKey: .always) ?? false)
+    }
 }

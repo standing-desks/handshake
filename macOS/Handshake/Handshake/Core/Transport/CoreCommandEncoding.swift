@@ -79,7 +79,7 @@ nonisolated private struct CommandPayload: Encodable {
             type = ""
             configureWorkflow(command)
         case .startWorkflowRun, .completeWorkflowRole, .continueWorkflowRun, .setWorkflowIndividualMode,
-            .cancelWorkflowRun, .submitWorkflowTask, .chooseWorkflowResult:
+            .retryDecision, .cancelWorkflowRun, .submitWorkflowTask, .chooseWorkflowResult:
             type = ""
             configureRun(command)
         case .startTerminal(let workingDirectory, let size):
@@ -170,6 +170,10 @@ nonisolated private struct CommandPayload: Encodable {
             self.workflowID = workflowID
             self.generation = generation
             self.agentID = agentID
+        case .retryDecision(let workflowID, let generation):
+            type = "retryDecision"
+            self.workflowID = workflowID
+            self.generation = generation
         case .cancelWorkflowRun(let workflowID):
             type = "cancelWorkflowRun"
             self.workflowID = workflowID

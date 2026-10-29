@@ -17,9 +17,10 @@ use crate::workflow_run::{CompletionSignal, RoleLaunch, RunStatus, WorkflowRun};
 use crate::workflow_type::{WorkflowCatalog, WorkflowType, WorkflowTypeRef};
 
 pub(super) struct RunProcesses {
-    folder: PathBuf,
+    pub(super) folder: PathBuf,
+    pub(super) decisions: super::decisions::PendingDecisions,
     size: TerminalSize,
-    harnesses: HashMap<HarnessId, LocatedHarness>,
+    pub(super) harnesses: HashMap<HarnessId, LocatedHarness>,
     inboxes: HashMap<AgentId, (u64, CompletionInbox)>,
     completion_commands: HashMap<AgentId, CompletionCommand>,
     completion_routing: HashMap<AgentId, CompletionRouting>,
@@ -250,18 +251,10 @@ impl Application {
             Ok(run) => run,
             Err(error) => return Ok(super::rejection("invalidWorkflowRun", &error)),
         };
-        let mut harnesses = HashMap::new();
-        for agent in &run.agents {
-            if let std::collections::hash_map::Entry::Vacant(entry) = harnesses.entry(agent.harness)
-            {
-                match self.locate_harness(agent.harness.definition()) {
-                    Ok(located) => {
-                        entry.insert(located);
-                    }
-                    Err(error) => return Ok(super::rejection("harnessNotFound", &error)),
-                }
-            }
-        }
+        let harnesses = match self.locate_run_harnesses(&run) {
+            Ok(harnesses) => harnesses,
+            Err(error) => return Ok(super::rejection("harnessNotFound", &error)),
+        };
         let placeholder = {
             let mut inner = self.lock_inner()?;
             inner
@@ -325,6 +318,7 @@ impl Application {
                     folder,
                     size,
                     harnesses,
+                    decisions: HashMap::new(),
                     inboxes: HashMap::new(),
                     completion_commands: HashMap::new(),
                     completion_routing: HashMap::new(),
@@ -352,6 +346,13 @@ impl Application {
         let Some(saved_run) = &saved.run else {
             return Ok(());
         };
+        if saved_run
+            .graph
+            .as_ref()
+            .is_some_and(|g| !g.decision_errors.is_empty())
+        {
+            return Ok(());
+        }
         if saved_run.status != RunStatus::Interrupted {
             return Ok(());
         }
@@ -363,6 +364,9 @@ impl Application {
                 .into_iter()
                 .filter(|a| !saved_run.completions.contains_key(&a.agent_id))
             {
+                if agent.harness == HarnessId::Nouli {
+                    continue;
+                }
                 let Some(tab) = saved.agents.iter().find(|a| a.agent_id.0 == agent.agent_id) else {
                     return Ok(());
                 };
@@ -403,21 +407,13 @@ impl Application {
                 }
             }
         }
-        let mut harnesses = HashMap::new();
-        for agent in &saved_run.agents {
-            if let std::collections::hash_map::Entry::Vacant(entry) = harnesses.entry(agent.harness)
-            {
-                match self.locate_harness(agent.harness.definition()) {
-                    Ok(located) => {
-                        entry.insert(located);
-                    }
-                    Err(error) => {
-                        tracing::warn!(%error, "couldn't locate a restored workflow harness");
-                        return Ok(());
-                    }
-                }
+        let harnesses = match self.locate_run_harnesses(saved_run) {
+            Ok(harnesses) => harnesses,
+            Err(error) => {
+                tracing::warn!(%error, "couldn't locate a restored workflow harness");
+                return Ok(());
             }
-        }
+        };
         let mut workflow = saved.clone();
         let run = workflow.run.as_mut().expect("restored workflow has a run");
         run.status = RunStatus::Running;
@@ -462,6 +458,7 @@ impl Application {
                     folder: folder.to_owned(),
                     size: super::resume_agents::RESTORED_SIZE,
                     harnesses,
+                    decisions: HashMap::new(),
                     inboxes: HashMap::new(),
                     completion_commands: HashMap::new(),
                     completion_routing: HashMap::new(),
@@ -489,7 +486,8 @@ impl Application {
             .active_agents()
             .into_iter()
             .filter(|agent| {
-                !run.completions.contains_key(&agent.agent_id)
+                agent.harness != HarnessId::Nouli
+                    && !run.completions.contains_key(&agent.agent_id)
                     && (run.graph.is_none() || agent.status == crate::RunAgentStatus::Waiting)
             })
             .cloned()
@@ -710,6 +708,7 @@ impl Application {
         live_terminals.retain(|_, terminal| self.terminals.is_running(*terminal));
         let run = workflow.run.as_mut().expect("execution has a run");
         run.trace("stageStarted", None, None, "Stage started");
+        let prepared_decisions = Self::prepare_decisions(run);
         let prepared = self.prepare_workflow_stage(run, processes, &live_terminals, user_follow_up);
         let mut inner = self.lock_inner()?;
         let mut replaced = Vec::new();
@@ -858,6 +857,9 @@ impl Application {
             .collect();
         self.terminals.close_all(&replaced)?;
         saved?;
+        if workflow.status == WorkflowStatus::Running {
+            self.start_decisions(workflow_id, prepared_decisions)?;
+        }
         // PTY writes can wait for the harness to read. Keep them outside application state locks.
         if workflow.status == WorkflowStatus::Running {
             for (terminal, prompt) in continuations {
@@ -1527,7 +1529,7 @@ impl Application {
         Ok(CommandDisposition::Accepted)
     }
 
-    fn stop_run_terminals(&self, terminals: &[TerminalId], message: &str) {
+    pub(super) fn stop_run_terminals(&self, terminals: &[TerminalId], message: &str) {
         for &terminal in terminals {
             if let Ok(observation) = self.terminals.observe(terminal)
                 && let Ok(mut inner) = self.lock_inner()
@@ -1550,6 +1552,7 @@ impl Application {
             Err(std::sync::TryLockError::Poisoned(_)) => return Err(ApplicationError::Poisoned),
         };
         self.poll_harness_steps()?;
+        self.poll_decisions()?;
         self.prune_run_processes()?;
         let ready: Vec<_> = {
             let inner = self.lock_inner()?;
@@ -1859,7 +1862,11 @@ impl super::Inner {
         }
     }
 
-    fn publish_run(&mut self, index: usize, workflow: Workflow) -> Result<(), ApplicationError> {
+    pub(super) fn publish_run(
+        &mut self,
+        index: usize,
+        workflow: Workflow,
+    ) -> Result<(), ApplicationError> {
         self.publish_run_with_sessions(index, workflow, &[])
     }
 
@@ -2086,10 +2093,13 @@ mod tests {
         definition.handoffs.clear();
         definition.review_loops.clear();
         definition.graph = Some(crate::AgentGraph {
+            decisions: std::collections::BTreeMap::new(),
             edges: edges
                 .iter()
                 .enumerate()
                 .map(|(index, (from, to, event))| crate::GraphEdge {
+                    always: false,
+                    output: None,
                     id: index.to_string(),
                     from: (*from).into(),
                     to: (*to).into(),
@@ -2134,6 +2144,12 @@ mod tests {
                 roles: definition
                     .roles
                     .iter()
+                    .filter(|role| {
+                        !definition
+                            .graph
+                            .as_ref()
+                            .is_some_and(|g| g.decisions.contains_key(&role.id.0))
+                    })
                     .map(|role| RoleLaunch {
                         role: role.id.0.clone(),
                         harness: HarnessId::Pi,
@@ -2457,6 +2473,7 @@ $prompt" ;; esac
             .remember_harness_session(old_terminal, &format!("sess_fixture:{profile}"))
             .unwrap();
         accepted(&app, Command::CloseFolder);
+        std::fs::remove_file(folder.path().join("kiro-profile")).unwrap();
         accepted(
             &app,
             Command::OpenFolder {
@@ -4811,5 +4828,421 @@ os.execvp('pi', ['pi', '--append-system-prompt', instructions, '--', prompt])
             assert_eq!(reopened.run.as_ref().unwrap().status, expected);
             assert_eq!(snapshot.terminals, []);
         }
+    }
+    fn decision_chain_definition() -> crate::WorkflowTypeDefinition {
+        let mut definition = graph_definition(&[], crate::GraphFinish::All);
+        for id in ["ready", "classify", "scope"] {
+            let mut role = definition.roles[0].clone();
+            role.id = crate::RoleId(id.into());
+            role.name = id.into();
+            definition.roles.push(role);
+        }
+        let node = |kind| crate::DecisionNode {
+            question: "Which route matches the evidence?".into(),
+            kind,
+            options: ["continue", "other", "large"]
+                .iter()
+                .map(|id| crate::DecisionOption {
+                    id: (*id).into(),
+                    name: (*id).into(),
+                    description: format!("Meaning of {id}"),
+                })
+                .collect(),
+            true_threshold: 8000,
+            false_threshold: 2000,
+            min_confidence: None,
+            score_thresholds: None,
+            provider: None,
+            model: None,
+            include_task: true,
+        };
+        let graph = definition.graph.as_mut().unwrap();
+        graph
+            .decisions
+            .insert("ready".into(), node(crate::DecisionKind::Noul));
+        graph
+            .decisions
+            .insert("classify".into(), node(crate::DecisionKind::Choice));
+        graph
+            .decisions
+            .insert("scope".into(), node(crate::DecisionKind::Score));
+        for (from, output, to) in [
+            ("ready", "yes", "classify"),
+            ("ready", "no", "reviewer"),
+            ("ready", "uncertain", "reviewer"),
+            ("classify", "continue", "scope"),
+            ("classify", "other", "reviewer"),
+            ("classify", "large", "reviewer"),
+            ("scope", "continue", "implementer"),
+            ("scope", "other", "implementer"),
+            ("scope", "large", "implementer"),
+        ] {
+            graph.edges.push(crate::GraphEdge {
+                always: false,
+                id: format!("{from}-{output}"),
+                from: from.into(),
+                to: to.into(),
+                event: crate::GraphEvent::Done,
+                output: Some(output.into()),
+            });
+        }
+        definition
+    }
+
+    #[test]
+    fn single_output_decision_chain_forwards_without_nouli_or_decision_results() {
+        let folder = tempfile::tempdir().unwrap();
+        let bin = tempfile::tempdir().unwrap();
+        let app = application(
+            folder.path(),
+            bin.path(),
+            "while read line; do echo \"$line\"; done",
+        );
+        let mut definition = decision_chain_definition();
+        definition.roles.retain(|r| r.id.0 != "reviewer");
+        let graph = definition.graph.as_mut().unwrap();
+        graph.positions.remove("reviewer");
+        graph.edges.retain(|e| {
+            matches!(
+                (e.from.as_str(), e.output.as_deref()),
+                ("ready", Some("yes")) | ("classify" | "scope", Some("continue"))
+            )
+        });
+        graph.edges[0].always = true;
+        graph.edges[0].output = None;
+        for node in graph.decisions.values_mut() {
+            node.options.clear();
+            node.question.clear();
+            node.model = Some("--unused-invalid-model".into());
+        }
+        crate::validate(&definition).unwrap();
+        let id = launch_graph(
+            &app,
+            folder.path(),
+            &definition,
+            "Original evidence for passthrough",
+        );
+        let workflow = wait_for(&app, id, |w| {
+            w.run
+                .as_ref()
+                .unwrap()
+                .agents
+                .iter()
+                .filter(|a| a.harness == HarnessId::Nouli)
+                .all(|a| a.status == crate::RunAgentStatus::Completed)
+        });
+        let run = workflow.run.as_ref().unwrap();
+        let graph = run.graph.as_ref().unwrap();
+        assert!(graph.decision_requests.is_empty());
+        assert!(graph.decision_results.is_empty());
+        assert!(graph.decision_outputs.is_empty());
+        assert!(!run.traces.iter().any(|e| e.kind.starts_with("decision")));
+        let receiver = run.agents.iter().find(|a| a.role == "implementer").unwrap();
+        assert!(run.incoming[&receiver.agent_id].contains("Original evidence for passthrough"));
+        assert!(
+            !app.run_processes.lock().unwrap()[&id]
+                .harnesses
+                .contains_key(&HarnessId::Nouli)
+        );
+        accepted(&app, Command::CancelWorkflowRun { workflow_id: id });
+    }
+
+    fn prepare_nouli(
+        app: &mut Application,
+        home: &Path,
+    ) -> crate::harness::nouli::fixture::Provider {
+        app.nouli_home = Some(home.to_owned());
+        crate::harness::nouli::fixture::Provider::new(home)
+    }
+
+    #[test]
+    fn nouli_chain_preserves_typed_inputs_traces_and_skips_unselected_results() {
+        let folder = tempfile::tempdir().unwrap();
+        let bin = tempfile::tempdir().unwrap();
+        let mut app = application(folder.path(), bin.path(), "exec cat");
+        let provider = prepare_nouli(&mut app, bin.path());
+        assert!(!bin.path().join("nouli").exists());
+        let id = launch_graph(
+            &app,
+            folder.path(),
+            &decision_chain_definition(),
+            "Original task with acceptance criteria",
+        );
+        let workflow = wait_for(&app, id, |w| {
+            w.run
+                .as_ref()
+                .unwrap()
+                .graph
+                .as_ref()
+                .unwrap()
+                .decision_results
+                .len()
+                == 3
+        });
+        assert_eq!(provider.calls(), 3);
+        let run = workflow.run.as_ref().unwrap();
+        let graph = run.graph.as_ref().unwrap();
+        let implementer = run.agents.iter().find(|a| a.role == "implementer").unwrap();
+        let reviewer = run.agents.iter().find(|a| a.role == "reviewer").unwrap();
+        assert!(!graph.activations.contains_key(&reviewer.agent_id));
+        let scope = run.agents.iter().find(|a| a.role == "scope").unwrap();
+        assert_eq!(
+            graph.decision_results[&scope.agent_id]["result"]["report"]["outcome"]["outcomes"][0]["answer"]
+                ["value"],
+            1.43
+        );
+        assert_eq!(
+            graph.decision_requests[&scope.agent_id]["state"][0]["data"]["workflow_task"],
+            "Original task with acceptance criteria"
+        );
+        assert!(
+            graph.decision_requests[&scope.agent_id]
+                .to_string()
+                .contains("ready")
+        );
+        accepted(
+            &app,
+            Command::CompleteWorkflowRole {
+                workflow_id: id,
+                agent_id: AgentId(implementer.agent_id),
+                generation: run.assignment_generation(implementer.agent_id),
+                signal: CompletionSignal {
+                    decision: Decision::Done,
+                    summary: "Implemented".into(),
+                    task: String::new(),
+                    assignments: vec![],
+                },
+            },
+        );
+        let finished = wait_for(&app, id, |w| {
+            w.run.as_ref().unwrap().status == RunStatus::Completed
+        });
+        assert_eq!(
+            finished
+                .run
+                .as_ref()
+                .unwrap()
+                .graph
+                .as_ref()
+                .unwrap()
+                .outputs
+                .len(),
+            1
+        );
+        let trace = app.workflow_trace(id, None, 200).unwrap();
+        assert_eq!(
+            trace
+                .lanes
+                .iter()
+                .filter(|lane| lane.harness.as_deref() == Some("Nouli"))
+                .count(),
+            3
+        );
+        assert!(trace.spans.iter().any(|span| span.title == "Graph"));
+    }
+
+    #[test]
+    fn nouli_refusal_needs_explicit_retry_and_keeps_the_frozen_input() {
+        let folder = tempfile::tempdir().unwrap();
+        let bin = tempfile::tempdir().unwrap();
+        let mut app = application(folder.path(), bin.path(), "exec cat");
+        let provider = prepare_nouli(&mut app, bin.path());
+        provider
+            .refuse
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        let id = launch_graph(
+            &app,
+            folder.path(),
+            &decision_chain_definition(),
+            "Frozen task",
+        );
+        let paused = wait_for(&app, id, |w| w.status == WorkflowStatus::Interrupted);
+        let run = paused.run.as_ref().unwrap();
+        let graph = run.graph.as_ref().unwrap();
+        let generation = run.generation;
+        assert_eq!(graph.decision_errors.len(), 1);
+        assert_eq!(graph.decision_results.len(), 1);
+        assert!(graph.decision_outputs.is_empty());
+        let frozen = graph.decision_requests.clone();
+        app.resume_workflow_run(&paused, folder.path()).unwrap();
+        assert_eq!(
+            app.snapshot().unwrap().workflows.workflows[0].status,
+            WorkflowStatus::Interrupted
+        );
+        provider
+            .refuse
+            .store(false, std::sync::atomic::Ordering::Relaxed);
+        accepted(
+            &app,
+            Command::RetryDecision {
+                workflow_id: id,
+                generation,
+            },
+        );
+        let resumed = wait_for(&app, id, |w| {
+            w.run
+                .as_ref()
+                .unwrap()
+                .graph
+                .as_ref()
+                .unwrap()
+                .decision_results
+                .len()
+                == 3
+        });
+        let resumed_graph = resumed.run.as_ref().unwrap().graph.as_ref().unwrap();
+        for (agent, request) in frozen {
+            assert_eq!(resumed_graph.decision_requests[&agent], request);
+        }
+        accepted(&app, Command::CancelWorkflowRun { workflow_id: id });
+    }
+
+    #[test]
+    fn nouli_completed_response_survives_a_failed_store_update() {
+        let folder = tempfile::tempdir().unwrap();
+        let bin = tempfile::tempdir().unwrap();
+        let fixture = application(folder.path(), bin.path(), "exec cat");
+        let data = tempfile::tempdir().unwrap();
+        let mut app = Application::with_config(data.path(), Config::default()).unwrap();
+        app.harness_path.clone_from(&fixture.harness_path);
+        accepted(
+            &app,
+            Command::OpenFolder {
+                path: folder.path().to_owned(),
+            },
+        );
+        let _provider = prepare_nouli(&mut app, bin.path());
+        let id = launch_graph(&app, folder.path(), &decision_chain_definition(), "Task");
+        let connection = fail_run_updates(data.path());
+        let deadline = Instant::now() + Duration::from_secs(15);
+        while app.snapshot().is_ok() {
+            assert!(
+                Instant::now() < deadline,
+                "decision response did not reach persistence"
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(app.run_processes.lock().unwrap()[&id].decisions.len(), 1);
+        connection
+            .execute_batch("DROP TRIGGER reject_run_update")
+            .unwrap();
+        let workflow = wait_for(&app, id, |w| {
+            w.run
+                .as_ref()
+                .unwrap()
+                .graph
+                .as_ref()
+                .unwrap()
+                .decision_results
+                .len()
+                == 3
+        });
+        assert_eq!(
+            workflow
+                .run
+                .as_ref()
+                .unwrap()
+                .traces
+                .iter()
+                .filter(|e| e.kind == "decisionStarted")
+                .count(),
+            3
+        );
+        accepted(&app, Command::CancelWorkflowRun { workflow_id: id });
+    }
+    #[test]
+    fn nouli_launch_waits_for_publication_and_cancel_joins_the_evaluation() {
+        let folder = tempfile::tempdir().unwrap();
+        let bin = tempfile::tempdir().unwrap();
+        let data = tempfile::tempdir().unwrap();
+        let fixture = application(folder.path(), bin.path(), "exec cat");
+        let mut app = Application::with_config(data.path(), Config::default()).unwrap();
+        app.harness_path.clone_from(&fixture.harness_path);
+        accepted(
+            &app,
+            Command::OpenFolder {
+                path: folder.path().to_owned(),
+            },
+        );
+        let provider = prepare_nouli(&mut app, bin.path());
+        provider
+            .stall
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        let definition = decision_chain_definition();
+        let reference = WorkflowCatalog::new(app.lock_inner().unwrap().folders.store())
+            .create(&definition)
+            .unwrap();
+        accepted(
+            &app,
+            Command::CreateWorkflow {
+                folder: folder.path().into(),
+                session_id: None,
+                kind: WorkflowKind::Draft,
+                roles: vec![],
+                size: SIZE,
+            },
+        );
+        let id = app.snapshot().unwrap().workflows.workflows[0].workflow_id;
+        let connection = fail_run_updates(data.path());
+        let result = app.handle_command(
+            RequestId(9001),
+            Command::StartWorkflowRun {
+                workflow_id: id,
+                workflow_type: reference,
+                prompt: "Task".into(),
+                roles: definition
+                    .roles
+                    .iter()
+                    .filter(|r| {
+                        !definition
+                            .graph
+                            .as_ref()
+                            .unwrap()
+                            .decisions
+                            .contains_key(&r.id.0)
+                    })
+                    .map(|r| RoleLaunch {
+                        role: r.id.0.clone(),
+                        harness: HarnessId::Pi,
+                        model: None,
+                        effort: None,
+                        yolo: false,
+                    })
+                    .collect(),
+                size: SIZE,
+            },
+        );
+        assert!(result.is_ok());
+        assert_eq!(provider.calls(), 0);
+        assert!(
+            app.run_processes
+                .lock()
+                .unwrap()
+                .get(&id)
+                .is_none_or(|p| p.decisions.is_empty())
+        );
+        connection
+            .execute_batch("DROP TRIGGER reject_run_update")
+            .unwrap();
+        assert_eq!(
+            app.snapshot().unwrap().workflows.workflows[0].status,
+            WorkflowStatus::Failed
+        );
+        let mut app = application(folder.path(), bin.path(), "exec cat");
+        app.nouli_home = Some(bin.path().to_owned());
+        let id = launch_graph(&app, folder.path(), &definition, "Task");
+        wait_for(&app, id, |_| provider.calls() == 1);
+        let start = Instant::now();
+        accepted(&app, Command::CancelWorkflowRun { workflow_id: id });
+        assert!(start.elapsed() < Duration::from_secs(2));
+        assert!(!app.run_processes.lock().unwrap().contains_key(&id));
+        provider
+            .stall
+            .store(false, std::sync::atomic::Ordering::Relaxed);
+        thread::sleep(Duration::from_millis(50));
+        assert_eq!(
+            app.snapshot().unwrap().workflows.workflows[0].status,
+            WorkflowStatus::Cancelled
+        );
     }
 }

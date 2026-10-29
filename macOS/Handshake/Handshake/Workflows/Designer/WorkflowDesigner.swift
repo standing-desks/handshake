@@ -81,19 +81,7 @@ struct WorkflowDesigner: View {
         HStack(spacing: 16) {
             status
             Spacer(minLength: 12)
-            HStack(spacing: 8) {
-                Button("Zoom out", systemImage: "minus") { zoom = max(0.25, zoom - 0.1) }.labelStyle(.iconOnly)
-                    .disabled(zoom <= 0.25).help("Zoom out")
-                Button {
-                    zoom = 1
-                } label: {
-                    Text(zoom, format: .percent.precision(.fractionLength(0))).monospacedDigit().frame(width: 40)
-                }.help("Actual size")
-                Button("Zoom in", systemImage: "plus") { zoom = min(2, zoom + 0.1) }.labelStyle(.iconOnly)
-                    .disabled(zoom >= 2).help("Zoom in")
-                Divider().frame(height: 14)
-                Button("Fit", action: fitGraph).help("Fit the graph to this canvas")
-            }.buttonStyle(.borderless).controlSize(.small)
+            WorkflowGraphZoomControls(zoom: $zoom, fitGraph: fitGraph)
         }.font(.caption).padding(.horizontal, 20).padding(.vertical, 10).background(.bar)
     }
 
@@ -110,6 +98,17 @@ struct WorkflowDesigner: View {
             Text("Double-click to add an agent. Right-click for canvas tools.").foregroundStyle(.secondary).lineLimit(2)
         } else if model.definition.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             Text("Save without a name to use Untitled.").foregroundStyle(.secondary).lineLimit(2)
+        } else if let issue = model.decisionValidationIssues.first {
+            Button {
+                selection = nil
+                model.decisionFocus = issue
+            } label: {
+                Label("\(model.nodeName(issue.nodeID)): \(issue.message)", systemImage: "exclamationmark.circle")
+                    .foregroundStyle(Color.statusNeedsAttention).lineLimit(2)
+                    .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
+                    .contentShape(.rect)
+            }.buttonStyle(.plain).help("Show the field that needs attention")
+                .accessibilityIdentifier("designerDecisionValidation")
         } else if let issue = model.issues.first, !model.isValidating {
             Text(issue.message).foregroundStyle(Color.statusNeedsAttention).lineLimit(2)
                 .accessibilityIdentifier("designerValidation")

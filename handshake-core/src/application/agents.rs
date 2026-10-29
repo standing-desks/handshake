@@ -123,6 +123,9 @@ impl Application {
         prompt: &str,
         size: TerminalSize,
     ) -> Result<CommandDisposition, ApplicationError> {
+        if harness == HarnessId::Nouli {
+            return Ok(reject("decisionOnly", "Add a decision node to use Nouli."));
+        }
         let prompt = prompt.trim();
         let Some(options) = validate_options(harness, model, effort, yolo) else {
             return Ok(reject(

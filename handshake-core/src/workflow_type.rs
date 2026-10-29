@@ -9,6 +9,8 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 mod builtin;
+mod decision;
+pub use decision::{DecisionKind, DecisionNode, DecisionOption, DecisionResultError};
 mod catalog;
 mod files;
 mod graph;

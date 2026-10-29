@@ -1,0 +1,684 @@
+//! Portable decision questions and validated routing over Nouli's versioned reports.
+use std::collections::BTreeSet;
+
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+use thiserror::Error;
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DecisionKind {
+    #[default]
+    Choice,
+    Noul,
+    Score,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DecisionOption {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+}
+
+/// Probability thresholds use basis points; Score cutoffs use 10,000 ticks per rubric level.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DecisionNode {
+    pub question: String,
+    #[serde(default)]
+    pub kind: DecisionKind,
+    #[serde(default)]
+    pub options: Vec<DecisionOption>,
+    #[serde(default = "yes_threshold")]
+    pub true_threshold: u16,
+    #[serde(default = "no_threshold")]
+    pub false_threshold: u16,
+    #[serde(default)]
+    pub min_confidence: Option<u16>,
+    /// None uses midpoints. Explicit cutoffs are strictly ascending, one per adjacent pair.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub score_thresholds: Option<Vec<u32>>,
+    #[serde(default)]
+    pub provider: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default = "include_task")]
+    pub include_task: bool,
+}
+
+const fn yes_threshold() -> u16 {
+    8_000
+}
+const fn no_threshold() -> u16 {
+    2_000
+}
+const fn include_task() -> bool {
+    true
+}
+
+#[derive(Clone, Debug, Eq, Error, PartialEq)]
+pub enum DecisionResultError {
+    #[error("Nouli returned an invalid or incompatible decision report.")]
+    Invalid,
+    #[error("Nouli refused to answer. Review the evidence before retrying.")]
+    Refused,
+    #[error("The configured native-confidence gate is unavailable for this answer.")]
+    ConfidenceUnavailable,
+}
+
+impl DecisionNode {
+    pub(crate) fn validate(&self) -> bool {
+        let text = |s: &str| !s.trim().is_empty() && s.len() <= 8_192;
+        let selector = |s: &str| crate::harness::launch::validate_model(s).is_some();
+        if !text(&self.question)
+            || self.true_threshold > 10_000
+            || self.false_threshold > self.true_threshold
+            || self.min_confidence.is_some_and(|v| v > 10_000)
+            || self.provider.as_deref().is_some_and(|s| !selector(s))
+            || self.model.as_deref().is_some_and(|s| !selector(s))
+            || self.kind != DecisionKind::Choice && self.min_confidence.is_some()
+            || !self.valid_score_thresholds()
+        {
+            return false;
+        }
+        if self.kind == DecisionKind::Noul {
+            return true;
+        }
+        let maximum = if self.kind == DecisionKind::Score {
+            10
+        } else {
+            255
+        };
+        let mut ids = BTreeSet::new();
+        (2..=maximum).contains(&self.options.len())
+            && self.options.iter().all(|o| {
+                text(&o.id)
+                    && o.id != "fallback"
+                    && text(&o.name)
+                    && text(&o.description)
+                    && ids.insert(&o.id)
+            })
+    }
+
+    fn valid_score_thresholds(&self) -> bool {
+        let Some(cutoffs) = &self.score_thresholds else {
+            return true;
+        };
+        if self.kind != DecisionKind::Score || !(2..=10).contains(&self.options.len()) {
+            return false;
+        }
+        let top = u32::try_from(self.options.len() - 1).unwrap_or(0) * 10_000;
+        cutoffs.len() + 1 == self.options.len()
+            && cutoffs.iter().all(|v| *v > 0 && *v < top)
+            && cutoffs.windows(2).all(|pair| pair[0] < pair[1])
+    }
+
+    #[must_use]
+    pub fn outputs(&self) -> Vec<(String, String)> {
+        if self.kind == DecisionKind::Noul {
+            let mut outputs = vec![("yes".into(), "Yes".into()), ("no".into(), "No".into())];
+            if self.true_threshold > self.false_threshold {
+                outputs.push(("uncertain".into(), "Uncertain".into()));
+            }
+            return outputs;
+        }
+        let mut outputs: Vec<_> = self
+            .options
+            .iter()
+            .map(|o| (o.id.clone(), o.name.clone()))
+            .collect();
+        if self.min_confidence.is_some() {
+            outputs.push(("fallback".into(), "Fallback".into()));
+        }
+        outputs
+    }
+
+    pub(crate) fn request(&self, task: &str, incoming: &str) -> Value {
+        let answer_space = match self.kind {
+            DecisionKind::Choice => {
+                json!({"type":"choice", "options": self.options.iter().map(|o| json!({"id":o.id,"description":if o.name == o.description { o.name.clone() } else { format!("{}: {}",o.name,o.description) }})).collect::<Vec<_>>()})
+            }
+            DecisionKind::Noul => json!({"type":"noul"}),
+            DecisionKind::Score => {
+                json!({"type":"score","levels": self.options.iter().map(|o| if o.name == o.description { json!(o.name) } else { json!({"label":o.name,"description":o.description}) }).collect::<Vec<_>>()})
+            }
+        };
+        let mut state = Vec::new();
+        if self.include_task {
+            state.push(json!({"type":"structured","data":{"workflow_task":task}}));
+        }
+        state.push(json!({"type":"text","text":incoming}));
+        json!({"version":1,"state":state,"questions":[{"id":"route","prompt":self.question,"answer_space":answer_space}]})
+    }
+
+    /// Validate the complete answer before applying Handshake's explicit routing policy.
+    pub(crate) fn route(&self, envelope: &Value) -> Result<String, DecisionResultError> {
+        use DecisionResultError::Invalid;
+        if !self.validate() || envelope["version"] != 1 || envelope["result"]["kind"] != "turn" {
+            return Err(Invalid);
+        }
+        let outcome = &envelope["result"]["report"]["outcome"];
+        if outcome["version"] != 1 {
+            return Err(Invalid);
+        }
+        if outcome["provider"]["provider"]
+            .as_str()
+            .is_none_or(str::is_empty)
+            || outcome["provider"]["model"]
+                .as_str()
+                .is_none_or(str::is_empty)
+        {
+            return Err(Invalid);
+        }
+        let outcomes = outcome["outcomes"]
+            .as_array()
+            .filter(|a| a.len() == 1)
+            .ok_or(Invalid)?;
+        let result = &outcomes[0];
+        if result["question_id"] != "route" {
+            return Err(Invalid);
+        }
+        if result["status"] == "refused" {
+            return Err(DecisionResultError::Refused);
+        }
+        if result["status"] != "answered" {
+            return Err(Invalid);
+        }
+        let answer = &result["answer"];
+        let selected = match self.kind {
+            DecisionKind::Choice => {
+                if answer["type"] != "choice" {
+                    return Err(Invalid);
+                }
+                let selected = answer["selected"].as_str().ok_or(Invalid)?;
+                let distribution = answer["distribution"].as_array().ok_or(Invalid)?;
+                let mut ids = BTreeSet::new();
+                let mut sum = 0.;
+                for entry in distribution {
+                    let id = entry["option_id"].as_str().ok_or(Invalid)?;
+                    if !self.options.iter().any(|o| o.id == id) || !ids.insert(id) {
+                        return Err(Invalid);
+                    }
+                    sum += probability(&entry["probability"])?;
+                }
+                if ids.len() != self.options.len()
+                    || !ids.contains(selected)
+                    || (sum - 1.).abs() > 0.001_001
+                {
+                    return Err(Invalid);
+                }
+                selected.to_owned()
+            }
+            DecisionKind::Noul => {
+                if answer["type"] != "noul" {
+                    return Err(Invalid);
+                }
+                let p = probability(&answer["probability"])? * 10_000.;
+                if p >= f64::from(self.true_threshold) {
+                    "yes"
+                } else if p <= f64::from(self.false_threshold) {
+                    "no"
+                } else {
+                    "uncertain"
+                }
+                .to_owned()
+            }
+            DecisionKind::Score => self.score_route(answer)?,
+        };
+        // Confidence is native metadata, never reconstructed from a selected-option probability.
+        if let Some(threshold) = self.min_confidence {
+            let confidence = result["confidence"]["value"]
+                .as_f64()
+                .filter(|p| p.is_finite() && (0. ..=1.).contains(p))
+                .ok_or(DecisionResultError::ConfidenceUnavailable)?;
+            if confidence * 10_000. < f64::from(threshold) {
+                return Ok("fallback".into());
+            }
+        }
+        Ok(selected)
+    }
+    fn score_route(&self, answer: &Value) -> Result<String, DecisionResultError> {
+        use DecisionResultError::Invalid;
+        if answer["type"] != "score" {
+            return Err(Invalid);
+        }
+        let probabilities = answer["probabilities"]
+            .as_array()
+            .filter(|p| p.len() == self.options.len())
+            .ok_or(Invalid)?;
+        let mut sum = 0.;
+        let mut expected = 0.;
+        for (i, p) in probabilities.iter().enumerate() {
+            let p = probability(p)?;
+            sum += p;
+            expected += f64::from(u16::try_from(i).map_err(|_| Invalid)?) * p;
+        }
+        let score = answer["value"].as_f64().ok_or(Invalid)?;
+        if !score.is_finite()
+            || score < 0.
+            || score > f64::from(u16::try_from(self.options.len() - 1).map_err(|_| Invalid)?)
+            || (sum - 1.).abs() > 0.001_001
+            || (score - expected).abs() > 0.001_001
+        {
+            return Err(Invalid);
+        }
+        let index = if let Some(cutoffs) = &self.score_thresholds {
+            cutoffs
+                .iter()
+                .filter(|cutoff| score >= f64::from(**cutoff) / 10_000.)
+                .count()
+        } else {
+            (0..self.options.len() - 1)
+                .filter(|i| score >= f64::from(u16::try_from(*i).unwrap_or(0)) + 0.5)
+                .count()
+        };
+        Ok(self.options[index].id.clone())
+    }
+}
+
+fn probability(value: &Value) -> Result<f64, DecisionResultError> {
+    value
+        .as_f64()
+        .filter(|p| p.is_finite() && (0. ..=1.).contains(p))
+        .ok_or(DecisionResultError::Invalid)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn node(kind: DecisionKind) -> DecisionNode {
+        DecisionNode {
+            question: "Which route?".into(),
+            kind,
+            options: (0..3)
+                .map(|i| DecisionOption {
+                    id: i.to_string(),
+                    name: format!("Level {i}"),
+                    description: format!("Meaning {i}"),
+                })
+                .collect(),
+            true_threshold: 8000,
+            false_threshold: 2000,
+            min_confidence: None,
+            score_thresholds: None,
+            provider: None,
+            model: None,
+            include_task: true,
+        }
+    }
+    fn result(answer: &Value) -> Value {
+        json!({"version":1,"result":{"kind":"turn","report":{"outcome":{"version":1,"provider":{"provider":"fixture","model":"offline"},"outcomes":[{"question_id":"route","status":"answered","answer":answer}]}}}})
+    }
+    #[test]
+    fn custom_score_cutoffs_cover_the_scale_and_include_the_upper_boundary() {
+        let mut node = node(DecisionKind::Score);
+        node.score_thresholds = Some(vec![2500, 14_000]);
+        for (value, expected) in [
+            (0., "0"),
+            (0.2499, "0"),
+            (0.25, "1"),
+            (1.3999, "1"),
+            (1.4, "2"),
+            (2., "2"),
+        ] {
+            let probabilities = if value <= 1. {
+                vec![1. - value, value, 0.]
+            } else {
+                vec![0., 2. - value, value - 1.]
+            };
+            let report =
+                result(&json!({"type":"score", "value":value, "probabilities":probabilities}));
+            assert_eq!(node.route(&report).unwrap(), expected);
+        }
+        let saved = serde_json::to_value(&node).unwrap();
+        assert_eq!(serde_json::from_value::<DecisionNode>(saved).unwrap(), node);
+        assert!(
+            node.request("Task", "Evidence")["questions"][0]["answer_space"]
+                .get("score_thresholds")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn score_cutoffs_reject_wrong_counts_order_bounds_and_question_types() {
+        let mut node = node(DecisionKind::Score);
+        for invalid in [
+            vec![],
+            vec![5000],
+            vec![5000, 5000],
+            vec![15_000, 5000],
+            vec![0, 15_000],
+            vec![5000, 20_000],
+            vec![5000, u32::MAX],
+        ] {
+            node.score_thresholds = Some(invalid);
+            assert!(!node.validate());
+        }
+        node.score_thresholds = Some(vec![1, 19_999]);
+        assert!(node.validate());
+        node.kind = DecisionKind::Choice;
+        assert!(!node.validate());
+        node.kind = DecisionKind::Noul;
+        assert!(!node.validate());
+        node.score_thresholds = None;
+        assert!(node.validate());
+    }
+    #[test]
+    fn fractional_scores_route_without_replacing_the_answer() {
+        let node = node(DecisionKind::Score);
+        let report = result(&json!({"type":"score","value":1.43,"probabilities":[0.,0.57,0.43]}));
+        assert_eq!(node.route(&report).unwrap(), "1");
+        assert_eq!(
+            report["result"]["report"]["outcome"]["outcomes"][0]["answer"]["value"],
+            1.43
+        );
+        assert_eq!(
+            node.route(&result(
+                &json!({"type":"score","value":0.5,"probabilities":[0.5,0.5,0.]})
+            ))
+            .unwrap(),
+            "1"
+        );
+        assert!(
+            node.route(&result(
+                &json!({"type":"score","value":1.,"probabilities":[0.,0.57,0.43]})
+            ))
+            .is_err()
+        );
+    }
+    #[test]
+    fn probability_thresholds_have_explicit_boundaries() {
+        let mut node = node(DecisionKind::Noul);
+        for (p, expected) in [
+            (0., "no"),
+            (0.2, "no"),
+            (0.5, "uncertain"),
+            (0.8, "yes"),
+            (1., "yes"),
+        ] {
+            assert_eq!(
+                node.route(&result(&json!({"type":"noul","probability":p})))
+                    .unwrap(),
+                expected
+            );
+        }
+        node.true_threshold = 5000;
+        node.false_threshold = 5000;
+        assert_eq!(node.outputs().len(), 2);
+        assert_eq!(
+            node.route(&result(&json!({"type":"noul","probability":0.5})))
+                .unwrap(),
+            "yes"
+        );
+        node.false_threshold = 6000;
+        assert!(!node.validate());
+    }
+    #[test]
+    fn choice_requires_complete_distribution_and_native_confidence_when_gated() {
+        let mut node = node(DecisionKind::Choice);
+        let mut report = result(
+            &json!({"type":"choice","selected":"0","distribution":[{"option_id":"0","probability":0.8},{"option_id":"1","probability":0.1},{"option_id":"2","probability":0.1}]}),
+        );
+        assert_eq!(node.route(&report).unwrap(), "0");
+        node.min_confidence = Some(6000);
+        assert_eq!(
+            node.route(&report),
+            Err(DecisionResultError::ConfidenceUnavailable)
+        );
+        report["result"]["report"]["outcome"]["outcomes"][0]["confidence"] = json!({"value":0.4});
+        assert_eq!(node.route(&report).unwrap(), "fallback");
+        report["result"]["report"]["outcome"]["outcomes"][0]["answer"]["distribution"][1]["option_id"] =
+            json!("0");
+        assert!(node.route(&report).is_err());
+    }
+    #[test]
+    fn both_report_versions_are_required() {
+        let node = node(DecisionKind::Noul);
+        let mut report = result(&json!({"type":"noul","probability":0.9}));
+        report["result"]["report"]["outcome"]["version"] = json!(2);
+        assert_eq!(node.route(&report), Err(DecisionResultError::Invalid));
+        report["result"]["report"]["outcome"]
+            .as_object_mut()
+            .unwrap()
+            .remove("version");
+        assert_eq!(node.route(&report), Err(DecisionResultError::Invalid));
+        report["result"]["report"]["outcome"]["version"] = json!(1);
+        report["version"] = json!(2);
+        assert_eq!(node.route(&report), Err(DecisionResultError::Invalid));
+    }
+    #[test]
+    fn choice_request_preserves_authored_options_when_receiving_agents_are_renamed() {
+        let file: toml::Value = toml::from_str(include_str!(
+            "../../../examples/workflows/decision-triage.toml"
+        ))
+        .unwrap();
+        let mut definition: crate::WorkflowTypeDefinition =
+            file["definition"].clone().try_into().unwrap();
+        for (option, text) in definition
+            .graph
+            .as_mut()
+            .unwrap()
+            .decisions
+            .get_mut("classify")
+            .unwrap()
+            .options
+            .iter_mut()
+            .zip([
+                "New capability",
+                "Repair existing behavior",
+                "Needs investigation",
+            ])
+        {
+            option.name = text.into();
+            option.description = text.into();
+        }
+        definition
+            .roles
+            .iter_mut()
+            .find(|role| role.id.0 == "scope")
+            .unwrap()
+            .name = "Renamed planner".into();
+        crate::validate(&definition).unwrap();
+        let node = &definition.graph.as_ref().unwrap().decisions["classify"];
+        let request = node.request("Incoming task", "Prepared evidence");
+        assert_eq!(request["questions"][0]["prompt"], node.question);
+        assert_eq!(
+            request["questions"][0]["answer_space"]["options"],
+            json!([
+                {"id":"feature", "description":"New capability"},
+                {"id":"fix", "description":"Repair existing behavior"},
+                {"id":"other", "description":"Needs investigation"}
+            ])
+        );
+        assert_eq!(
+            request["state"][0]["data"]["workflow_task"],
+            "Incoming task"
+        );
+        assert_eq!(request["state"][1]["text"], "Prepared evidence");
+        let answer = result(&json!({"type":"choice","selected":"fix","distribution":[
+            {"option_id":"feature","probability":0.1}, {"option_id":"fix","probability":0.8},
+            {"option_id":"other","probability":0.1}
+        ]}));
+        assert_eq!(node.route(&answer).unwrap(), "fix");
+    }
+
+    #[test]
+    fn connected_score_levels_keep_fractional_results_and_follow_saved_order() {
+        let file: toml::Value = toml::from_str(include_str!(
+            "../../../examples/workflows/decision-triage.toml"
+        ))
+        .unwrap();
+        let mut definition: crate::WorkflowTypeDefinition =
+            file["definition"].clone().try_into().unwrap();
+        let graph = definition.graph.as_mut().unwrap();
+        let mut node = graph.decisions["scope"].clone();
+        node.kind = DecisionKind::Score;
+        for edge in graph.edges.iter_mut().filter(|edge| edge.from == "scope") {
+            let option = node
+                .options
+                .iter_mut()
+                .find(|option| Some(&option.id) == edge.output.as_ref())
+                .unwrap();
+            option.id.clone_from(&edge.id);
+            option.name = format!("Rubric for {}", edge.id);
+            option.description.clone_from(&option.name);
+            edge.output = Some(edge.id.clone());
+        }
+        graph.decisions.insert("scope".into(), node.clone());
+        crate::validate(&definition).unwrap();
+        let resolved = node.clone();
+        let request = resolved.request("Task", "Evidence");
+        assert_eq!(
+            request["questions"][0]["answer_space"]["levels"],
+            json!([
+                "Rubric for scope-small",
+                "Rubric for scope-medium",
+                "Rubric for scope-large"
+            ])
+        );
+        let answer =
+            result(&json!({"type":"score", "value":1.43, "probabilities":[0.0,0.57,0.43]}));
+        assert_eq!(resolved.route(&answer).unwrap(), "scope-medium");
+        node.options.swap(0, 1);
+        let reordered = node;
+        assert_eq!(reordered.route(&answer).unwrap(), "scope-small");
+        assert_eq!(
+            answer["result"]["report"]["outcome"]["outcomes"][0]["answer"]["value"],
+            1.43
+        );
+    }
+
+    #[test]
+    fn yes_no_cutoff_routes_the_boundary_to_yes() {
+        let mut node = node(DecisionKind::Noul);
+        node.true_threshold = 5000;
+        node.false_threshold = 5000;
+        assert_eq!(node.outputs().len(), 2);
+        for (probability, expected) in [(0.49, "no"), (0.5, "yes"), (0.83, "yes")] {
+            let answer = result(&json!({"type":"noul", "probability":probability}));
+            assert_eq!(node.route(&answer).unwrap(), expected);
+            assert_eq!(
+                answer["result"]["report"]["outcome"]["outcomes"][0]["answer"]["probability"],
+                probability
+            );
+        }
+    }
+
+    #[test]
+    fn always_edges_round_trip_and_do_not_satisfy_a_conditional_answer() {
+        let file: toml::Value = toml::from_str(include_str!(
+            "../../../examples/workflows/decision-triage.toml"
+        ))
+        .unwrap();
+        let mut definition: crate::WorkflowTypeDefinition =
+            file["definition"].clone().try_into().unwrap();
+        let graph = definition.graph.as_mut().unwrap();
+        graph.edges.push(crate::GraphEdge {
+            id: "ready-observer".into(),
+            from: "ready".into(),
+            to: "architect".into(),
+            event: crate::GraphEvent::Done,
+            output: None,
+            always: true,
+        });
+        crate::validate(&definition).unwrap();
+        let encoded = serde_json::to_value(&definition).unwrap();
+        assert_eq!(
+            serde_json::from_value::<crate::WorkflowTypeDefinition>(encoded).unwrap(),
+            definition
+        );
+        let graph = definition.graph.as_mut().unwrap();
+        let edge = graph
+            .edges
+            .iter_mut()
+            .find(|edge| edge.id == "ready-observer")
+            .unwrap();
+        edge.output = Some("yes".into());
+        assert!(crate::validate(&definition).is_err());
+        let graph = definition.graph.as_mut().unwrap();
+        graph
+            .edges
+            .iter_mut()
+            .find(|edge| edge.id == "ready-observer")
+            .unwrap()
+            .output = None;
+        graph.edges.retain(|edge| edge.id != "ready-yes");
+        assert!(crate::validate(&definition).is_err());
+    }
+
+    #[test]
+    fn ordinary_agent_edges_cannot_be_marked_always() {
+        let mut definition = crate::BuiltinType::Adversarial.definition();
+        definition.stages.clear();
+        definition.handoffs.clear();
+        definition.review_loops.clear();
+        definition.graph = Some(serde_json::from_value(json!({
+            "edges":[{"id":"work","from":"implementer","to":"reviewer","event":"done","always":true}]
+        })).unwrap());
+        assert!(
+            crate::validate(&definition)
+                .unwrap_err()
+                .iter()
+                .any(|issue| { issue.problem.to_string().contains("only decision links") })
+        );
+    }
+
+    #[test]
+    fn four_connections_with_two_options_are_rejected() {
+        let file: toml::Value = toml::from_str(include_str!(
+            "../../../examples/workflows/decision-triage.toml"
+        ))
+        .unwrap();
+        let mut definition: crate::WorkflowTypeDefinition =
+            file["definition"].clone().try_into().unwrap();
+        let graph = definition.graph.as_mut().unwrap();
+        graph
+            .decisions
+            .get_mut("classify")
+            .unwrap()
+            .options
+            .truncate(2);
+        graph.edges.push(crate::GraphEdge {
+            always: false,
+            id: "fourth-route".into(),
+            from: "classify".into(),
+            to: "scope".into(),
+            event: crate::GraphEvent::Done,
+            output: Some("fourth-route".into()),
+        });
+        let issues = crate::validate(&definition).unwrap_err();
+        assert!(issues.iter().any(|issue| {
+            issue
+                .problem
+                .to_string()
+                .contains("2 of 4 connections are missing options")
+        }));
+    }
+
+    #[test]
+    fn chained_example_is_a_valid_portable_graph() {
+        let file: toml::Value = toml::from_str(include_str!(
+            "../../../examples/workflows/decision-triage.toml"
+        ))
+        .unwrap();
+        let definition: crate::WorkflowTypeDefinition =
+            file["definition"].clone().try_into().unwrap();
+        crate::validate(&definition).unwrap();
+        assert_eq!(definition.graph.as_ref().unwrap().decisions.len(), 3);
+        let mut blocked = definition;
+        blocked
+            .graph
+            .as_mut()
+            .unwrap()
+            .receive
+            .insert("coordinator".into(), crate::GraphReceive::All);
+        assert!(
+            crate::validate(&blocked)
+                .unwrap_err()
+                .iter()
+                .any(|issue| issue.problem.to_string().contains("conditional branches"))
+        );
+    }
+}

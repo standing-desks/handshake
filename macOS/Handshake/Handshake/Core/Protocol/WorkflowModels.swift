@@ -36,6 +36,7 @@ nonisolated enum CoreHarness: String, CaseIterable, Codable, Identifiable, Senda
     case omp
     case opencode
     case kiro
+    case nouli
 
     var id: String { rawValue }
 
@@ -48,6 +49,7 @@ nonisolated enum CoreHarness: String, CaseIterable, Codable, Identifiable, Senda
         case .omp: "OMP"
         case .opencode: "OpenCode"
         case .kiro: "Kiro CLI"
+        case .nouli: "Nouli"
         }
     }
 }

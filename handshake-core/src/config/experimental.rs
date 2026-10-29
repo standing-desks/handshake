@@ -152,13 +152,13 @@ mod tests {
     use std::fs;
 
     #[test]
-    fn retired_tab_settings_are_ignored_and_memory_remains_opt_in() {
+    fn retired_settings_are_ignored_and_memory_remains_opt_in() {
         let root = tempfile::tempdir().unwrap();
         let path = root.path().join("config.toml");
         for retired in [false, true] {
             for memory in [None, Some(false), Some(true)] {
                 let source = format!(
-                    "[experimental]\ntab_management = {retired}\n{}",
+                    "[experimental]\ntab_management = {retired}\ndecision_nodes = {retired}\n{}",
                     memory.map_or_else(String::new, |enabled| format!(
                         "cross_agent_memory_consolidation = {enabled}\n"
                     ))

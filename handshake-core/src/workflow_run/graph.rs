@@ -11,9 +11,68 @@ use crate::workflow_type::{AgentGraph, GraphEvent, GraphFinish, GraphReceive};
 
 const MAX_QUEUED: usize = 32;
 
+impl WorkflowRun {
+    pub(crate) fn is_passthrough(&self, agent_id: u64) -> bool {
+        self.agents
+            .iter()
+            .find(|agent| agent.agent_id == agent_id)
+            .is_some_and(|agent| {
+                self.workflow_type
+                    .definition
+                    .graph
+                    .as_ref()
+                    .is_some_and(|graph| graph.passthrough_edge(&agent.role).is_some())
+            })
+    }
+
+    /// Forward single-output nodes transactionally, including chains and bounded loops.
+    pub(crate) fn forward_graph_passthroughs(&mut self) -> Result<(), RunError> {
+        while self.status == RunStatus::Running {
+            let Some(agent) = self
+                .active_agents()
+                .into_iter()
+                .find(|agent| {
+                    agent.status == RunAgentStatus::Waiting && self.is_passthrough(agent.agent_id)
+                })
+                .cloned()
+            else {
+                break;
+            };
+            let mut next = self.clone();
+            next.graph_agent_launched(agent.agent_id);
+            let signal = CompletionSignal {
+                decision: Decision::Done,
+                summary: next
+                    .incoming
+                    .get(&agent.agent_id)
+                    .cloned()
+                    .unwrap_or_default(),
+                assignments: vec![],
+                task: String::new(),
+            };
+            next.complete_graph_inner(
+                agent.agent_id,
+                next.assignment_generation(agent.agent_id),
+                &signal,
+                true,
+            )?;
+            *self = next;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GraphRun {
+    #[serde(default)]
+    pub decision_requests: BTreeMap<u64, serde_json::Value>,
+    #[serde(default)]
+    pub decision_results: BTreeMap<u64, serde_json::Value>,
+    #[serde(default)]
+    pub decision_outputs: BTreeMap<u64, String>,
+    #[serde(default)]
+    pub decision_errors: BTreeMap<u64, String>,
     pub started: bool,
     pub ready: BTreeSet<u64>,
     #[serde(default)]
@@ -246,7 +305,7 @@ impl WorkflowRun {
     ) -> Result<bool, RunError> {
         // Queue overflow or a bad join must not consume a completion or part of its fan-out.
         let mut next = self.clone();
-        let advance = next.complete_graph_inner(agent_id, generation, signal)?;
+        let advance = next.complete_graph_inner(agent_id, generation, signal, false)?;
         *self = next;
         Ok(advance)
     }
@@ -256,6 +315,7 @@ impl WorkflowRun {
         agent_id: u64,
         generation: u64,
         signal: &CompletionSignal,
+        passthrough: bool,
     ) -> Result<bool, RunError> {
         if self.status != RunStatus::Running
             || generation != self.assignment_generation(agent_id)
@@ -290,6 +350,17 @@ impl WorkflowRun {
             .as_ref()
             .ok_or(RunError::InvalidType)?
             .clone();
+        if definition.decisions.contains_key(&sender.role)
+            && !(passthrough && definition.passthrough_edge(&sender.role).is_some())
+            && !self
+                .graph
+                .as_ref()
+                .expect("graph")
+                .decision_outputs
+                .contains_key(&agent_id)
+        {
+            return Err(RunError::Decision);
+        }
         let event = match signal.decision {
             Decision::Done if !self.is_reviewer(agent_id) => GraphEvent::Done,
             Decision::Approve if self.is_reviewer(agent_id) => GraphEvent::Approved,
@@ -359,7 +430,11 @@ impl WorkflowRun {
             && self
                 .agents
                 .iter()
-                .filter(|agent| definition.is_result(&agent.role))
+                .filter(|agent| {
+                    definition.is_result(&agent.role)
+                        && (definition.decisions.is_empty()
+                            || graph.activations.contains_key(&agent.agent_id))
+                })
                 .all(|agent| graph.outputs.contains_key(&agent.agent_id))
     }
 
@@ -432,11 +507,22 @@ impl WorkflowRun {
                 },
             );
         }
-        for edge in definition
-            .edges
-            .iter()
-            .filter(|edge| edge.from == sender.role && edge.event == event)
-        {
+        let passthrough = definition.passthrough_edge(&sender.role).is_some();
+        let selected_output = self
+            .graph
+            .as_ref()
+            .and_then(|g| g.decision_outputs.get(&sender.agent_id))
+            .cloned();
+        for edge in definition.edges.iter().filter(|edge| {
+            edge.from == sender.role
+                && edge.event == event
+                && (passthrough
+                    || edge.always
+                    || edge
+                        .output
+                        .as_ref()
+                        .is_none_or(|output| selected_output.as_ref() == Some(output)))
+        }) {
             if edge.to == "finish" {
                 let graph = self.graph.as_mut().expect("graph");
                 graph
@@ -555,6 +641,9 @@ impl WorkflowRun {
                 .or_default() += 1;
             graph.started_at.insert(agent.agent_id, timestamp());
             graph.outputs.remove(&agent.agent_id);
+            graph.decision_requests.remove(&agent.agent_id);
+            graph.decision_results.remove(&agent.agent_id);
+            graph.decision_outputs.remove(&agent.agent_id);
             for edge in definition
                 .edges
                 .iter()
@@ -661,10 +750,13 @@ mod tests {
             handoffs: vec![],
             review_loops: vec![],
             graph: Some(AgentGraph {
+                decisions: std::collections::BTreeMap::new(),
                 edges: edges
                     .iter()
                     .enumerate()
                     .map(|(index, (from, to, event))| GraphEdge {
+                        always: false,
+                        output: None,
                         id: index.to_string(),
                         from: (*from).into(),
                         to: (*to).into(),
@@ -1000,6 +1092,90 @@ mod tests {
             summary: summary.into(),
             assignments: vec![],
             task: String::new(),
+        }
+    }
+
+    #[test]
+    fn every_decision_kind_delivers_to_its_selected_route_and_all_always_targets() {
+        for kind in [
+            crate::DecisionKind::Choice,
+            crate::DecisionKind::Noul,
+            crate::DecisionKind::Score,
+        ] {
+            let mut run = run(
+                &[
+                    ("router", "picked", GraphEvent::Done),
+                    ("router", "other", GraphEvent::Done),
+                    ("router", "always-a", GraphEvent::Done),
+                    ("router", "always-b", GraphEvent::Done),
+                ],
+                GraphFinish::All,
+            );
+            let binary = kind == crate::DecisionKind::Noul;
+            let selected = if binary { "yes" } else { "picked" };
+            let other = if binary { "no" } else { "other" };
+            let node: crate::DecisionNode = serde_json::from_value(serde_json::json!({
+                "question":"Where should this work go?", "kind":kind,
+                "true_threshold":5000, "false_threshold":5000,
+                "options":[
+                    {"id":selected,"name":"Picked","description":"Picked"},
+                    {"id":other,"name":"Other","description":"Other"}
+                ]
+            }))
+            .unwrap();
+            assert!(
+                !node.request("Task", "Evidence")["questions"][0]["answer_space"]
+                    .to_string()
+                    .contains("always")
+            );
+            let graph = run.workflow_type.definition.graph.as_mut().unwrap();
+            graph.decisions.insert("router".into(), node);
+            for edge in &mut graph.edges {
+                edge.always = edge.to.starts_with("always-");
+                edge.output = if edge.always {
+                    None
+                } else {
+                    Some(if edge.to == "picked" { selected } else { other }.into())
+                };
+            }
+            crate::validate(&run.workflow_type.definition).unwrap();
+            let router = run
+                .agents
+                .iter_mut()
+                .find(|agent| agent.role == "router")
+                .unwrap();
+            router.harness = HarnessId::Nouli;
+            let id = router.agent_id;
+            run.graph
+                .as_mut()
+                .unwrap()
+                .decision_outputs
+                .insert(id, selected.into());
+            run.complete(
+                id,
+                run.assignment_generation(id),
+                signal(Decision::Done, "Exact captured evidence"),
+            )
+            .unwrap();
+            let active: BTreeSet<_> = run
+                .active_agents()
+                .iter()
+                .map(|agent| agent.role.as_str())
+                .collect();
+            assert_eq!(active, BTreeSet::from(["picked", "always-a", "always-b"]));
+            for agent in run.active_agents() {
+                assert!(run.incoming[&agent.agent_id].contains("Exact captured evidence"));
+            }
+            let committed = serde_json::to_value(&run).unwrap();
+            assert!(
+                run.complete(
+                    id,
+                    run.assignment_generation(id),
+                    signal(Decision::Done, "Duplicate")
+                )
+                .is_err()
+            );
+            assert_eq!(serde_json::to_value(&run).unwrap(), committed);
         }
     }
 

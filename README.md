@@ -267,6 +267,13 @@ Run these commands from the checkout root, regardless of its directory name.
 Debug builds keep their data in `out/runtime/debug/`, separate from an installed
 copy of Handshake.
 
+Decision nodes include Nouli 0.2.0 in the existing `HandshakeCore.xcframework`;
+building or using Handshake does not require the Nouli CLI. Cargo pins the library
+to its release commit. Provider configuration and credentials use Nouli's shared
+`~/.nouli/config.toml`, workflow-folder `.env`, and private `~/.nouli/auth.toml`
+files. See the [decision-node guide](https://standing-desks.github.io/handshake/documentation/guide/#decision-nodes)
+for routing and setup.
+
 ### Check your changes
 
 ```sh

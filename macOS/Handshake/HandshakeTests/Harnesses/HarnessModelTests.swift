@@ -5,6 +5,9 @@ import Testing
 
 @MainActor
 struct HarnessModelTests {
+    private let interactiveHarnesses: [CoreHarness] = [
+        .codex, .claudeCode, .piAgent, .antigravity, .omp, .opencode, .kiro,
+    ]
     private let models = CoreHarnessModels(
         models: [
             .init(id: "a", name: "Alpha", efforts: ["low", "high"]),
@@ -108,12 +111,13 @@ struct HarnessModelTests {
             return
         }
         #expect(message.contains("pi crashed"))
-        #expect(await transport.modelRequests.count == CoreHarness.allCases.count)
+        #expect(await transport.modelRequests.count == interactiveHarnesses.count)
+        #expect(await !transport.modelRequests.contains(.nouli))
 
         await transport.failModels(.piAgent, with: nil)
         await catalog.load(using: client)
         #expect(
-            await transport.modelRequests.count == CoreHarness.allCases.count + 1,
+            await transport.modelRequests.count == interactiveHarnesses.count + 1,
             "Only the failed harness is asked again")
         #expect(catalog.entry(for: .piAgent).models != nil)
     }
@@ -124,7 +128,7 @@ struct HarnessModelTests {
         let catalog = HarnessModelCatalog()
         // Before the core runs, nothing is recorded, so the next picker asks again.
         await catalog.load(using: client)
-        #expect(CoreHarness.allCases.allSatisfy { catalog.entry(for: $0) == .loading })
+        #expect(interactiveHarnesses.allSatisfy { catalog.entry(for: $0) == .loading })
         #expect(await transport.modelRequests.isEmpty)
 
         client.start()
@@ -133,21 +137,21 @@ struct HarnessModelTests {
         let closedPicker = Task { await catalog.load(using: client) }
         closedPicker.cancel()
         await catalog.load(using: client)
-        #expect(CoreHarness.allCases.allSatisfy { catalog.entry(for: $0).models != nil })
-        #expect(await transport.modelRequests.count == CoreHarness.allCases.count, "Each harness is listed once")
+        #expect(interactiveHarnesses.allSatisfy { catalog.entry(for: $0).models != nil })
+        #expect(await transport.modelRequests.count == interactiveHarnesses.count, "Each harness is listed once")
     }
 
 }
 
 @MainActor
 extension HarnessModelTests {
-    @Test func availableHarnessesIncludesAllWhileLoading() async throws {
+    @Test func availableHarnessesIncludesInteractiveHarnessesWhileLoading() async throws {
         let transport = DelayedStartTransport()
         let client = CoreClient(transport: transport)
         let catalog = HarnessModelCatalog()
-        // Before the core runs, all entries are .loading — none should be excluded
+        // Interactive harnesses remain available while loading; Nouli is configured by decision nodes.
         await catalog.load(using: client)
-        #expect(catalog.availableHarnesses() == CoreHarness.allCases)
+        #expect(catalog.availableHarnesses() == interactiveHarnesses)
     }
 
     @Test func availableHarnessesExcludesFailedHarnesses() async throws {
@@ -172,7 +176,7 @@ extension HarnessModelTests {
 
     @Test func availableHarnessesIsEmptyWhenNoneAreInstalled() async throws {
         let transport = DelayedStartTransport()
-        for harness in CoreHarness.allCases {
+        for harness in interactiveHarnesses {
             await transport.failModels(harness, with: .failed("\(harness.rawValue) wasn't found on your PATH."))
         }
         let client = CoreClient(transport: transport)
@@ -265,7 +269,7 @@ extension HarnessModelTests {
 
     @Test func savedChoiceIsKeptWhenNoHarnessesAreAvailable() async throws {
         let transport = DelayedStartTransport()
-        for harness in CoreHarness.allCases {
+        for harness in interactiveHarnesses {
             await transport.failModels(harness, with: .failed("\(harness.rawValue) not found."))
         }
         let client = CoreClient(transport: transport)
