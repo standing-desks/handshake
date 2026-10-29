@@ -122,6 +122,12 @@ pub enum Command {
         workflow_id: WorkflowId,
         name: Option<String>,
     },
+    /// Moves an open workflow to another session of the open folder, keeping its processes,
+    /// runs, traces, and transcripts.
+    MoveWorkflow {
+        workflow_id: WorkflowId,
+        session_id: SessionId,
+    },
     ReopenWorkflow {
         workflow_id: WorkflowId,
     },
@@ -582,6 +588,10 @@ impl Application {
             Command::RenameWorkflow { workflow_id, name } => {
                 self.rename_workflow(workflow_id, name.as_deref())?
             }
+            Command::MoveWorkflow {
+                workflow_id,
+                session_id,
+            } => self.move_workflow(workflow_id, session_id)?,
             Command::ReopenWorkflow { workflow_id } => {
                 self.reopen_workflow(request_id, workflow_id)?
             }

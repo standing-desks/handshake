@@ -333,6 +333,19 @@ impl Store {
         Ok(())
     }
 
+    /// Callers keep both sessions in one folder; workflow history follows the workflow's ID.
+    pub(crate) fn move_workflow(
+        &self,
+        id: WorkflowId,
+        session: SessionId,
+    ) -> Result<(), StoreError> {
+        self.connection.execute(
+            "UPDATE workflows SET session_id = ?2 WHERE id = ?1",
+            params![sql_integer(id.0)?, sql_integer(session.0)?],
+        )?;
+        Ok(())
+    }
+
     pub(crate) fn reopen_workflow(&self, id: WorkflowId) -> Result<(), StoreError> {
         self.connection.execute(
             "UPDATE workflows SET closed_at = NULL, archived = 1 WHERE id = ?1",
@@ -516,6 +529,35 @@ mod tests {
             assert_eq!(workflow.harness, Some(harness));
             assert_eq!(workflow.agent_status, Some(WorkflowStatus::Cancelled));
         }
+    }
+
+    #[test]
+    fn a_moved_workflow_reopens_in_its_new_session_and_is_deleted_with_it() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = directory.path().join("store.sqlite");
+        let folder = Path::new("/folder");
+        let (first, second, moved) = {
+            let mut store = Store::open(&database).unwrap();
+            let first = store.create_session(folder, "First", 1).unwrap();
+            let second = store.create_session(folder, "Second", 2).unwrap();
+            let (moved, _) = store
+                .create_workflow(first, "Agents", WorkflowKind::Agents, &["Implementer"])
+                .unwrap();
+            store.move_workflow(moved, second).unwrap();
+            (first, second, moved)
+        };
+        let mut store = Store::open(&database).unwrap();
+        let workflows = store.workflows(folder).unwrap();
+        assert_eq!(workflows.len(), 1);
+        assert_eq!(
+            (workflows[0].workflow_id, workflows[0].session_id),
+            (moved, second)
+        );
+        assert_eq!(workflows[0].agents.len(), 1);
+        store.delete_session(folder, first, Some(second)).unwrap();
+        assert_eq!(store.workflows(folder).unwrap().len(), 1);
+        store.delete_session(folder, second, None).unwrap();
+        assert!(store.workflows(folder).unwrap().is_empty());
     }
 
     #[test]

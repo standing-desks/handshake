@@ -207,7 +207,7 @@ fn invalid_name() -> CommandDisposition {
         "Use a session name of 1–200 characters on one line.",
     )
 }
-fn not_found() -> CommandDisposition {
+pub(super) fn not_found() -> CommandDisposition {
     super::workflows::reject(
         "sessionNotFound",
         "The session is no longer in the open folder.",
