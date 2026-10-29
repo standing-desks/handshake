@@ -6,6 +6,11 @@ extension CoreClient {
         if let error = receipt.error { throw CoreFailure.commandRejected(code: error.code, message: error.message) }
     }
 
+    func moveWorkflow(workflowID: UInt64, sessionID: UInt64) async throws {
+        let receipt = try await send(.moveWorkflow(workflowID: workflowID, sessionID: sessionID))
+        if let error = receipt.error { throw CoreFailure.commandRejected(code: error.code, message: error.message) }
+    }
+
     func reopenWorkflow(workflowID: UInt64) async throws {
         let result = try await sendAndAwaitCompletion(.reopenWorkflow(workflowID: workflowID))
         guard case .workflowReopened(let id) = result, id == workflowID else {

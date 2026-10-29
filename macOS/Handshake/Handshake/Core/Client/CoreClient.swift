@@ -64,7 +64,7 @@ final class CoreClient {
                     ignoredCommandResults.insert(receipt.requestID)
                 }
             case .reloadConfig, .openFolder, .restoreFolder, .closeFolder, .closeFolderIfOpen, .removeRecentFolder,
-                .nameDraftWorkflow, .renameWorkflow,
+                .nameDraftWorkflow, .renameWorkflow, .moveWorkflow,
                 .refreshGitBranch, .startWorkflowRun, .submitWorkflowTask, .chooseWorkflowResult,
                 .completeWorkflowRole, .continueWorkflowRun,
                 .setWorkflowIndividualMode, .cancelWorkflowRun:

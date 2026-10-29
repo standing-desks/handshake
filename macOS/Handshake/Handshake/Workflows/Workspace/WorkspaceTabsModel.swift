@@ -2,6 +2,13 @@ import Foundation
 import OSLog
 import Observation
 
+/// Where a moved tab lands among a session's tabs.
+nonisolated enum TabPlacement: Equatable {
+    case end
+    case before(String)
+    case after(String)
+}
+
 /// Folder-scoped presentation. Stable file paths and workflow IDs survive app relaunch.
 @Observable
 final class WorkspaceTabsModel {
@@ -9,6 +16,19 @@ final class WorkspaceTabsModel {
         var order: [String] = []
         var pins: Set<String> = []
         var selection: String?
+        /// The file and browser tabs this session holds. Core owns which session holds a workflow.
+        var pages: [String] = []
+
+        init() {}
+
+        init(from decoder: Decoder) throws {
+            // Arrangements saved before sessions held pages decode with none.
+            let values = try decoder.container(keyedBy: CodingKeys.self)
+            order = try values.decodeIfPresent([String].self, forKey: .order) ?? []
+            pins = try values.decodeIfPresent(Set<String>.self, forKey: .pins) ?? []
+            selection = try values.decodeIfPresent(String.self, forKey: .selection)
+            pages = try values.decodeIfPresent([String].self, forKey: .pages) ?? []
+        }
     }
 
     nonisolated struct FileLocation: Codable, Equatable {
@@ -53,6 +73,7 @@ final class WorkspaceTabsModel {
     static func workflow(_ id: UInt64) -> String { "workflow:\(id)" }
     static func browser(_ id: UUID) -> String { "browser:\(id)" }
     static func file(_ path: String) -> String { "file:\(path)" }
+    static func isPage(_ reference: String) -> Bool { reference.hasPrefix("file:") || reference.hasPrefix("browser:") }
 
     func arrangement(_ session: UInt64?) -> Arrangement { saved.arrangements[scope(session)] ?? Arrangement() }
 
@@ -159,12 +180,13 @@ final class WorkspaceTabsModel {
     }
 
     func recentlyClosed(session: UInt64?) -> [ClosedTab] {
-        saved.closed.filter { $0.file != nil || $0.browser != nil || $0.sessionID == session }
+        saved.closed.filter { $0.sessionID == session }
     }
 
     func didReopen(_ tab: ClosedTab, session: UInt64?) {
         saved.closed.removeAll { $0.id == tab.id }
         var value = arrangement(session)
+        if Self.isPage(tab.reference), !value.pages.contains(tab.reference) { value.pages.append(tab.reference) }
         value.order.removeAll { $0 == tab.reference }
         value.order.insert(tab.reference, at: min(tab.index, value.order.count))
         if tab.pinned { value.pins.insert(tab.reference) }
@@ -183,5 +205,131 @@ final class WorkspaceTabsModel {
             Logger(subsystem: "com.twineproject.Twine", category: "tabs")
                 .error("Could not encode tab preferences: \(error.localizedDescription, privacy: .public)")
         }
+    }
+}
+
+// MARK: - Pages held by sessions
+
+extension WorkspaceTabsModel {
+    /// Whether the session holds a file or browser tab.
+    func holds(_ reference: String, session: UInt64?) -> Bool { arrangement(session).pages.contains(reference) }
+
+    /// The other sessions that hold a file or browser tab.
+    func otherHolders(of reference: String, besides session: UInt64?) -> [UInt64] {
+        saved.arrangements.compactMap { key, value in
+            guard key != scope(session), value.pages.contains(reference) else { return nil }
+            return UInt64(key)
+        }
+        .sorted()
+    }
+
+    /// Opening a file or browser tab puts it in the selected session.
+    func adopt(_ reference: String, session: UInt64?) {
+        var value = arrangement(session)
+        guard Self.isPage(reference), !value.pages.contains(reference) else { return }
+        value.pages.append(reference)
+        update(value, session: session)
+    }
+
+    /// Pages that no listed session holds join `session`. This places tabs opened before sessions held
+    /// pages, and any left by a session that no longer exists.
+    func adoptUnheld(_ references: [String], session: UInt64?, sessions: Set<UInt64>) {
+        let held = Set(
+            saved.arrangements.filter { key, _ in UInt64(key).map(sessions.contains) == true }.values.flatMap(\.pages))
+        let unheld = references.filter { Self.isPage($0) && !held.contains($0) }
+        guard !unheld.isEmpty else { return }
+        var value = arrangement(session)
+        value.pages += unheld.filter { !value.pages.contains($0) }
+        update(value, session: session)
+    }
+
+    /// Removes a tab from one session's arrangement. Returns whether another session still holds it.
+    @discardableResult
+    func release(_ reference: String, session: UInt64?) -> Bool {
+        var value = arrangement(session)
+        value.pages.removeAll { $0 == reference }
+        value.order.removeAll { $0 == reference }
+        value.pins.remove(reference)
+        if value.selection == reference { value.selection = nil }
+        update(value, session: session)
+        return !otherHolders(of: reference, besides: session).isEmpty
+    }
+
+    /// Moves a tab between session arrangements. A moved tab arrives unpinned, because pins belong to each
+    /// session. `references` are the destination's tabs. Returns false when the destination already held the
+    /// page, so the two tabs merged.
+    @discardableResult
+    func transfer(
+        _ reference: String, from source: UInt64?, to destination: UInt64?, at placement: TabPlacement,
+        references: [String]
+    ) -> Bool {
+        guard source != destination else {
+            let anchor: (target: String, after: Bool)? =
+                switch placement {
+                case .end: ordered(references, session: source).last { $0 != reference }.map { ($0, true) }
+                case .before(let target): (target, false)
+                case .after(let target): (target, true)
+                }
+            if let anchor {
+                place(
+                    reference, relativeTo: anchor.target, after: anchor.after, references: references, session: source)
+            }
+            return true
+        }
+        let merged = Self.isPage(reference) && holds(reference, session: destination)
+        release(reference, session: source)
+        guard !merged else { return false }
+        var value = arrangement(destination)
+        if Self.isPage(reference) { value.pages.append(reference) }
+        var order = ordered(references.filter { $0 != reference }, session: destination)
+        let unpinned = order.firstIndex { !value.pins.contains($0) } ?? order.count
+        let index =
+            switch placement {
+            case .end: order.count
+            case .before(let target): order.firstIndex(of: target) ?? order.count
+            case .after(let target): order.firstIndex(of: target).map { $0 + 1 } ?? order.count
+            }
+        order.insert(reference, at: max(index, unpinned))
+        value.order = order
+        update(value, session: destination)
+        return true
+    }
+
+    /// Removes a closed file or browser tab from every session.
+    func releaseEverywhere(_ reference: String) {
+        for (key, value) in saved.arrangements where value.pages.contains(reference) {
+            var value = value
+            value.pages.removeAll { $0 == reference }
+            value.order.removeAll { $0 == reference }
+            value.pins.remove(reference)
+            if value.selection == reference { value.selection = nil }
+            saved.arrangements[key] = value
+        }
+        persist()
+    }
+
+    /// Forgets file and browser tabs that are no longer open, such as those a closed folder left behind.
+    func retainPages(_ open: Set<String>) {
+        var changed = false
+        for (key, value) in saved.arrangements where value.pages.contains(where: { !open.contains($0) }) {
+            var value = value
+            let gone = Set(value.pages.filter { !open.contains($0) })
+            value.pages.removeAll { gone.contains($0) }
+            value.order.removeAll { gone.contains($0) }
+            value.pins.subtract(gone)
+            if let selection = value.selection, gone.contains(selection) { value.selection = nil }
+            saved.arrangements[key] = value
+            changed = true
+        }
+        if changed { persist() }
+    }
+
+    /// Forgets the arrangements of sessions that no longer exist.
+    func retainSessions(_ sessions: Set<UInt64>) {
+        let stale = saved.arrangements.keys.filter { key in UInt64(key).map { !sessions.contains($0) } ?? false }
+        guard !stale.isEmpty else { return }
+        for key in stale { saved.arrangements.removeValue(forKey: key) }
+        saved.closed.removeAll { $0.sessionID.map { !sessions.contains($0) } ?? false }
+        persist()
     }
 }

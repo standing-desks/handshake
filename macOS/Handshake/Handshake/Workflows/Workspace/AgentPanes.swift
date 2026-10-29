@@ -78,7 +78,7 @@ struct AgentPanes: View {
                 }
             }
         }
-        .background(arrangement.isTiled ? Color.workflowTint : Color(nsColor: palette.background))
+        .background(Color(nsColor: palette.background))
         .animation(reduceMotion ? nil : Motion.paneLayout, value: layout.mode)
         .onGeometryChange(for: CGSize.self, of: { $0.size }, action: { size = $0 })
         // Clicking the layout picker can take the keyboard, so give it back to the focused terminal.

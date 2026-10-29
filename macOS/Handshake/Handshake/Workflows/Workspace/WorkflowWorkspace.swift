@@ -11,6 +11,7 @@ struct WorkflowWorkspace: View {
     @Environment(FileTabsModel.self) private var fileTabs
     @Environment(BrowserTabsModel.self) private var browsers
     @Environment(\.appZoom) private var zoom
+    @AppStorage(TabLayout.storageKey) private var tabLayout = TabLayout.defaultValue
     let folder: String
     let tabManagement: WorkspaceTabsModel
     @Binding var selection: WorkflowTabSelection
@@ -21,6 +22,8 @@ struct WorkflowWorkspace: View {
     @State private var failureMessage: String?
     @State private var isSplitting = false
     private var scale: CGFloat { zoom?.scale ?? 1 }
+    /// The sidebar layout has no tab bar, so the panel takes its height.
+    private var stripHeight: CGFloat { tabLayout == .top ? WorkflowTabLayout.height : 0 }
 
     private var isVisible: Bool { isPresented && fileTabs.contentSelection.content == nil }
 
@@ -50,15 +53,16 @@ struct WorkflowWorkspace: View {
                 WorkspaceTabBar(
                     model: tabManagement, folder: folder, sessionID: sessionID, workflows: allWorkflows,
                     tabWorkflows: tabWorkflows, selectedRoot: selectedRoot, selection: $selection,
-                    close: closeGroup, closeFile: tabClosing.closeFile, cancel: cancelAgent,
+                    close: closeGroup, closeFile: tabClosing.closeFile, closeBrowser: tabClosing.closeBrowser,
+                    cancel: cancelAgent,
                     create: { Task { await create() } }, reportFailure: { failureMessage = $0 })
-                TerminalSplitControls(split: split, isEnabled: canSplit)
+                if tabLayout == .top { TerminalSplitControls(split: split, isEnabled: canSplit) }
             }
             .appZoom()
             .zIndex(1)
-            WorkspaceViewport(contentHeight: max(0, contentHeight - WorkflowTabLayout.height) * scale) {
+            WorkspaceViewport(contentHeight: max(0, contentHeight - stripHeight) * scale) {
                 workspaceContent
-                    .frame(height: max(0, contentHeight - WorkflowTabLayout.height))
+                    .frame(height: max(0, contentHeight - stripHeight))
                     .onPreferenceChange(WorkflowDesignerVisibilityKey.self, perform: designerVisibilityChanged)
                     .appZoom()
             }
@@ -66,8 +70,9 @@ struct WorkflowWorkspace: View {
             .background(Color(nsColor: palette.background))
             .clipShape(panelShape)
             .overlay {
+                // The selected tab joins the top edge, unless the sidebar shows the tabs.
                 panelShape.stroke(.hairline, lineWidth: Surface.hairlineWidth)
-                    .mask { Rectangle().padding(.top, Surface.hairlineWidth) }
+                    .mask { Rectangle().padding(.top, tabLayout == .top ? Surface.hairlineWidth : 0) }
                     .allowsHitTesting(false)
             }
             .terminalPanelShadow()

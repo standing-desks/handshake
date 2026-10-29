@@ -108,8 +108,10 @@ final class BrowserTabsModel {
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
         let tab = tabs[index]
         willClose?(tab)
+        // The next tab comes from the shown order, which holds only the selected session's pages. Without one,
+        // any open page can be next.
         let known = tabs.map(\.id)
-        let order = visualOrder.filter { known.contains($0) } + known.filter { !visualOrder.contains($0) }
+        let order = visualOrder.isEmpty ? known : visualOrder.filter { known.contains($0) }
         let next = order.firstIndex(of: id).flatMap { index in
             order.dropFirst(index + 1).first ?? order.prefix(index).last
         }

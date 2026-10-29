@@ -44,7 +44,6 @@ struct AgentWorkflowSurface: View {
             }
             if workflow.restored {
                 RestoredWorkflowNotice(workflow: workflow)
-                    .background(workflow.showsTerminalStrip ? Color.workflowTint : .clear)
             }
             AgentPanes(workflow: workflow, layout: layout, isSelected: isSelected) { panesAreTiled = $0 }
         }

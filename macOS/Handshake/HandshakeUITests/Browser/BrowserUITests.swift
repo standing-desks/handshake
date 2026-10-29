@@ -30,7 +30,7 @@ extension HandshakeUITests {
         XCTAssertTrue(note.waitForExistence(timeout: 5))
         note.click()
         note.typeText("keep my page state")
-        verifyBrowserSurvivesSessionChanges(in: app)
+        verifyBrowserStaysWithItsSession(in: app)
         app.typeKey("t", modifierFlags: [.command, .option])
         XCTAssertEqual(browserTabs(in: app).count, 2)
         let secondID = try XCTUnwrap(
@@ -96,12 +96,14 @@ extension HandshakeUITests {
     }
 
     @MainActor
-    private func verifyBrowserSurvivesSessionChanges(in app: XCUIApplication) {
+    private func verifyBrowserStaysWithItsSession(in app: XCUIApplication) {
         setSidebar(open: true, in: app)
         app.buttons["newSession"].click()
         XCTAssertTrue(app.buttons["sessionRow-2"].waitForExistence(timeout: 5))
-        XCTAssertEqual(app.webViews.textFields["Page note"].value as? String, "keep my page state")
+        // Browser tabs belong to the session that opened them, so a new session doesn't show the page.
+        XCTAssertTrue(app.webViews.textFields["Page note"].waitForNonExistence(timeout: 5))
         app.buttons["sessionRow-1"].click()
+        XCTAssertTrue(app.webViews.textFields["Page note"].waitForExistence(timeout: 5))
         XCTAssertEqual(app.webViews.textFields["Page note"].value as? String, "keep my page state")
         setSidebar(open: false, in: app)
     }

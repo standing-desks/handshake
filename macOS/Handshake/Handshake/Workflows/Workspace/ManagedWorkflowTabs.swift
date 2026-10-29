@@ -19,6 +19,10 @@ struct ManagedWorkflowTabs: View {
     let create: () -> Void
     let reopen: () -> Void
     let canReopen: Bool
+    /// The folder's other sessions, which a tab can move to.
+    var sessionTargets: [CoreSession] = []
+    var moveToSession: (WorkspaceTabItem, UInt64) -> Void = { _, _ in }
+    var switchLayout: () -> Void = {}
     @State private var dragging: String?
     @State private var insertion: String?
     @State private var insertionAfter = false
@@ -124,7 +128,11 @@ struct ManagedWorkflowTabs: View {
         }
         .frame(height: WorkflowTabLayout.height, alignment: .bottom)
         .animation(reduceMotion ? nil : Motion.tabChange, value: items.map(\.id))
-        .contextMenu { Button("Reopen Closed Tab", action: reopen).disabled(!canReopen) }
+        .contextMenu {
+            Button("Reopen Closed Tab", action: reopen).disabled(!canReopen)
+            Divider()
+            Button(TabLayout.top.toggleTitle, systemImage: "sidebar.left", action: switchLayout)
+        }
     }
 
     private func revealSelection(using proxy: ScrollViewProxy) {
@@ -139,7 +147,7 @@ struct ManagedWorkflowTabs: View {
             closeID: item.closeID,
             helpText: [item.title, item.detail, item.status].compactMap { $0 }.joined(separator: "\n"),
             fill: tabFill(item),
-            selectedForeground: item.workflow?.showsTerminalStrip == false ? Color(nsColor: palette.text) : nil,
+            selectedForeground: item.workflow == nil ? nil : Color(nsColor: palette.text),
             isEdited: item.isDirty, statusSymbol: item.statusSymbol, statusColor: item.statusColor,
             statusDescription: item.status, pinned: item.pinned,
             doubleClick: item.canRename ? { rename(item) } : nil,
@@ -153,6 +161,13 @@ struct ManagedWorkflowTabs: View {
             Button(item.pinned ? "Unpin Tab" : "Pin Tab", systemImage: item.pinned ? "pin.slash" : "pin") {
                 pin(item.id)
             }
+            if !sessionTargets.isEmpty {
+                Menu("Move to Session", systemImage: "arrow.right") {
+                    ForEach(sessionTargets) { session in
+                        Button(session.name) { moveToSession(item, session.id) }
+                    }
+                }
+            }
             Divider()
             Button("Move Left") { move(item.id, -1) }
             Button("Move Right") { move(item.id, 1) }
@@ -162,14 +177,15 @@ struct ManagedWorkflowTabs: View {
             }
             Button("Close Tab", systemImage: "xmark") { close(item) }
             Button("Reopen Closed Tab", action: reopen).disabled(!canReopen)
+            Divider()
+            Button(TabLayout.top.toggleTitle, systemImage: "sidebar.left", action: switchLayout)
         }
         .accessibilityAction(named: "Move Left") { move(item.id, -1) }
         .accessibilityAction(named: "Move Right") { move(item.id, 1) }
     }
 
     private func tabFill(_ item: WorkspaceTabItem) -> Color {
-        guard let workflow = item.workflow else { return Color(nsColor: .textBackgroundColor) }
-        return workflow.showsTerminalStrip ? .workflowTint : Color(nsColor: palette.background)
+        item.workflow == nil ? Color(nsColor: .textBackgroundColor) : Color(nsColor: palette.background)
     }
 
     private func updateDrag(_ item: WorkspaceTabItem, location: CGPoint) {

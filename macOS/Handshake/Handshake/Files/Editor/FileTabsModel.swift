@@ -163,6 +163,15 @@ final class FileTabsModel {
         return true
     }
 
+    /// Closes several editors once every unsaved one is confirmed, so a cancel leaves them all open.
+    @discardableResult
+    func close(_ ids: Set<UUID>) -> Bool {
+        guard editors.filter({ ids.contains($0.id) }).allSatisfy({ $0.confirmDiscard() }) else { return false }
+        if let selectedID, ids.contains(selectedID) { self.selectedID = nil }
+        editors.removeAll { ids.contains($0.id) }
+        return true
+    }
+
     @discardableResult
     func closeAll() -> Bool {
         // Do not remove any buffer until all confirmations succeed.

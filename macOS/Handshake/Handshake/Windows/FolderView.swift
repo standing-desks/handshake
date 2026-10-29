@@ -13,6 +13,7 @@ struct FolderView: View {
     @Environment(SettingsPopup.self) private var settings
     @Environment(\.appZoom) private var zoom
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage(TabLayout.storageKey) private var tabLayout = TabLayout.defaultValue
     let path: String
     private weak var window: NSWindow?
     private let sidebarPreferences = SidebarPreferences()
@@ -27,20 +28,34 @@ struct FolderView: View {
     @State private var tracesMotionID: UUID?
     @State private var designerWorkflowIDs: Set<UInt64> = []
     @State private var memories = MemoryModel()
+    @State private var sidebarPresentation = SidebarPresentation()
     private var scale: CGFloat { zoom?.scale ?? 1 }
+    /// The sidebar layout has no tab bar.
+    private var stripHeight: CGFloat { tabLayout == .top ? WorkflowTabLayout.height : 0 }
+    /// In the sidebar layout, a minimized sidebar leaves a rail beside the content.
+    private var showsRail: Bool { tabLayout == .sidebar && sidebarVisibility == .detailOnly }
+    private var contentLeading: CGFloat {
+        showsRail
+            ? SidebarLayout.railInset + SidebarLayout.railWidth + Spacing.windowSections : Spacing.windowMargins.leading
+    }
 
     init(path: String, window: NSWindow?) {
         self.path = path
         self.window = window
         _tabManagement = State(initialValue: WorkspaceTabsModel(folder: path))
-        _sidebarVisibility = State(initialValue: sidebarPreferences.isOpen(in: path) ? .all : .detailOnly)
+        // The sidebar layout shows the tabs in the sidebar, so a folder that hasn't chosen opens it docked.
+        let store = WorkflowLaunchPreferences.defaultStore()
+        let layout = TabLayout(rawValue: store.string(forKey: TabLayout.storageKey) ?? "")
+        let opensSidebar = (layout ?? TabLayout.defaultValue) == .sidebar
+        _sidebarVisibility = State(
+            initialValue: sidebarPreferences.isOpen(in: path, defaultValue: opensSidebar) ? .all : .detailOnly)
         let model = MemoryModel(folder: path)
         _memories = State(initialValue: model)
     }
 
     var body: some View {
         NavigationSplitView(columnVisibility: $sidebarVisibility) {
-            FolderSidebar(path: path, files: files, memories: memories)
+            sidebar(compact: false)
                 .appZoom()
                 .frame(
                     minWidth: SidebarLayout.minimumWidth * scale,
@@ -56,7 +71,7 @@ struct FolderView: View {
             GeometryReader { geometry in
                 let availableHeight = max(0, geometry.size.height / scale - collapsedChromeHeight)
                 let reservedWorkflowHeight = min(
-                    availableHeight, max(WorkflowTabLayout.height, min(minimumWorkspaceHeight, availableHeight / 2)))
+                    availableHeight, max(stripHeight, min(minimumWorkspaceHeight, availableHeight / 2)))
                 let traceSpace = max(0, availableHeight - reservedWorkflowHeight)
                 // Give the scrollable body space before growing the header in short windows.
                 let headerExpansion = min(
@@ -100,36 +115,47 @@ struct FolderView: View {
                 }
                 .padding(
                     EdgeInsets(
-                        top: Spacing.windowMargins.top * scale, leading: Spacing.windowMargins.leading * scale,
-                        bottom: Spacing.windowMargins.bottom * scale, trailing: Spacing.windowMargins.trailing * scale))
+                        top: Spacing.windowMargins.top * scale, leading: contentLeading * scale,
+                        bottom: Spacing.windowMargins.bottom * scale, trailing: Spacing.windowMargins.trailing * scale)
+                )
+                .overlay(alignment: .topLeading) {
+                    if showsRail {
+                        SidebarOverlay(presentation: sidebarPresentation) {
+                            sidebar(compact: true).appZoom()
+                        } peek: {
+                            sidebar(compact: false).appZoom()
+                        }
+                        .padding(
+                            EdgeInsets(
+                                top: Spacing.windowMargins.top * scale, leading: SidebarLayout.railInset * scale,
+                                bottom: Spacing.windowMargins.bottom * scale, trailing: 0))
+                    }
+                }
             }
             .background(.windowBackground)
             .navigationTitle(URL(filePath: path).lastPathComponent)
             .toolbar(removing: .title)
             .toolbar {
                 ToolbarItem(placement: .navigation) {
-                    HStack(spacing: 10) {
-                        Text(URL(filePath: path).lastPathComponent)
-                            .font(.system(size: 13, weight: .semibold))
-                            .layoutPriority(1)
-                        Text((path as NSString).abbreviatingWithTildeInPath)
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
-                            .truncationMode(.middle)
-                    }
-                    .lineLimit(1)
-                    .padding(.leading, 6)
-                    .frame(maxWidth: 320, alignment: .leading)
-                    .help(path)
+                    FolderToolbarTitle(
+                        path: path, selectedReference: selectedTabReference,
+                        selectedTitle: toolbarTabs.first { $0.id == selectedTabReference }?.title)
                 }
                 .sharedBackgroundVisibility(.hidden)
-                KeepAwakeToolbar(window: window)
+                if tabLayout == .sidebar {
+                    WorkspaceToolbar(model: tabManagement, tabCount: toolbarTabs.count)
+                }
+                KeepAwakeToolbar(window: window, followsWorkspaceButtons: tabLayout == .sidebar)
             }
         }
         .modifier(MemoryLoading(folder: path, model: memories))
+        .modifier(SidebarDialogs(presentation: sidebarPresentation, tabManagement: tabManagement))
         .onChange(of: sidebarVisibility) { _, visibility in
             sidebarPreferences.remember(isOpen: visibility != .detailOnly, in: path)
+            sidebarPresentation.collapse()
         }
+        .onChange(of: tabLayout) { sidebarPresentation.collapse() }
+        .task { TabLayout.prepareHint(in: WorkflowLaunchPreferences.defaultStore()) }
         .environment(traceNavigation)
         .environment(\.traceLaneColors, traceNavigation.laneColors)
         .onChange(of: isTracesExpanded) { _, expanded in
@@ -169,7 +195,7 @@ struct FolderView: View {
     /// Workflow contents keep their minimum height and scroll inside their own viewport when needed.
     private var minimumWorkspaceHeight: CGFloat {
         let font = coreClient.terminalFont
-        var minimum = WorkflowTabLayout.height + WorkflowSurfaceLayout.minimumHeight(for: selectedWorkflow, font: font)
+        var minimum = stripHeight + WorkflowSurfaceLayout.minimumHeight(for: selectedWorkflow, font: font)
         if let selectedWorkflow {
             let root = layouts.splitRoot(
                 for: selectedWorkflow.id, in: path, workflows: coreClient.snapshot?.workflows.workflows ?? [])
@@ -178,7 +204,7 @@ struct FolderView: View {
                 let paneHeight = BentoLayout.minimumTerminalPaneHeight(
                     for: font, includesNotice: traceWorkflows.contains(where: \.showsRestoredNotice))
                 minimum =
-                    WorkflowTabLayout.height + 2 * BentoLayout.gutter + split.minimumHeight(paneHeight: paneHeight)
+                    stripHeight + 2 * BentoLayout.gutter + split.minimumHeight(paneHeight: paneHeight)
             }
         }
         return minimum
@@ -226,5 +252,36 @@ struct FolderView: View {
         } catch {
             gitLogger.error("Git branch refresh failed: \(error.localizedDescription, privacy: .public)")
         }
+    }
+}
+
+// MARK: - Sidebar layout
+
+extension FolderView {
+    /// The selected session's tabs, for the toolbar of every window rather than only the key one.
+    private var toolbarTabs: [WorkspaceTabItem] {
+        guard tabLayout == .sidebar, let session = coreClient.snapshot?.workflows.session, session.folder == path
+        else { return [] }
+        return WorkspaceTabCatalog(
+            model: tabManagement, files: tabs, browsers: browsers, layouts: layouts, folder: path
+        )
+        .items(session: session.id, among: coreClient.snapshot?.workflows.workflows ?? [])
+    }
+
+    private var selectedTabReference: String? {
+        if let browser = browsers.selected { return WorkspaceTabsModel.browser(browser.id) }
+        if let editor = tabs.selected { return WorkspaceTabsModel.file(editor.path) }
+        guard let id = selection.selectedID else { return nil }
+        return WorkspaceTabsModel.workflow(
+            layouts.splitRoot(for: id, in: path, workflows: coreClient.snapshot?.workflows.workflows ?? []))
+    }
+
+    private func sidebar(compact: Bool) -> some View {
+        FolderSidebar(
+            path: path, files: files, memories: memories, tabManagement: tabManagement, selection: $selection,
+            presentation: sidebarPresentation, compact: compact,
+            dock: {
+                withAnimation(reduceMotion ? nil : Motion.sidebarReveal) { sidebarVisibility = .all }
+            })
     }
 }

@@ -50,7 +50,7 @@ struct BrowserTabsTests {
         fresh.closeAll()
     }
 
-    @Test func browserHistoryRestoresNamePositionAndPinAcrossSessions() throws {
+    @Test func closedBrowserTabsReopenInTheirSessionWithNamePositionAndPin() throws {
         let defaults = try #require(UserDefaults(suiteName: "BrowserHistoryTests-\(UUID())"))
         let model = WorkspaceTabsModel(folder: "/tmp/browser", defaults: defaults)
         let snapshot = BrowserTabsModel.Snapshot(id: UUID(), url: "about:blank", customName: "Notes")
@@ -59,10 +59,12 @@ struct BrowserTabsTests {
             title: "Notes", sessionID: 10, browser: snapshot, reference: reference, index: 0, pinned: true)
         model.rememberClosed(closed)
         let restored = WorkspaceTabsModel(folder: "/tmp/browser", defaults: defaults)
-        #expect(restored.recentlyClosed(session: 20).first?.browser == snapshot)
-        restored.didReopen(closed, session: 20)
-        #expect(restored.arrangement(20).pins.contains(reference))
-        #expect(restored.ordered(["workflow:1", reference], session: 20) == [reference, "workflow:1"])
+        #expect(restored.recentlyClosed(session: 10).first?.browser == snapshot)
+        #expect(restored.recentlyClosed(session: 20).isEmpty, "Browser tabs belong to the session they closed from")
+        restored.didReopen(closed, session: 10)
+        #expect(restored.holds(reference, session: 10))
+        #expect(restored.arrangement(10).pins.contains(reference))
+        #expect(restored.ordered(["workflow:1", reference], session: 10) == [reference, "workflow:1"])
     }
 
     @Test func duplicateBrowserNamesRemainDistinctAndPopupContentIsNotAFreshTab() throws {
@@ -81,17 +83,30 @@ struct BrowserTabsTests {
         #expect(model.selected?.hasNavigated == true)
     }
 
-    @Test func sessionNavigationPreservesBrowserSelectionAndInvalidatesFileRequests() {
+    @Test func sessionNavigationClearsPageSelectionAndInvalidatesFileRequests() {
         let selection = WorkspaceContentSelection()
-        let id = UUID()
-        selection.select(.browser(id))
+        selection.select(.browser(UUID()))
         let generation = selection.generation
         selection.showSession()
-        #expect(selection.content == .browser(id))
+        #expect(selection.content == nil, "Each session restores its own selection, including its browser tabs")
         #expect(selection.generation != generation)
         selection.select(.file(UUID()))
         selection.showSession()
         #expect(selection.content == nil)
+    }
+
+    @Test func closingASessionsLastPageDoesNotShowAnotherSessionsPage() {
+        let files = FileTabsModel()
+        let browsers = BrowserTabsModel(selection: files.contentSelection, configuration: isolated)
+        defer { browsers.closeAll() }
+        let mine = browsers.create()
+        _ = browsers.create()
+        // The shown order holds only the selected session's pages.
+        browsers.visualOrder = [mine.id]
+        browsers.select(mine.id)
+        browsers.close(mine.id)
+        #expect(browsers.selected == nil)
+        #expect(files.contentSelection.content == nil)
     }
 
     private func isolated() -> WKWebViewConfiguration {
