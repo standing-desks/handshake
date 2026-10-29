@@ -209,5 +209,4 @@ struct WorkflowDesignerTests {
         manager.redo()
         #expect(model.definition == removed)
     }
-
 }

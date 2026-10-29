@@ -372,6 +372,7 @@ pub(crate) fn decode_command(bytes: &[u8]) -> Result<CommandEnvelope, BridgeErro
         | "completeWorkflowRole"
         | "continueWorkflowRun"
         | "setWorkflowIndividualMode"
+        | "retryDecision"
         | "cancelWorkflowRun" => known(runs::decode_command(command_type, &raw.command)?),
         "ping" => known(Command::Ping),
         "reloadConfig" => known(Command::ReloadConfig),
@@ -570,6 +571,25 @@ mod tests {
         match decode_command(json.as_bytes()).unwrap().command {
             DecodedCommand::Known(command) => *command,
             DecodedCommand::Unsupported(kind) => panic!("unsupported command {kind}"),
+        }
+    }
+
+    #[test]
+    fn retry_decision_dispatch_preserves_the_run_and_generation() {
+        let command = decode(
+            r#"{"requestId":1,"command":{"type":"retryDecision","workflowId":7,"generation":3}}"#,
+        );
+        assert!(
+            matches!(command, Command::RetryDecision { workflow_id, generation: 3 } if workflow_id.0 == 7)
+        );
+        for invalid in [
+            r#"{"requestId":1,"command":{"type":"retryDecision","workflowId":7}}"#,
+            r#"{"requestId":1,"command":{"type":"retryDecision","workflowId":7,"generation":3,"extra":true}}"#,
+        ] {
+            assert!(matches!(
+                decode_command(invalid.as_bytes()),
+                Err(BridgeError::MalformedCommand)
+            ));
         }
     }
 

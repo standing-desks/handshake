@@ -170,6 +170,34 @@ impl WorkflowRun {
         if prompt.len() > MAX_TASK_BYTES {
             return Err(RunError::Prompt);
         }
+        let mut selected_choices = choices.to_vec();
+        for (id, decision) in workflow_type
+            .definition
+            .graph
+            .iter()
+            .flat_map(|g| &g.decisions)
+        {
+            if choices.iter().any(|c| c.role == *id) {
+                return Err(RunError::HarnessChoices);
+            }
+            selected_choices.push(RoleLaunch {
+                role: id.clone(),
+                harness: HarnessId::Nouli,
+                model: if workflow_type
+                    .definition
+                    .graph
+                    .as_ref()
+                    .is_some_and(|graph| graph.passthrough_edge(id).is_some())
+                {
+                    None
+                } else {
+                    decision.model.clone()
+                },
+                effort: None,
+                yolo: false,
+            });
+        }
+        let choices = selected_choices.as_slice();
         let definition = &workflow_type.definition;
         let mut agents = Vec::new();
         for role in &definition.roles {
@@ -183,6 +211,14 @@ impl WorkflowRun {
                 return Err(RunError::HarnessChoices);
             }
             for (index, choice) in selected.iter().enumerate() {
+                if choice.harness == HarnessId::Nouli
+                    && !definition
+                        .graph
+                        .as_ref()
+                        .is_some_and(|g| g.decisions.contains_key(&role.id.0))
+                {
+                    return Err(RunError::HarnessChoices);
+                }
                 let instance = u8::try_from(index + 1).map_err(|_| RunError::HarnessChoices)?;
                 let options = crate::harness::launch::validate_options(
                     choice.harness,

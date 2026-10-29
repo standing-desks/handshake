@@ -67,7 +67,7 @@ final class CoreClient {
                 .nameDraftWorkflow, .renameWorkflow, .moveWorkflow,
                 .refreshGitBranch, .startWorkflowRun, .submitWorkflowTask, .chooseWorkflowResult,
                 .completeWorkflowRole, .continueWorkflowRun,
-                .setWorkflowIndividualMode, .cancelWorkflowRun:
+                .setWorkflowIndividualMode, .retryDecision, .cancelWorkflowRun:
                 break
             }
         }

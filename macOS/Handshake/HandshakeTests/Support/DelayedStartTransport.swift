@@ -72,7 +72,7 @@ actor DelayedStartTransport {
             .refreshGitBranch,
             .createSession, .renameSession, .selectSession, .deleteSession,
             .startWorkflowRun, .submitWorkflowTask, .chooseWorkflowResult, .completeWorkflowRole,
-            .continueWorkflowRun, .setWorkflowIndividualMode,
+            .continueWorkflowRun, .retryDecision, .setWorkflowIndividualMode,
             .cancelWorkflowRun:
             break
         }

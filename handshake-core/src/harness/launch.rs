@@ -94,7 +94,7 @@ pub(crate) fn launch_arguments(harness: HarnessId, options: LaunchOptions<'_>) -
                 arguments.push(OsString::from("--dangerously-skip-permissions"));
             }
             HarnessId::Kiro => arguments.push(OsString::from("--trust-all-tools")),
-            HarnessId::Pi | HarnessId::Opencode => {}
+            HarnessId::Nouli | HarnessId::Pi | HarnessId::Opencode => {}
             HarnessId::Omp => {
                 arguments.push(OsString::from("--auto-approve"));
             }
@@ -124,7 +124,7 @@ pub(crate) fn launch_arguments(harness: HarnessId, options: LaunchOptions<'_>) -
                 arguments.extend([OsString::from("--thinking"), OsString::from(effort)]);
             }
             // OpenCode's variant is part of the selected model; the default has no known variants.
-            HarnessId::Opencode => {}
+            HarnessId::Nouli | HarnessId::Opencode => {}
         }
     }
     arguments
@@ -137,6 +137,9 @@ pub(crate) fn validate_options<'a>(
     effort: Option<&'a str>,
     yolo: bool,
 ) -> Option<LaunchOptions<'a>> {
+    if harness == HarnessId::Nouli && (effort.is_some() || yolo) {
+        return None;
+    }
     Some(LaunchOptions {
         model: model.map_or(Some(None), |model| validate_model(model).map(Some))?,
         effort: effort.map_or(Some(None), |effort| {

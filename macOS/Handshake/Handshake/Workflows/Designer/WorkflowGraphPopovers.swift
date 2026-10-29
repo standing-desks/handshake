@@ -7,28 +7,12 @@ struct WorkflowGraphAgentPopover: View {
     let close: () -> Void
     @FocusState private var panelFocused: Bool
     @Environment(\.appZoomMaximumPresentationSize) private var maximumSize
-    @State private var page = Page.agent
-
-    private enum Page: String, CaseIterable {
-        case agent = "Agent"
-        case defaults = "Launch defaults"
-    }
+    @State private var advanced = false
 
     var body: some View {
-        let binding = model.roleBinding(role)
         VStack(spacing: 0) {
-            Picker("Settings", selection: $page) {
-                ForEach(Page.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-            }.pickerStyle(.segmented).labelsHidden()
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 8)
-            if page == .agent {
-                agentSettings
-            } else {
-                ScrollView {
-                    WorkflowAgentDefaultsEditor(role: binding).padding(20)
-                }
-            }
+            WorkflowNodeKindPicker(model: model, id: role.id)
+            agentSettings
             Divider()
             HStack {
                 Menu("Actions") {
@@ -40,14 +24,8 @@ struct WorkflowGraphAgentPopover: View {
                 Button("Done", action: close).keyboardShortcut(.defaultAction)
             }.padding(.horizontal, 20).padding(.vertical, 12)
         }
-        .frame(
-            width: min(420, maximumSize.width),
-            height: min(
-                page == .agent ? (inputCount > 1 ? 640 : 540) : (binding.wrappedValue.agentDefaults == nil ? 180 : 340),
-                maximumSize.height)
-        )
-        .animation(reduceMotion ? nil : Motion.disclosure, value: page)
-        .animation(reduceMotion ? nil : Motion.disclosure, value: binding.wrappedValue.agentDefaults != nil)
+        .frame(width: min(420, maximumSize.width), height: min(advanced ? 700 : 550, maximumSize.height))
+        .animation(reduceMotion ? nil : Motion.disclosure, value: advanced)
         .focusable(interactions: .edit)
         .focused($panelFocused)
         .focusEffectDisabled()
@@ -64,9 +42,7 @@ struct WorkflowGraphAgentPopover: View {
         let binding = model.roleBinding(role)
         return Form {
             Section {
-                TextField("Name", text: binding.name)
-                    .textFieldStyle(.plain).accessibilityIdentifier("graphAgentName")
-                WorkflowAgentColorPicker(color: binding.color)
+                WorkflowNodeIdentityFields(role: binding)
             }
             Section {
                 VStack(alignment: .leading, spacing: 10) {
@@ -81,6 +57,11 @@ struct WorkflowGraphAgentPopover: View {
             }
             if inputCount > 1 { incomingWorkSettings }
             completionSettings
+            Section {
+                DisclosureGroup("Advanced", isExpanded: $advanced) {
+                    WorkflowAgentDefaultsEditor(role: binding)
+                }.disclosureGroupStyle(WorkflowDisclosureStyle(identifier: "agentAdvanced"))
+            }
         }.formStyle(.grouped).scrollContentBackground(.hidden)
     }
 
@@ -157,35 +138,11 @@ struct WorkflowGraphAgentPopover: View {
 
 }
 
-private struct WorkflowDisclosureStyle: DisclosureGroupStyle {
-    @Environment(\.effectiveReduceMotion) private var reduceMotion
-    let identifier: String
-
-    func makeBody(configuration: Configuration) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Button {
-                withAnimation(reduceMotion ? nil : Motion.disclosure) { configuration.isExpanded.toggle() }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "chevron.right").font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .rotationEffect(.degrees(configuration.isExpanded ? 90 : 0))
-                        .accessibilityHidden(true)
-                    configuration.label
-                    Spacer(minLength: 0)
-                }.frame(maxWidth: .infinity, minHeight: 24, alignment: .leading).contentShape(.rect)
-            }.buttonStyle(.plain)
-                .accessibilityValue(configuration.isExpanded ? "Expanded" : "Collapsed")
-                .accessibilityIdentifier(identifier)
-            if configuration.isExpanded { configuration.content }
-        }
-    }
-}
-
 struct WorkflowLinkPopover: View {
     @Bindable var model: WorkflowDesignerModel
     let edge: CoreWorkflowType.Edge
     let close: () -> Void
+    @State private var choiceCreation: WorkflowDecisionChoiceCreation?
 
     private var events: [CoreWorkflowType.GraphEvent] {
         let events: [CoreWorkflowType.GraphEvent] = [.done, .pieceReady, .feedback, .approved]
@@ -194,55 +151,80 @@ struct WorkflowLinkPopover: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("\(name(edge.from)) → \(name(edge.to))").font(.headline)
-            Picker(
-                "Send work when",
-                selection: Binding(
-                    get: { model.definition.graph?.edges.first { $0.id == edge.id }?.event ?? edge.event },
-                    set: { value in
-                        guard let index = model.definition.graph?.edges.firstIndex(where: { $0.id == edge.id }) else {
-                            return
-                        }
-                        model.definition.graph?.edges[index].event = value
-                        if value == .feedback || value == .approved {
-                            model.setGraphReview(edge.from, enabled: true)
-                        }
-                    })
-            ) {
-                ForEach(events, id: \.self) { event in
-                    Text(event.title).tag(event).disabled(
-                        model.definition.graph?.edges.contains {
-                            $0.id != edge.id && $0.from == edge.from && $0.to == edge.to && $0.event == event
-                        } == true)
-                }
+            Text(choiceCreation == nil ? "\(name(edge.from)) → \(name(edge.to))" : "New choice").font(.headline)
+            if choiceCreation != nil {
+                Text("\(name(edge.from)) → \(name(edge.to))").font(.caption).foregroundStyle(.secondary)
             }
-            .accessibilityIdentifier("graphLinkEvent")
-            Text(eventDescription).font(.caption).foregroundStyle(.secondary)
-            Menu("Add another event") {
-                ForEach(
-                    events.filter { event in
+            if model.definition.graph?.decisions[edge.from] != nil {
+                WorkflowDecisionEdgeOutputPicker(
+                    model: model, edge: edge, close: close, cancel: cancelChoiceCreation, creation: $choiceCreation)
+            } else {
+                Picker(
+                    "Send work when",
+                    selection: Binding(
+                        get: { model.definition.graph?.edges.first { $0.id == edge.id }?.event ?? edge.event },
+                        set: { value in
+                            guard let index = model.definition.graph?.edges.firstIndex(where: { $0.id == edge.id })
+                            else {
+                                return
+                            }
+                            model.definition.graph?.edges[index].event = value
+                            if value == .feedback || value == .approved {
+                                model.setGraphReview(edge.from, enabled: true)
+                            }
+                        })
+                ) {
+                    ForEach(events, id: \.self) { event in
+                        Text(event.title).tag(event).disabled(
+                            model.definition.graph?.edges.contains {
+                                $0.id != edge.id && $0.from == edge.from && $0.to == edge.to && $0.event == event
+                            } == true)
+                    }
+                }
+                .accessibilityIdentifier("graphLinkEvent")
+                Text(eventDescription).font(.caption).foregroundStyle(.secondary)
+                Menu("Add another event") {
+                    ForEach(
+                        events.filter { event in
+                            model.definition.graph?.edges.contains {
+                                $0.from == edge.from && $0.to == edge.to && $0.event == event
+                            } != true
+                        }, id: \.self
+                    ) { event in
+                        Button(event.title) { model.connect(from: edge.from, to: edge.to, event: event) }
+                    }
+                }.disabled(
+                    events.allSatisfy { event in
                         model.definition.graph?.edges.contains {
                             $0.from == edge.from && $0.to == edge.to && $0.event == event
-                        } != true
-                    }, id: \.self
-                ) { event in
-                    Button(event.title) { model.connect(from: edge.from, to: edge.to, event: event) }
-                }
-            }.disabled(
-                events.allSatisfy { event in
-                    model.definition.graph?.edges.contains {
-                        $0.from == edge.from && $0.to == edge.to && $0.event == event
-                    } == true
-                })
+                        } == true
+                    })
+            }
             HStack {
-                Button("Delete link", role: .destructive) {
-                    close()
-                    model.definition.graph?.edges.removeAll { $0.id == edge.id }
+                if choiceCreation == nil {
+                    Button("Delete link", role: .destructive) {
+                        close()
+                        model.removeGraphEdge(edge.id)
+                    }
                 }
                 Spacer()
+                if choiceCreation != nil {
+                    Button("Cancel", role: .cancel, action: cancelChoiceCreation).keyboardShortcut(.cancelAction)
+                        .accessibilityIdentifier("decisionCancelNewChoice")
+                }
                 Button("Done", action: close).keyboardShortcut(.defaultAction)
             }
         }.padding(16).frame(width: 300)
+            .onChange(of: choiceCreation?.isValid(in: model.definition)) { _, valid in
+                if valid == false { choiceCreation = nil }
+            }
+    }
+
+    private func cancelChoiceCreation() {
+        guard let choiceCreation else { return }
+        model.cancelDecisionOptionCreation(choiceCreation.option, restoring: choiceCreation.previous)
+        self.choiceCreation = nil
+        close()
     }
 
     private var eventDescription: String {

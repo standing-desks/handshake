@@ -27,6 +27,10 @@ extension CoreClient {
             .chooseWorkflowResult(workflowID: workflowID, generation: generation, agentID: agentID))
     }
 
+    func retryDecision(workflowID: UInt64, generation: UInt64) async throws {
+        try await sendRunCommand(.retryDecision(workflowID: workflowID, generation: generation))
+    }
+
     func cancelWorkflowRun(workflowID: UInt64) async throws {
         try await sendRunCommand(.cancelWorkflowRun(workflowID: workflowID))
     }

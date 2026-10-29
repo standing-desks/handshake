@@ -473,6 +473,7 @@ pub(super) fn harness_name(harness: HarnessId) -> &'static str {
         HarnessId::Omp => "omp",
         HarnessId::Opencode => "opencode",
         HarnessId::Kiro => "kiro",
+        HarnessId::Nouli => "nouli",
     }
 }
 
@@ -485,6 +486,7 @@ fn harness_from_name(name: &str) -> Option<HarnessId> {
         "omp" => Some(HarnessId::Omp),
         "opencode" => Some(HarnessId::Opencode),
         "kiro" => Some(HarnessId::Kiro),
+        "nouli" => Some(HarnessId::Nouli),
         _ => None,
     }
 }

@@ -16,16 +16,27 @@ struct WorkflowGraphOverview: View {
         return CGPoint(x: position.x, y: position.y)
     }
 
+    private func nodeSize(_ id: String) -> CGSize { WorkflowEditorLayout.nodeSize(for: id, in: definition) }
+
+    private func returnLane(_ edge: CoreWorkflowType.Edge) -> CGFloat? {
+        WorkflowEditorLayout.returnLane(
+            for: edge, edges: definition.graph?.agentEdges ?? [], point: point, size: nodeSize)
+    }
+
     private var bounds: CGRect {
         var bounds = definition.roles.reduce(CGRect.null) { bounds, role in
             let center = point(role.id)
-            return bounds.union(CGRect(x: center.x - 124, y: center.y - 70, width: 248, height: 140))
+            let size = WorkflowEditorLayout.nodeSize(for: role.id, in: definition)
+            return bounds.union(
+                CGRect(
+                    x: center.x - size.width / 2 - 16, y: center.y - size.height / 2 - 16,
+                    width: size.width + 32, height: size.height + 32))
         }
         let edges = definition.graph?.agentEdges ?? []
         for edge in edges {
             let path = WorkflowConnectionShape(
                 from: point(edge.from), destination: point(edge.to), feedback: edge.event == .feedback,
-                lane: WorkflowEditorLayout.returnLane(for: edge, edges: edges, point: point)
+                lane: returnLane(edge), sourceSize: nodeSize(edge.from), destinationSize: nodeSize(edge.to)
             ).path(in: .zero)
             bounds = bounds.union(path.boundingRect.insetBy(dx: -16, dy: -16))
         }
@@ -45,7 +56,10 @@ struct WorkflowGraphOverview: View {
             return ([role.name] + states).joined(separator: ", ")
         }
         func name(_ id: String) -> String { definition.roles.first { $0.id == id }?.name ?? "Agent" }
-        let links = (graph?.agentEdges ?? []).map { "\(name($0.from)) to \(name($0.to)): \($0.event.title)" }
+        let links = (graph?.agentEdges ?? []).map { edge in
+            let output = WorkflowDecisionLabels.outputTitle(edge, definition: definition)
+            return "\(name(edge.from)) to \(name(edge.to)): \(output)"
+        }
         return (agents + links).joined(separator: "; ")
     }
 
@@ -65,8 +79,7 @@ struct WorkflowGraphOverview: View {
                         let path = WorkflowConnectionShape(
                             from: point(edge.from), destination: point(edge.to),
                             feedback: edge.event == .feedback,
-                            lane: WorkflowEditorLayout.returnLane(
-                                for: edge, edges: definition.graph?.agentEdges ?? [], point: point)
+                            lane: returnLane(edge), sourceSize: nodeSize(edge.from), destinationSize: nodeSize(edge.to)
                         ).path(in: bounds)
                         var transform = CGAffineTransform(
                             translationX: geometry.size.width / 2, y: geometry.size.height / 2)
@@ -82,7 +95,10 @@ struct WorkflowGraphOverview: View {
                 }.accessibilityHidden(true)
                 ForEach(definition.roles) { role in
                     WorkflowGraphCard(
-                        title: role.name, tint: role.color?.tint,
+                        title: role.name, decision: definition.graph?.decisions[role.id],
+                        passthrough: definition.graph?.decisions[role.id] != nil
+                            && definition.graph?.agentEdges.filter { $0.from == role.id }.count == 1,
+                        tint: role.color?.tint,
                         startsHere: definition.graph?.startsAgent(role.id) == true,
                         returnsResult: definition.graph?.returnsResult(role.id) == true,
                         reviewsWork: definition.graph?.reviewsWork(role.id) == true

@@ -20,6 +20,7 @@ pub(crate) fn arguments(harness: HarnessId, session: &str) -> Option<Vec<OsStrin
         return Some(["--resume-id", native].map(OsString::from).to_vec());
     }
     let flags = match harness {
+        HarnessId::Nouli => return None,
         HarnessId::Kiro => unreachable!("handled Kiro session handle"),
         HarnessId::Codex | HarnessId::ClaudeCode | HarnessId::Antigravity | HarnessId::Opencode => {
             if !session

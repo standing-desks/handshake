@@ -13,6 +13,7 @@ struct WorkflowLaunchForm: View {
     @State private var isStarting = false
     @State private var failure: String?
     @State private var hasLoaded = false
+    @State private var task = ""
     private let preferences = WorkflowLaunchPreferences()
 
     var body: some View {
@@ -26,10 +27,15 @@ struct WorkflowLaunchForm: View {
             .accessibilityIdentifier("workflowEditType")
             Text(type.definition.description).font(.caption).foregroundStyle(.secondary)
             WorkflowGraph(type: type, counts: choices.mapValues(\.count))
-            ForEach(type.definition.roles) { role in
+            ForEach(type.definition.roles.filter { type.definition.graph?.decisions[$0.id] == nil }) { role in
                 rolePickers(role)
             }
-            if let first = firstRoleName {
+            if type.definition.graph?.decisions.isEmpty == false {
+                Text("Task").font(.caption)
+                TextEditor(text: $task).font(.body).frame(height: 80).accessibilityLabel("Workflow task")
+                Text("The same task stays available through each selected route. Decisions use Nouli.")
+                    .font(.caption).foregroundStyle(.secondary)
+            } else if let first = firstRoleName {
                 Text("After you start, tell the \(first) what to do in its terminal.")
                     .font(.caption).foregroundStyle(.secondary)
                 if hasParallelStarts {
@@ -107,7 +113,9 @@ struct WorkflowLaunchForm: View {
     private func start() {
         guard !isStarting else { return }
         let roles = type.definition.roles.flatMap { role in
-            (choices[role.id] ?? []).map { CoreRoleLaunch(role: role.id, choice: $0) }
+            (type.definition.graph?.decisions[role.id] == nil ? choices[role.id] ?? [] : []).map {
+                CoreRoleLaunch(role: role.id, choice: $0)
+            }
         }
         let assignments = choices
         isStarting = true
@@ -116,7 +124,7 @@ struct WorkflowLaunchForm: View {
             defer { isStarting = false }
             do {
                 try await client.startWorkflowRun(
-                    workflowID: workflowID, workflowType: type.reference, roles: roles, prompt: "")
+                    workflowID: workflowID, workflowType: type.reference, roles: roles, prompt: task)
                 preferences.remember(assignments, for: type)
             } catch { failure = error.localizedDescription }
         }

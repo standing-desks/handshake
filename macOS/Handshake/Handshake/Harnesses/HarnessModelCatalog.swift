@@ -70,7 +70,7 @@ final class HarnessModelCatalog {
 
     /// Harnesses not confirmed unavailable — excludes those whose PATH check failed.
     func availableHarnesses(folder: String? = nil) -> [CoreHarness] {
-        CoreHarness.allCases.filter {
+        CoreHarness.allCases.filter { $0 != .nouli }.filter {
             if case .failed = entry(for: $0, folder: folder) { return false }
             return true
         }
@@ -80,7 +80,7 @@ final class HarnessModelCatalog {
     /// The catalog owns each listing, so a picker that goes away doesn't stop one others wait on.
     func load(using client: CoreClient) async {
         let folder = client.snapshot?.folders.openFolder
-        for harness in CoreHarness.allCases {
+        for harness in CoreHarness.allCases.filter({ $0 != .nouli }) {
             let key = Key(harness, folder: folder)
             switch entries[key] {
             case .listed(let listed) where harness == .opencode && listed.models.models.isEmpty:
@@ -93,7 +93,9 @@ final class HarnessModelCatalog {
                 break
             }
         }
-        let currentListings = CoreHarness.allCases.compactMap { listings[Key($0, folder: folder)] }
+        let currentListings = CoreHarness.allCases.filter { $0 != .nouli }.compactMap {
+            listings[Key($0, folder: folder)]
+        }
         for listing in currentListings { await listing.value }
     }
 

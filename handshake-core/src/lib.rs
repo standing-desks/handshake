@@ -51,11 +51,12 @@ pub use workflow::{
     WorkflowState, WorkflowStatus, WorkflowTerminal,
 };
 pub use workflow_type::{
-    AgentColor, AgentDefaults, AgentGraph, BuiltinType, CatalogError, Completion, ElementPath,
-    GraphEdge, GraphEvent, GraphFinish, GraphPosition, GraphReceive, Handoff, HandoffContent,
-    InstanceCount, MAX_PARALLEL_AGENTS, MAX_REVIEW_ROUNDS, ReviewLoop, Role, RoleId, Stage,
-    StageId, StageRole, ValidationIssue, ValidationProblem, WorkflowType, WorkflowTypeDefinition,
-    WorkflowTypeRef, validate,
+    AgentColor, AgentDefaults, AgentGraph, BuiltinType, CatalogError, Completion, DecisionKind,
+    DecisionNode, DecisionOption, DecisionResultError, ElementPath, GraphEdge, GraphEvent,
+    GraphFinish, GraphPosition, GraphReceive, Handoff, HandoffContent, InstanceCount,
+    MAX_PARALLEL_AGENTS, MAX_REVIEW_ROUNDS, ReviewLoop, Role, RoleId, Stage, StageId, StageRole,
+    ValidationIssue, ValidationProblem, WorkflowType, WorkflowTypeDefinition, WorkflowTypeRef,
+    validate,
 };
 
 pub use trace::{

@@ -144,7 +144,11 @@ private struct AgentPane: View {
         VStack(spacing: 0) {
             // Hidden panes drop their header, whose AppKit menu accessibility would still list.
             if isTiled && isShown { header }
-            if agent.terminalID == 0 {
+            if let run = workflow.run, run.agents.first(where: { $0.id == agent.id })?.harness == .nouli {
+                WorkflowDecisionSurface(workflowID: workflow.id, agent: agent, run: run)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .onTapGesture(perform: focus)
+            } else if agent.terminalID == 0 {
                 ContentUnavailableView(
                     idleTitle, systemImage: "terminal",
                     description: Text(

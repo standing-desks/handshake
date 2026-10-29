@@ -24,6 +24,7 @@ pub(crate) mod instructions;
 pub(crate) mod kiro;
 pub(crate) mod launch;
 pub(crate) mod models;
+pub(crate) mod nouli;
 pub(crate) mod opencode;
 pub(crate) mod pi;
 mod prompt_context;
@@ -47,6 +48,7 @@ pub enum HarnessId {
     Omp,
     Opencode,
     Kiro,
+    Nouli,
 }
 
 /// How to launch one harness. Adding a harness means adding a definition here.
@@ -114,6 +116,14 @@ static KIRO: HarnessDefinition = HarnessDefinition {
     subcommand: Some("chat"),
 };
 
+static NOULI: HarnessDefinition = HarnessDefinition {
+    name: "Nouli",
+    binary: "nouli",
+    reads_at_prefix_as_file: false,
+    prompt_option: None,
+    subcommand: None,
+};
+
 impl HarnessId {
     pub(crate) fn definition(self) -> &'static HarnessDefinition {
         match self {
@@ -124,6 +134,7 @@ impl HarnessId {
             Self::Omp => &OMP,
             Self::Opencode => &OPENCODE,
             Self::Kiro => &KIRO,
+            Self::Nouli => &NOULI,
         }
     }
 }

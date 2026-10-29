@@ -20,6 +20,7 @@ use crate::workflow::{SessionId, WorkflowId, WorkflowKind, WorkflowState};
 mod agent_instructions;
 mod agents;
 mod configuration;
+mod decisions;
 mod files;
 mod git;
 mod harness_steps;
@@ -194,6 +195,10 @@ pub enum Command {
         generation: u64,
         agent_id: crate::AgentId,
     },
+    RetryDecision {
+        workflow_id: WorkflowId,
+        generation: u64,
+    },
     CancelWorkflowRun {
         workflow_id: WorkflowId,
     },
@@ -272,6 +277,8 @@ pub struct Application {
     /// Makes harness lookup search only this `PATH`, so tests don't depend on installed tools.
     #[cfg(test)]
     harness_path: Option<std::ffi::OsString>,
+    #[cfg(test)]
+    nouli_home: Option<PathBuf>,
     run_processes: Mutex<HashMap<WorkflowId, runs::RunProcesses>>,
     harness_steps: Mutex<HashMap<TerminalId, harness_steps::HarnessRecording>>,
     history: Mutex<crate::harness::history::HistoryWorkers>,
@@ -479,6 +486,8 @@ impl Application {
             login_path: Arc::new(LoginPath::spawn(crate::terminal::login_shell())),
             #[cfg(test)]
             harness_path: None,
+            #[cfg(test)]
+            nouli_home: None,
         };
 
         // Restored agents need their native profile and prompt hooks on their first launch.
@@ -659,6 +668,10 @@ impl Application {
                 generation,
                 agent_id,
             } => self.choose_workflow_result(workflow_id, generation, agent_id)?,
+            Command::RetryDecision {
+                workflow_id,
+                generation,
+            } => self.retry_decision(workflow_id, generation)?,
             Command::CancelWorkflowRun { workflow_id } => self.cancel_workflow_run(workflow_id)?,
             Command::StartTerminal {
                 working_directory,
@@ -817,6 +830,9 @@ impl Drop for Application {
             }
             // Exit callbacks are ignored after explicit shutdown takes ownership of stopping.
             inner.terminals.clear();
+        }
+        if let Ok(mut processes) = self.run_processes.lock() {
+            processes.clear();
         }
         self.memory_worker.take();
         self.terminals.shutdown();
