@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-10-29
+
+### Added
+
+- Move workflow, file, and browser tabs between sessions from their context menus,
+  with Undo support. Running workflows and terminal splits continue during a move.
+- Keep a compact session and tab rail when the sidebar is hidden, with a hover
+  preview that leaves keyboard focus in the terminal.
+
+### Changed
+
+- Show tabs under their sessions in the sidebar by default, including activity,
+  pins, and unsaved edits. Switch back to the top tab bar from the View menu or
+  tab and session context menus.
+- Scope file and browser tabs to the session that opened them, restore each
+  session's selected tab, and search across sessions with Find Open Tab. Files
+  open in multiple sessions share their edits.
+- Place agent-controlled browser pages in their terminal's session, keep popups
+  with their opener, and reopen closed pages in their original session.
+
 ## [0.6.0] - 2026-10-29
 
 ### Added
@@ -384,7 +404,8 @@ Initial release of Twine, a native macOS workspace for coordinating coding agent
 - The app is ad hoc signed and not notarized. Follow the included install instructions
   to approve the first launch in macOS Privacy & Security settings.
 
-[unreleased]: https://github.com/standing-desks/handshake/compare/v0.6.0...HEAD
+[unreleased]: https://github.com/standing-desks/handshake/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/standing-desks/handshake/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/standing-desks/handshake/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/standing-desks/handshake/compare/v0.4.2...v0.5.0
 [0.3.3]: https://github.com/standing-desks/twine/compare/v0.3.2...v0.3.3
