@@ -151,8 +151,17 @@ impl Store {
         folder: &Path,
         id: SessionId,
         next: Option<SessionId>,
-    ) -> Result<(), StoreError> {
-        let transaction = self.connection.transaction()?;
+    ) -> Result<std::collections::HashSet<crate::TerminalId>, StoreError> {
+        // Capture ownership and delete from one writer snapshot, without a deferred
+        // read-to-write upgrade racing background trace maintenance.
+        let transaction = self
+            .connection
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let transcripts = super::transcripts::transcript_ids(&transaction, Some(id))
+            .unwrap_or_else(|error| {
+                tracing::warn!(%error, "skipping deleted session transcript cleanup: ownership is unavailable");
+                std::collections::HashSet::new()
+            });
         transaction.execute("DELETE FROM sessions WHERE id = ?1", [sql_integer(id.0)?])?;
         transaction.execute(
             "UPDATE folder_selection SET session_id = ?2 WHERE folder = ?1",
@@ -162,7 +171,7 @@ impl Store {
             ],
         )?;
         transaction.commit()?;
-        Ok(())
+        Ok(transcripts)
     }
 
     pub(crate) fn workflows(&self, folder: &Path) -> Result<Vec<StoredWorkflow>, StoreError> {

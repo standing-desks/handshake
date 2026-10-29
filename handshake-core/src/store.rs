@@ -14,6 +14,7 @@ mod run_traces;
 mod trace_payloads;
 mod trace_storage;
 mod traces;
+mod transcripts;
 mod workflow_types;
 pub(crate) mod workflows;
 pub(crate) use traces::{NewTraceSpan, TraceEnding};

@@ -109,6 +109,44 @@ impl Storage {
         Ok(TerminalId::from_value(id))
     }
 
+    pub(super) fn terminal_ids(&self) -> HashSet<TerminalId> {
+        self.manifest
+            .ends
+            .keys()
+            .copied()
+            .map(TerminalId::from_value)
+            .collect()
+    }
+
+    pub(super) fn prune(&mut self, ids: &HashSet<TerminalId>) -> Result<(), TranscriptError> {
+        if !self
+            .manifest
+            .ends
+            .keys()
+            .any(|id| ids.contains(&TerminalId::from_value(*id)))
+        {
+            return Ok(());
+        }
+        let mut removed = Vec::new();
+        self.manifest
+            .ends
+            .retain(|id, _| !ids.contains(&TerminalId::from_value(*id)));
+        self.manifest
+            .sizes
+            .retain(|(id, _)| !ids.contains(&TerminalId::from_value(*id)));
+        self.manifest.segments.retain(|segment| {
+            if ids.contains(&TerminalId::from_value(segment.terminal_id)) {
+                removed.push(segment.id);
+                false
+            } else {
+                true
+            }
+        });
+        // Publish expiration before unlinking. Recovery removes files left by an interrupted prune.
+        self.persist()?;
+        self.remove_files(&removed)
+    }
+
     pub(super) fn append_recording(
         &mut self,
         recording: &Recording,
@@ -448,7 +486,11 @@ impl Storage {
 
     fn remove_files(&self, ids: &[u64]) -> Result<(), TranscriptError> {
         for &id in ids {
-            fs::remove_file(self.segment_path(id))?;
+            match fs::remove_file(self.segment_path(id)) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
         }
         if !ids.is_empty() {
             self.sync_directory()?;
@@ -472,11 +514,16 @@ impl Storage {
             let file = private_file()
                 .write(true)
                 .open(self.segment_path(segment.id))?;
-            if file.metadata()?.len() < segment.length {
+            let length = file.metadata()?.len();
+            if length < segment.length {
                 return Err(TranscriptError::Corrupt("committed segment was truncated"));
             }
-            file.set_len(segment.length)?;
-            file.sync_all()?;
+            // Committed bytes were flushed before their length entered the manifest.
+            // Only an interrupted append needs another truncation and flush.
+            if length > segment.length {
+                file.set_len(segment.length)?;
+                file.sync_all()?;
+            }
         }
         for entry in fs::read_dir(&self.directory)? {
             let entry = entry?;
@@ -739,6 +786,98 @@ fn take_number(input: &mut &[u8]) -> Result<u64, TranscriptError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn healthy_recovery_does_not_modify_committed_segments() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut storage = Storage::open(directory.path(), limits()).unwrap();
+        let id = storage.allocate().unwrap();
+        append(&mut storage, id, 0, b"abc");
+        let path = storage.segment_path(1);
+        let file = OpenOptions::new().write(true).open(&path).unwrap();
+        file.set_times(
+            std::fs::FileTimes::new()
+                .set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000)),
+        )
+        .unwrap();
+        let modified = file.metadata().unwrap().modified().unwrap();
+        drop(storage);
+        let storage = Storage::open(directory.path(), limits()).unwrap();
+        assert_eq!(page(&storage, id, 0, 8).bytes, b"abc");
+        assert_eq!(fs::metadata(path).unwrap().modified().unwrap(), modified);
+    }
+
+    #[test]
+    fn pruning_expires_metadata_and_recovers_interrupted_unlinks_without_reusing_ids() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut storage = Storage::open(directory.path(), limits()).unwrap();
+        let removed = storage.allocate().unwrap();
+        let kept = storage.allocate().unwrap();
+        append(&mut storage, removed, 0, b"old");
+        append(&mut storage, kept, 0, b"new");
+        storage.manifest.sizes.push_back((
+            removed.value(),
+            TranscriptSize {
+                offset: 0,
+                size: TerminalSize {
+                    rows: 24,
+                    columns: 80,
+                    pixel_width: 0,
+                    pixel_height: 0,
+                },
+            },
+        ));
+        let path = storage.segment_path(1);
+        let bytes = fs::read(&path).unwrap();
+        let next_id = storage.manifest.next_terminal_id;
+        let next_segment = storage.manifest.next_segment_id;
+        let ids = HashSet::from([removed]);
+        storage.prune(&ids).unwrap();
+        assert!(!path.exists());
+        assert!(
+            !storage
+                .manifest
+                .sizes
+                .iter()
+                .any(|(id, _)| *id == removed.value())
+        );
+        assert_eq!(storage.terminal_ids(), HashSet::from([kept]));
+        assert!(matches!(
+            storage.read(removed, 0, 8).unwrap(),
+            TranscriptRead::Expired {
+                nearest_retained_offset: None,
+                ..
+            }
+        ));
+        let metadata = directory.path().join(METADATA);
+        let modified = fs::metadata(&metadata).unwrap().modified().unwrap();
+        storage.prune(&ids).unwrap();
+        assert_eq!(
+            fs::metadata(&metadata).unwrap().modified().unwrap(),
+            modified
+        );
+        // Simulate stopping after publishing the manifest but before unlinking its old files.
+        fs::write(&path, bytes).unwrap();
+        drop(storage);
+        let mut storage = Storage::open(directory.path(), limits()).unwrap();
+        assert!(!path.exists());
+        assert_eq!(page(&storage, kept, 0, 8).bytes, b"new");
+        assert_eq!(storage.allocate().unwrap().value(), next_id);
+        assert_eq!(storage.manifest.next_segment_id, next_segment);
+    }
+
+    #[test]
+    fn pruning_accepts_an_already_missing_segment() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut storage = Storage::open(directory.path(), limits()).unwrap();
+        let id = storage.allocate().unwrap();
+        append(&mut storage, id, 0, b"abc");
+        fs::remove_file(storage.segment_path(1)).unwrap();
+        storage.prune(&HashSet::from([id])).unwrap();
+        drop(storage);
+        let storage = Storage::open(directory.path(), limits()).unwrap();
+        assert!(storage.terminal_ids().is_empty());
+    }
 
     fn limits() -> Limits {
         Limits {

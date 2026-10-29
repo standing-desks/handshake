@@ -98,6 +98,8 @@ impl Application {
     /// Reads at most `limit` raw bytes beginning exactly at `offset`, after committing output
     /// already accepted for recording. `limit` must be between 1 and 64 KiB. An offset at the
     /// recorded end returns an empty page; pruned history returns an explicit expired result.
+    /// On restart, recordings without a saved workflow or trace owner expire. Standalone
+    /// terminals remain readable during their runtime, subject to the recording limits.
     ///
     /// This performs storage work on the recording worker and waits for its reply. Call it off
     /// the UI thread. It acquires no application-state or terminal-input locks.
@@ -531,7 +533,7 @@ mod tests {
     }
 
     #[test]
-    fn application_reads_closed_transcripts_after_relaunch_without_reusing_ids() {
+    fn application_expires_unowned_transcripts_after_relaunch_without_reusing_ids() {
         let data = tempfile::tempdir().unwrap();
         let folder = tempfile::tempdir().unwrap();
         let app = Application::with_config(data.path(), Config::default()).unwrap();
@@ -565,16 +567,21 @@ mod tests {
         };
         app.handle_command(RequestId(2), Command::CloseTerminal { terminal_id: id })
             .unwrap();
-        let expected = app
-            .read_terminal_transcript(id, 1, bytes.len() - 1)
-            .unwrap();
-        drop(app);
-        let app = Application::with_config(data.path(), Config::default()).unwrap();
-        assert_eq!(
+        assert!(matches!(
             app.read_terminal_transcript(id, 1, bytes.len() - 1)
                 .unwrap(),
-            expected
-        );
+            TranscriptRead::Output(_)
+        ));
+        drop(app);
+        let app = Application::with_config(data.path(), Config::default()).unwrap();
+        assert!(matches!(
+            app.read_terminal_transcript(id, 1, bytes.len() - 1)
+                .unwrap(),
+            TranscriptRead::Expired {
+                nearest_retained_offset: None,
+                ..
+            }
+        ));
         assert!(start(&app, folder.path(), 3).value() > id.value());
     }
 

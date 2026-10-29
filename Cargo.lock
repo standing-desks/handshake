@@ -506,7 +506,7 @@ dependencies = [
 
 [[package]]
 name = "handshake-bridge"
-version = "0.6.1"
+version = "0.7.0"
 dependencies = [
  "handshake-core",
  "serde",
@@ -520,7 +520,7 @@ dependencies = [
 
 [[package]]
 name = "handshake-cli"
-version = "0.6.1"
+version = "0.7.0"
 dependencies = [
  "handshake-core",
  "serde_json",
@@ -528,7 +528,7 @@ dependencies = [
 
 [[package]]
 name = "handshake-core"
-version = "0.6.1"
+version = "0.7.0"
 dependencies = [
  "dotenvy",
  "jsonschema",
