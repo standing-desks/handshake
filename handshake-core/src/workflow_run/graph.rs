@@ -11,6 +11,57 @@ use crate::workflow_type::{AgentGraph, GraphEvent, GraphFinish, GraphReceive};
 
 const MAX_QUEUED: usize = 32;
 
+impl WorkflowRun {
+    pub(crate) fn is_passthrough(&self, agent_id: u64) -> bool {
+        self.agents
+            .iter()
+            .find(|agent| agent.agent_id == agent_id)
+            .is_some_and(|agent| {
+                self.workflow_type
+                    .definition
+                    .graph
+                    .as_ref()
+                    .is_some_and(|graph| graph.passthrough_edge(&agent.role).is_some())
+            })
+    }
+
+    /// Forward single-output nodes transactionally, including chains and bounded loops.
+    pub(crate) fn forward_graph_passthroughs(&mut self) -> Result<(), RunError> {
+        while self.status == RunStatus::Running {
+            let Some(agent) = self
+                .active_agents()
+                .into_iter()
+                .find(|agent| {
+                    agent.status == RunAgentStatus::Waiting && self.is_passthrough(agent.agent_id)
+                })
+                .cloned()
+            else {
+                break;
+            };
+            let mut next = self.clone();
+            next.graph_agent_launched(agent.agent_id);
+            let signal = CompletionSignal {
+                decision: Decision::Done,
+                summary: next
+                    .incoming
+                    .get(&agent.agent_id)
+                    .cloned()
+                    .unwrap_or_default(),
+                assignments: vec![],
+                task: String::new(),
+            };
+            next.complete_graph_inner(
+                agent.agent_id,
+                next.assignment_generation(agent.agent_id),
+                &signal,
+                true,
+            )?;
+            *self = next;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GraphRun {
@@ -254,7 +305,7 @@ impl WorkflowRun {
     ) -> Result<bool, RunError> {
         // Queue overflow or a bad join must not consume a completion or part of its fan-out.
         let mut next = self.clone();
-        let advance = next.complete_graph_inner(agent_id, generation, signal)?;
+        let advance = next.complete_graph_inner(agent_id, generation, signal, false)?;
         *self = next;
         Ok(advance)
     }
@@ -264,6 +315,7 @@ impl WorkflowRun {
         agent_id: u64,
         generation: u64,
         signal: &CompletionSignal,
+        passthrough: bool,
     ) -> Result<bool, RunError> {
         if self.status != RunStatus::Running
             || generation != self.assignment_generation(agent_id)
@@ -299,6 +351,7 @@ impl WorkflowRun {
             .ok_or(RunError::InvalidType)?
             .clone();
         if definition.decisions.contains_key(&sender.role)
+            && !(passthrough && definition.passthrough_edge(&sender.role).is_some())
             && !self
                 .graph
                 .as_ref()
@@ -454,6 +507,7 @@ impl WorkflowRun {
                 },
             );
         }
+        let passthrough = definition.passthrough_edge(&sender.role).is_some();
         let selected_output = self
             .graph
             .as_ref()
@@ -462,10 +516,11 @@ impl WorkflowRun {
         for edge in definition.edges.iter().filter(|edge| {
             edge.from == sender.role
                 && edge.event == event
-                && edge
-                    .output
-                    .as_ref()
-                    .is_none_or(|output| selected_output.as_ref() == Some(output))
+                && (passthrough
+                    || edge
+                        .output
+                        .as_ref()
+                        .is_none_or(|output| selected_output.as_ref() == Some(output)))
         }) {
             if edge.to == "finish" {
                 let graph = self.graph.as_mut().expect("graph");

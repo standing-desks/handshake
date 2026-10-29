@@ -4,10 +4,7 @@ extension CoreWorkflowType {
     struct DecisionNode: Codable, Hashable, Sendable {
         var question = "Which output matches the incoming work?"
         var kind: DecisionKind = .choice
-        var options: [DecisionOption] = [
-            .init(id: "first", name: "First", description: "Describe the first category."),
-            .init(id: "other", name: "Other", description: "Work outside the first category."),
-        ]
+        var options: [DecisionOption] = []
         var trueThreshold = 8_000
         var falseThreshold = 2_000
         var minConfidence: Int?

@@ -33,6 +33,20 @@ struct WorkflowCanvasPresentationTests {
         #expect(image.height < 130)
     }
 
+    @Test func decisionCardsUseDiamondGeometryWithSharedSideConnectors() throws {
+        let rect = CGRect(origin: .zero, size: WorkflowEditorLayout.cardSize)
+        let path = WorkflowNodeShape(isDecision: true).path(in: rect)
+        #expect(path.contains(CGPoint(x: rect.midX, y: rect.midY)))
+        #expect(!path.contains(CGPoint(x: 8, y: 8)))
+        #expect(!path.contains(CGPoint(x: rect.maxX - 8, y: rect.maxY - 8)))
+        #expect(path.boundingRect == rect)
+        let renderer = ImageRenderer(content: WorkflowGraphCard(title: "Route work", decision: .init()))
+        let bitmap = NSBitmapImageRep(cgImage: try #require(renderer.cgImage))
+        #expect(bitmap.pixelsWide < 240 && bitmap.pixelsHigh < 130)
+        #expect((bitmap.colorAt(x: 8, y: 8)?.alphaComponent ?? 1) < 0.1)
+        #expect((bitmap.colorAt(x: bitmap.pixelsWide / 2, y: bitmap.pixelsHigh / 2)?.alphaComponent ?? 0) > 0.9)
+    }
+
     @Test(arguments: [-600.0, 220.0, 1600.0, 4000.0])
     func draggedConnectionsKeepTheirVisibleEndsOutsideTheDrawingHeight(agentY: Double) throws {
         let model = WorkflowDesignerModel()

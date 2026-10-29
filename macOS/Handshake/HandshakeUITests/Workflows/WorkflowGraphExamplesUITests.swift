@@ -41,6 +41,52 @@ extension HandshakeUITests {
     }
 
     @MainActor
+    func testDecisionNodesSwitchFromAgentsAndRouteThroughSharedDragConnectors() throws {
+        let app = try launchGraphDesigner()
+        defer { app.terminate() }
+        let editor = WorkflowGraphExampleUI(app: app, testCase: self)
+        editor.item("workflowCreateOwn").click()
+        editor.replace("designerName", with: "Decision routes")
+        let canvas = editor.item("designerContent")
+        let origin = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.22, dy: 0.45))
+        origin.doubleClick()
+        editor.replace("graphAgentName", with: "Router")
+        editor.item("graphNodeKind").radioButtons["Decision"].click()
+        XCTAssertTrue(editor.item("decisionSettings").waitForExistence(timeout: 5))
+        app.buttons["Done"].click()
+        for (name, vertical) in [("Builder", 0.25), ("Planner", 0.75)] {
+            canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: vertical)).doubleClick()
+            editor.replace("graphAgentName", with: name)
+            app.buttons["Done"].click()
+        }
+        editor.drag(app.buttons["Connect from Router"], to: app.buttons["Connect to Builder"])
+        XCTAssertTrue(app.buttons["Router to Builder: Passthrough"].waitForExistence(timeout: 5))
+        origin.click()
+        XCTAssertTrue(app.staticTexts["No decision is made and Nouli is not called."].waitForExistence(timeout: 5))
+        app.buttons["Done"].click()
+        editor.drag(app.buttons["Connect from Router"], to: app.buttons["Connect to Planner"])
+        XCTAssertTrue(app.buttons["Router to Planner: Planner"].waitForExistence(timeout: 5))
+        origin.click()
+        XCTAssertTrue(app.staticTexts["2 of 2 outputs need routing criteria."].waitForExistence(timeout: 5))
+        XCTAssertFalse(editor.item("designerSave").isEnabled)
+        let criteria = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH 'decisionCriterion-'"))
+        XCTAssertEqual(criteria.count, 2)
+        for (index, field) in criteria.allElementsBoundByIndex.enumerated() {
+            editor.replace(
+                field.identifier, with: index == 0 ? "The implementation is specified." : "A plan is needed.")
+        }
+        let image = XCTAttachment(screenshot: app.screenshot())
+        image.name = "Decision routing popup"
+        image.lifetime = .keepAlways
+        add(image)
+        app.buttons["Done"].click()
+        editor.saveAndReopen()
+        XCTAssertTrue(app.buttons["Router to Builder: Builder"].exists)
+        XCTAssertTrue(app.buttons["Router to Planner: Planner"].exists)
+    }
+
+    @MainActor
     func testAdversarialGraphCanBeEditedSavedAndReopened() throws {
         let app = try launchGraphDesigner()
         defer { app.terminate() }

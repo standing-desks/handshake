@@ -77,14 +77,7 @@ struct WorkflowGraphConnections: View {
     }
 
     private func sourcePoint(_ edge: CoreWorkflowType.Edge) -> CGPoint {
-        var source = point(edge.from)
-        guard let outputs = model.definition.graph?.decisions[edge.from]?.outputs, outputs.count <= 5 else {
-            return source
-        }
-        if let index = outputs.firstIndex(where: { $0.id == edge.output }) {
-            source.y += (CGFloat(index) - CGFloat(outputs.count - 1) / 2) * 18
-        }
-        return source
+        point(edge.from)
     }
 
     func linkTitle(_ edge: CoreWorkflowType.Edge) -> String {

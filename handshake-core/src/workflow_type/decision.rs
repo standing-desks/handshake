@@ -370,6 +370,37 @@ mod tests {
         assert_eq!(node.route(&report), Err(DecisionResultError::Invalid));
     }
     #[test]
+    fn four_connections_with_two_options_are_rejected() {
+        let file: toml::Value = toml::from_str(include_str!(
+            "../../../examples/workflows/decision-triage.toml"
+        ))
+        .unwrap();
+        let mut definition: crate::WorkflowTypeDefinition =
+            file["definition"].clone().try_into().unwrap();
+        let graph = definition.graph.as_mut().unwrap();
+        graph
+            .decisions
+            .get_mut("classify")
+            .unwrap()
+            .options
+            .truncate(2);
+        graph.edges.push(crate::GraphEdge {
+            id: "fourth-route".into(),
+            from: "classify".into(),
+            to: "scope".into(),
+            event: crate::GraphEvent::Done,
+            output: Some("fourth-route".into()),
+        });
+        let issues = crate::validate(&definition).unwrap_err();
+        assert!(issues.iter().any(|issue| {
+            issue
+                .problem
+                .to_string()
+                .contains("2 of 4 outputs need routing criteria")
+        }));
+    }
+
+    #[test]
     fn chained_example_is_a_valid_portable_graph() {
         let file: toml::Value = toml::from_str(include_str!(
             "../../../examples/workflows/decision-triage.toml"

@@ -97,11 +97,24 @@ x = 1140
 y = 570
 
 [definition.graph.decisions.ready]
-kind = "noul"
+kind = "choice"
 question = "Does the request specify observable desired behavior and a way to verify it?"
 include_task = true
-true_threshold = 8000
-false_threshold = 2000
+
+[[definition.graph.decisions.ready.options]]
+id = "yes"
+name = "Ready"
+description = "The desired behavior and verification method are clear enough to proceed."
+
+[[definition.graph.decisions.ready.options]]
+id = "no"
+name = "Needs detail"
+description = "Essential requirements are missing; ask for clarification."
+
+[[definition.graph.decisions.ready.options]]
+id = "uncertain"
+name = "Needs assessment"
+description = "The request contains conflicting or ambiguous requirements that need assessment."
 
 [definition.graph.decisions.classify]
 kind = "choice"
@@ -124,7 +137,7 @@ name = "Other"
 description = "Documentation, maintenance, or work outside the other categories."
 
 [definition.graph.decisions.scope]
-kind = "score"
+kind = "choice"
 question = "How broad is the change based on the supplied implementation context?"
 include_task = true
 

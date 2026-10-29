@@ -16,12 +16,22 @@ struct WorkflowDecisionSurface: View {
         role.flatMap { run.workflowType?.definition.graph?.decisions[$0] }
     }
 
+    private var passthroughDestination: String? {
+        let graph = run.workflowType?.definition.graph
+        let edges = graph?.agentEdges.filter { $0.from == role } ?? []
+        guard edges.count == 1 else { return nil }
+        return run.workflowType?.definition.roles.first { $0.id == edges[0].to }?.name ?? edges[0].to
+    }
+
+    private var isCompleted: Bool { run.agents.first { $0.id == agent.id }?.status == .completed }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 Label(agent.role, systemImage: "arrow.triangle.branch").font(.headline)
-                Text("Nouli · \(node?.kind.title ?? "Decision")").font(.caption).foregroundStyle(.secondary)
-                if let node { Text(node.question).textSelection(.enabled) }
+                Text(passthroughDestination != nil ? "Passthrough" : "Nouli · \(node?.kind.title ?? "Decision")")
+                    .font(.caption).foregroundStyle(.secondary)
+                if let node, passthroughDestination == nil { Text(node.question).textSelection(.enabled) }
                 if run.needsTask && run.status == .running {
                     TextEditor(text: $task).frame(minHeight: 100).font(.body).accessibilityLabel("Workflow task")
                     Button("Start workflow") {
@@ -40,6 +50,10 @@ struct WorkflowDecisionSurface: View {
                     .disabled(submitting)
                     Text("Retry uses the captured inputs and configured model. Earlier attempts remain in Traces.")
                         .font(.caption).foregroundStyle(.secondary)
+                } else if let destination = passthroughDestination, isCompleted {
+                    Label(
+                        "Inputs passed through to \(destination).",
+                        systemImage: "arrow.right")
                 } else if let output = run.decisionOutputs[key] {
                     let name = node?.outputs.first { $0.id == output }?.name ?? output
                     Label("Selected output: \(name)", systemImage: "arrow.right.circle")

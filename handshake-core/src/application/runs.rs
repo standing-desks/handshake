@@ -251,18 +251,10 @@ impl Application {
             Ok(run) => run,
             Err(error) => return Ok(super::rejection("invalidWorkflowRun", &error)),
         };
-        let mut harnesses = HashMap::new();
-        for agent in &run.agents {
-            if let std::collections::hash_map::Entry::Vacant(entry) = harnesses.entry(agent.harness)
-            {
-                match self.locate_harness(agent.harness.definition()) {
-                    Ok(located) => {
-                        entry.insert(located);
-                    }
-                    Err(error) => return Ok(super::rejection("harnessNotFound", &error)),
-                }
-            }
-        }
+        let harnesses = match self.locate_run_harnesses(&run) {
+            Ok(harnesses) => harnesses,
+            Err(error) => return Ok(super::rejection("harnessNotFound", &error)),
+        };
         let placeholder = {
             let mut inner = self.lock_inner()?;
             inner
@@ -415,21 +407,13 @@ impl Application {
                 }
             }
         }
-        let mut harnesses = HashMap::new();
-        for agent in &saved_run.agents {
-            if let std::collections::hash_map::Entry::Vacant(entry) = harnesses.entry(agent.harness)
-            {
-                match self.locate_harness(agent.harness.definition()) {
-                    Ok(located) => {
-                        entry.insert(located);
-                    }
-                    Err(error) => {
-                        tracing::warn!(%error, "couldn't locate a restored workflow harness");
-                        return Ok(());
-                    }
-                }
+        let harnesses = match self.locate_run_harnesses(saved_run) {
+            Ok(harnesses) => harnesses,
+            Err(error) => {
+                tracing::warn!(%error, "couldn't locate a restored workflow harness");
+                return Ok(());
             }
-        }
+        };
         let mut workflow = saved.clone();
         let run = workflow.run.as_mut().expect("restored workflow has a run");
         run.status = RunStatus::Running;
@@ -4900,6 +4884,62 @@ os.execvp('pi', ['pi', '--append-system-prompt', instructions, '--', prompt])
             });
         }
         definition
+    }
+
+    #[test]
+    fn single_output_decision_chain_forwards_without_nouli_or_decision_results() {
+        let folder = tempfile::tempdir().unwrap();
+        let bin = tempfile::tempdir().unwrap();
+        let app = application(
+            folder.path(),
+            bin.path(),
+            "while read line; do echo \"$line\"; done",
+        );
+        let mut definition = decision_chain_definition();
+        definition.roles.retain(|r| r.id.0 != "reviewer");
+        let graph = definition.graph.as_mut().unwrap();
+        graph.positions.remove("reviewer");
+        graph.edges.retain(|e| {
+            matches!(
+                (e.from.as_str(), e.output.as_deref()),
+                ("ready", Some("yes")) | ("classify" | "scope", Some("continue"))
+            )
+        });
+        for node in graph.decisions.values_mut() {
+            node.options.clear();
+            node.question.clear();
+            node.model = Some("--unused-invalid-model".into());
+        }
+        crate::validate(&definition).unwrap();
+        let id = launch_graph(
+            &app,
+            folder.path(),
+            &definition,
+            "Original evidence for passthrough",
+        );
+        let workflow = wait_for(&app, id, |w| {
+            w.run
+                .as_ref()
+                .unwrap()
+                .agents
+                .iter()
+                .filter(|a| a.harness == HarnessId::Nouli)
+                .all(|a| a.status == crate::RunAgentStatus::Completed)
+        });
+        let run = workflow.run.as_ref().unwrap();
+        let graph = run.graph.as_ref().unwrap();
+        assert!(graph.decision_requests.is_empty());
+        assert!(graph.decision_results.is_empty());
+        assert!(graph.decision_outputs.is_empty());
+        assert!(!run.traces.iter().any(|e| e.kind.starts_with("decision")));
+        let receiver = run.agents.iter().find(|a| a.role == "implementer").unwrap();
+        assert!(run.incoming[&receiver.agent_id].contains("Original evidence for passthrough"));
+        assert!(
+            !app.run_processes.lock().unwrap()[&id]
+                .harnesses
+                .contains_key(&HarnessId::Nouli)
+        );
+        accepted(&app, Command::CancelWorkflowRun { workflow_id: id });
     }
 
     fn nouli_report(answer: &serde_json::Value) -> String {

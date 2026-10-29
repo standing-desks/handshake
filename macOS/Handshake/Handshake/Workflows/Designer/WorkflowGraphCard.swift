@@ -111,36 +111,23 @@ struct WorkflowGraphCard: View {
     @State private var hovered = false
     @Environment(\.colorSchemeContrast) private var contrast
 
+    private var shape: WorkflowNodeShape { .init(isDecision: decision != nil) }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 9) {
-                if decision != nil {
-                    Image(systemName: "diamond.fill").font(.system(size: 8)).foregroundStyle(.secondary)
-                } else {
-                    Circle().fill(tint ?? .secondary).frame(width: 7, height: 7).accessibilityHidden(true)
-                }
-                Text(title).font(.headline).foregroundStyle(.primary).lineLimit(1)
-            }
-            Spacer(minLength: 8)
-            if let decision {
-                HStack(spacing: 6) {
-                    Text(decision.kind.title).padding(4).background(
-                        Color.primary.opacity(0.05), in: .rect(cornerRadius: 4))
-                    Text("Nouli")
-                }.font(.caption2).foregroundStyle(.secondary)
+        Group {
+            if decision != nil {
+                VStack(spacing: 3) {
+                    Text(title).font(.subheadline.weight(.semibold)).lineLimit(2).multilineTextAlignment(.center)
+                    Text("Decision").font(.caption2).foregroundStyle(.secondary)
+                }.frame(width: 112)
             } else {
-                WorkflowAgentBadges(startsHere: startsHere, returnsResult: returnsResult, reviewsWork: reviewsWork)
+                agentContent.padding(14)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .padding(14)
-        .frame(
-            width: WorkflowEditorLayout.cardSize.width, height: WorkflowEditorLayout.cardSize.height,
-            alignment: .topLeading
-        )
-        .background(WorkflowEditorStyle.card, in: .rect(cornerRadius: 11))
+        .frame(width: WorkflowEditorLayout.cardSize.width, height: WorkflowEditorLayout.cardSize.height)
+        .background(WorkflowEditorStyle.card, in: shape)
         .overlay {
-            RoundedRectangle(cornerRadius: 11).stroke(
+            shape.stroke(
                 emphasized
                     ? Color.accentColor
                     : (tint?.opacity(contrast == .increased ? 0.85 : (hovered ? 0.6 : 0.4))
@@ -148,7 +135,34 @@ struct WorkflowGraphCard: View {
                 lineWidth: emphasized ? 2 : 1)
         }
         .shadow(color: .black.opacity(hovered ? 0.12 : 0.06), radius: hovered ? 6 : 3, y: 2)
-        .contentShape(.rect).onHover { hovered = $0 }
+        .contentShape(shape).onHover { hovered = $0 }
+    }
+
+    private var agentContent: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 9) {
+                Circle().fill(tint ?? .secondary).frame(width: 7, height: 7).accessibilityHidden(true)
+                Text(title).font(.headline).foregroundStyle(.primary).lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            WorkflowAgentBadges(startsHere: startsHere, returnsResult: returnsResult, reviewsWork: reviewsWork)
+        }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}
+
+/// Both connector tips share the same coordinates as the ordinary agent card.
+nonisolated struct WorkflowNodeShape: Shape {
+    var isDecision: Bool
+
+    func path(in rect: CGRect) -> Path {
+        guard isDecision else { return RoundedRectangle(cornerRadius: 11).path(in: rect) }
+        return Path { path in
+            path.move(to: CGPoint(x: rect.minX, y: rect.midY))
+            path.addLine(to: CGPoint(x: rect.midX, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+            path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
+            path.closeSubpath()
+        }
     }
 }
 

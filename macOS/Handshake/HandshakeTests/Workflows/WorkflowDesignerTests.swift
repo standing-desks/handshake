@@ -209,35 +209,34 @@ struct WorkflowDesignerTests {
         manager.redo()
         #expect(model.definition == removed)
     }
-    @Test func decisionConnectionsSelectOutputsAndReconcileRemovedBranches() throws {
+    @Test func decisionRoutesFollowConnectionsAndKeepCriteriaThroughEdits() throws {
         let model = WorkflowDesignerModel()
         model.enableGraph()
-        let decision = model.addDecision(at: .init(x: 200, y: 200))
-        let receiver = model.addGraphRole(at: .init(x: 600, y: 200))
-        model.connect(from: decision, to: receiver)
-        model.connect(from: decision, to: receiver)
-        #expect(model.definition.graph?.edges.count == 2)
-        #expect(Set(model.definition.graph?.edges.compactMap(\.output) ?? []).count == 2)
-        model.definition.graph?.decisions[decision]?.minConfidence = 6_000
-        model.connectDecision(decision, output: "fallback", to: receiver)
-        model.definition.graph?.decisions[decision]?.minConfidence = nil
-        model.reconcileDecisionOutputs(decision)
-        #expect(model.definition.graph?.edges.count == 2)
-        #expect(model.definition.graph?.edges.contains { $0.output == "fallback" } == false)
-        model.definition.graph?.decisions[decision]?.kind = .noul
-        model.resetDecisionOutputs(decision)
-        for output in ["yes", "no", "uncertain"] { model.connectDecision(decision, output: output, to: receiver) }
-        model.definition.graph?.decisions[decision]?.trueThreshold = 5_000
-        model.definition.graph?.decisions[decision]?.falseThreshold = 5_000
-        model.reconcileDecisionOutputs(decision)
-        #expect(model.definition.graph?.edges.compactMap(\.output).sorted() == ["no", "yes"])
-        let copy = try #require(model.duplicateGraphAgent(decision))
-        #expect(model.definition.graph?.decisions[copy] == model.definition.graph?.decisions[decision])
-        #expect(model.definition.graph?.edges.contains { $0.from == copy || $0.to == copy } == false)
+        let node = model.addGraphRole(at: .init(x: 200, y: 200))
+        let instructions = model.definition.roles[0].instructions
+        let receivers = (0..<4).map { _ in model.addGraphRole() }
+        model.setDecision(node, enabled: true)
+        for receiver in receivers { model.connect(from: node, to: receiver) }
+        let edges = try #require(model.definition.graph?.edges)
+        let options = try #require(model.definition.graph?.decisions[node]?.options)
+        #expect(edges.count == 4 && options.count == 4)
+        #expect(Set(edges.map(\.id)) == Set(options.map(\.id)))
+        #expect(edges.allSatisfy { $0.output == $0.id })
+        for edge in edges.prefix(2) { model.routeCriterion(edge).wrappedValue = "Criterion for \(edge.id)" }
+        #expect(model.definition.graph?.decisions[node]?.options.filter { $0.description.isEmpty }.count == 2)
+        model.removeGraphEdge(edges[3].id)
+        #expect(model.definition.graph?.decisions[node]?.options.count == 3)
+        model.removeGraphRole(receivers[2])
+        #expect(model.definition.graph?.decisions[node]?.options.count == 2)
+        let copy = try #require(model.duplicateGraphAgent(node))
+        #expect(model.definition.graph?.decisions[copy]?.options.isEmpty == true)
+        model.setDecision(node, enabled: false)
+        #expect(model.definition.graph?.decisions[node] == nil)
+        #expect(model.definition.graph?.edges.allSatisfy { $0.output == nil } == true)
+        #expect(model.definition.roles.first { $0.id == node }?.instructions == instructions)
+        #expect(model.definition.graph?.positions[node] == .init(x: 200, y: 200))
         let encoded = try JSONEncoder().encode(model.definition)
-        let decoded = try JSONDecoder().decode(CoreWorkflowType.Definition.self, from: encoded)
-        #expect(decoded == model.definition)
-        #expect(model.outputTitle(try #require(model.definition.graph?.edges.first { $0.output == "no" })) == "No")
+        #expect(try JSONDecoder().decode(CoreWorkflowType.Definition.self, from: encoded) == model.definition)
     }
 
 }

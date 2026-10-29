@@ -17,6 +17,7 @@ struct WorkflowGraphAgentPopover: View {
     var body: some View {
         let binding = model.roleBinding(role)
         VStack(spacing: 0) {
+            WorkflowNodeKindPicker(model: model, id: role.id)
             Picker("Settings", selection: $page) {
                 ForEach(Page.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }.pickerStyle(.segmented).labelsHidden()
@@ -43,7 +44,7 @@ struct WorkflowGraphAgentPopover: View {
         .frame(
             width: min(420, maximumSize.width),
             height: min(
-                page == .agent ? (inputCount > 1 ? 640 : 540) : (binding.wrappedValue.agentDefaults == nil ? 180 : 340),
+                page == .agent ? (inputCount > 1 ? 680 : 590) : (binding.wrappedValue.agentDefaults == nil ? 180 : 340),
                 maximumSize.height)
         )
         .animation(reduceMotion ? nil : Motion.disclosure, value: page)
@@ -196,19 +197,17 @@ struct WorkflowLinkPopover: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("\(name(edge.from)) → \(name(edge.to))").font(.headline)
             if let decision = model.definition.graph?.decisions[edge.from] {
-                Picker(
-                    "Selected output",
-                    selection: Binding(
-                        get: { model.definition.graph?.edges.first { $0.id == edge.id }?.output ?? "" },
-                        set: { output in
-                            if let index = model.definition.graph?.edges.firstIndex(where: { $0.id == edge.id }) {
-                                model.definition.graph?.edges[index].output = output
-                            }
-                        })
-                ) {
-                    ForEach(decision.outputs, id: \.id) { Text($0.name).tag($0.id) }
+                if model.definition.graph?.agentEdges.filter({ $0.from == edge.from }).count == 1 {
+                    Text("Passthrough: forward inputs directly.").font(.caption).foregroundStyle(.secondary)
+                } else if decision.kind == .choice && decision.minConfidence == nil {
+                    TextField("When should work go here?", text: model.routeCriterion(edge), axis: .vertical)
+                        .labelsHidden().multilineTextAlignment(.leading).lineLimit(2...6)
+                        .accessibilityLabel("Routing criterion")
+                    Text("Nouli chooses one connected route using these criteria.")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text(model.outputTitle(edge)).font(.caption).foregroundStyle(.secondary)
                 }
-                Text("Send work only when this decision output is selected.").font(.caption).foregroundStyle(.secondary)
             } else {
                 Picker(
                     "Send work when",
@@ -254,7 +253,7 @@ struct WorkflowLinkPopover: View {
             HStack {
                 Button("Delete link", role: .destructive) {
                     close()
-                    model.definition.graph?.edges.removeAll { $0.id == edge.id }
+                    model.removeGraphEdge(edge.id)
                 }
                 Spacer()
                 Button("Done", action: close).keyboardShortcut(.defaultAction)

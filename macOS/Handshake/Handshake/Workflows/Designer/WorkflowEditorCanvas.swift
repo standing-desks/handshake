@@ -79,7 +79,6 @@ struct WorkflowEditorCanvas: View {
                 }
             )
             .contextMenu {
-                Button("Add decision", systemImage: "arrow.triangle.branch") { addDecision(at: contextPoint) }
                 Button("Add agent", systemImage: "plus") { addAgent(at: contextPoint) }
                     .accessibilityIdentifier("designerAddRole")
                 Button("Workflow settings", systemImage: "slider.horizontal.3") {
@@ -106,15 +105,6 @@ struct WorkflowEditorCanvas: View {
         selection = nil
         cancelConnection()
         canvasFocused = true
-    }
-
-    private func addDecision(at location: CGPoint) {
-        clearSelection()
-        showsSettings = false
-        let position = CoreWorkflowType.Position(
-            x: Int(min(4000, max(0, location.x / zoom - offset.width))),
-            y: Int(min(4000, max(0, location.y / zoom - offset.height))))
-        selection = .node(model.addDecision(at: position))
     }
 
     private func addAgent(at location: CGPoint) {
@@ -182,24 +172,12 @@ struct WorkflowEditorCanvas: View {
             connector(id, output: false).offset(x: -WorkflowEditorLayout.portHitSize / 2)
         }
         .overlay(alignment: .trailing) {
-            outputConnector(id, name: role?.name ?? id)
+            connector(id, output: true).offset(x: WorkflowEditorLayout.portHitSize / 2)
         }
         .popover(isPresented: nodePresentation(id)) {
             nodeEditor(id, role: role).onExitCommand(perform: closeNodeEditor)
         }
-        .contextMenu {
-            Button("Edit settings") { selection = .node(id) }
-            WorkflowGraphConnectionMenu(model: model, source: id) { cancelConnection() }
-            Button("Duplicate agent", systemImage: "plus.square.on.square") {
-                clearSelection()
-                if let copy = model.duplicateGraphAgent(id) { selectedNodeID = copy }
-            }
-            Divider()
-            Button("Delete agent", role: .destructive) {
-                clearSelection()
-                model.removeGraphRole(id)
-            }
-        }
+        .contextMenu { nodeActions(id) }
 
     }
 
@@ -207,29 +185,22 @@ struct WorkflowEditorCanvas: View {
 
 extension WorkflowEditorCanvas {
     @ViewBuilder
-    private func outputConnector(_ id: String, name: String) -> some View {
-        if let decision = model.definition.graph?.decisions[id], decision.outputs.count <= 5 {
-            VStack(spacing: 8) {
-                ForEach(decision.outputs) { output in
-                    Menu {
-                        ForEach(model.definition.roles.filter { $0.id != id }) { target in
-                            Button(target.name) {
-                                model.connectDecision(id, output: output.id, to: target.id)
-                                cancelConnection()
-                            }
-                        }
-                    } label: {
-                        Circle().fill(WorkflowEditorStyle.card)
-                            .overlay { Circle().stroke(Color.accentColor, lineWidth: 1.5) }
-                            .frame(width: 10, height: 10)
-                    }
-                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-                    .help("Connect \(output.name)")
-                    .accessibilityLabel("Connect \(output.name) from \(name)")
-                }
-            }.offset(x: 5)
-        } else {
-            connector(id, output: true).offset(x: WorkflowEditorLayout.portHitSize / 2)
+    private func nodeActions(_ id: String) -> some View {
+        Button("Edit settings") { selection = .node(id) }
+        WorkflowGraphConnectionMenu(model: model, source: id) { cancelConnection() }
+        Button(
+            model.definition.graph?.decisions[id] == nil ? "Duplicate agent" : "Duplicate decision",
+            systemImage: "plus.square.on.square"
+        ) {
+            clearSelection()
+            if let copy = model.duplicateGraphAgent(id) { selectedNodeID = copy }
+        }
+        Divider()
+        Button(
+            model.definition.graph?.decisions[id] == nil ? "Delete agent" : "Delete decision", role: .destructive
+        ) {
+            clearSelection()
+            model.removeGraphRole(id)
         }
     }
 

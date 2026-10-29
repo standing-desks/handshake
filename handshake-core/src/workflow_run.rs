@@ -183,7 +183,16 @@ impl WorkflowRun {
             selected_choices.push(RoleLaunch {
                 role: id.clone(),
                 harness: HarnessId::Nouli,
-                model: decision.model.clone(),
+                model: if workflow_type
+                    .definition
+                    .graph
+                    .as_ref()
+                    .is_some_and(|graph| graph.passthrough_edge(id).is_some())
+                {
+                    None
+                } else {
+                    decision.model.clone()
+                },
                 effort: None,
                 yolo: false,
             });

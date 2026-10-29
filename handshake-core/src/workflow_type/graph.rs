@@ -27,6 +27,16 @@ pub struct AgentGraph {
 }
 
 impl AgentGraph {
+    /// A single outgoing connection forwards work without evaluating a decision model.
+    pub(crate) fn passthrough_edge(&self, role: &str) -> Option<&GraphEdge> {
+        if !self.decisions.contains_key(role) {
+            return None;
+        }
+        let mut edges = self.edges.iter().filter(|edge| edge.from == role);
+        let edge = edges.next()?;
+        edges.next().is_none().then_some(edge)
+    }
+
     /// Legacy endpoint links remain readable; new graphs infer entry and result roles.
     #[must_use]
     pub fn is_start(&self, role: &str) -> bool {
@@ -227,7 +237,12 @@ fn check_decisions(
     definition: &WorkflowTypeDefinition,
     report: &mut impl FnMut(ElementPath, &str),
 ) {
-    let mut conditional: BTreeSet<_> = graph.decisions.keys().cloned().collect();
+    let mut conditional: BTreeSet<_> = graph
+        .decisions
+        .keys()
+        .filter(|id| graph.passthrough_edge(id).is_none())
+        .cloned()
+        .collect();
     loop {
         let before = conditional.len();
         for edge in &graph.edges {
@@ -256,7 +271,18 @@ fn check_decisions(
         }
     }
     for (id, decision) in &graph.decisions {
-        if !roles.contains(id.as_str()) || !decision.validate() {
+        let passthrough = graph.passthrough_edge(id).is_some();
+        let outgoing = graph.edges.iter().filter(|edge| edge.from == *id).count();
+        if outgoing == 0 {
+            report(
+                ElementPath::Graph,
+                "connect an output from each decision node",
+            );
+        }
+        if outgoing > 1 && decision.kind == super::DecisionKind::Choice {
+            check_route_criteria(graph, id, decision, outgoing, report);
+        }
+        if !roles.contains(id.as_str()) || !passthrough && !decision.validate() {
             report(
                 ElementPath::Graph,
                 "decision needs a known role, a question, valid thresholds, and distinct described options",
@@ -274,7 +300,7 @@ fn check_decisions(
                 "a decision is a single Nouli agent and cannot review work",
             );
         }
-        for (output, _) in decision.outputs() {
+        for (output, _) in decision.outputs().into_iter().filter(|_| !passthrough) {
             if graph
                 .edges
                 .iter()
@@ -292,10 +318,11 @@ fn check_decisions(
     for (index, edge) in graph.edges.iter().enumerate() {
         if let Some(decision) = graph.decisions.get(&edge.from) {
             if edge.event != GraphEvent::Done
-                || edge
-                    .output
-                    .as_ref()
-                    .is_none_or(|id| !decision.outputs().iter().any(|(output, _)| output == id))
+                || graph.passthrough_edge(&edge.from).is_none()
+                    && edge
+                        .output
+                        .as_ref()
+                        .is_none_or(|id| !decision.outputs().iter().any(|(output, _)| output == id))
             {
                 report(
                     ElementPath::Edge(index),
@@ -308,6 +335,31 @@ fn check_decisions(
                 "only decision links can select an output",
             );
         }
+    }
+}
+
+fn check_route_criteria(
+    graph: &AgentGraph,
+    role: &str,
+    decision: &super::DecisionNode,
+    outgoing: usize,
+    report: &mut impl FnMut(ElementPath, &str),
+) {
+    let missing = graph
+        .edges
+        .iter()
+        .filter(|edge| edge.from == role)
+        .filter(|edge| {
+            !(decision.options.iter().any(|option| {
+                edge.output.as_ref() == Some(&option.id) && !option.description.trim().is_empty()
+            }) || edge.output.as_deref() == Some("fallback") && decision.min_confidence.is_some())
+        })
+        .count();
+    if missing > 0 {
+        report(
+            ElementPath::Graph,
+            &format!("{missing} of {outgoing} outputs need routing criteria"),
+        );
     }
 }
 

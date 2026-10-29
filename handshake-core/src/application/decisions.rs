@@ -27,9 +27,38 @@ pub(super) struct PreparedDecision {
 }
 
 impl Application {
+    pub(super) fn locate_run_harnesses(
+        &self,
+        run: &WorkflowRun,
+    ) -> Result<
+        HashMap<crate::HarnessId, crate::harness::LocatedHarness>,
+        crate::harness::HarnessError,
+    > {
+        let mut harnesses = HashMap::new();
+        let graph = run.workflow_type.definition.graph.as_ref();
+        for agent in run
+            .agents
+            .iter()
+            .filter(|agent| graph.is_none_or(|graph| graph.passthrough_edge(&agent.role).is_none()))
+        {
+            if let std::collections::hash_map::Entry::Vacant(entry) = harnesses.entry(agent.harness)
+            {
+                entry.insert(self.locate_harness(agent.harness.definition())?);
+            }
+        }
+        Ok(harnesses)
+    }
+
     pub(super) fn prepare_decisions(run: &mut WorkflowRun) -> Vec<PreparedDecision> {
         let mut prepared = Vec::new();
         if run.graph.as_ref().is_none_or(|g| !g.started) {
+            return prepared;
+        }
+        if let Err(error) = run.forward_graph_passthroughs() {
+            run.finish(
+                RunStatus::Failed,
+                &format!("Could not forward work: {error}"),
+            );
             return prepared;
         }
         let agents: Vec<_> = run
@@ -39,7 +68,7 @@ impl Application {
             .cloned()
             .collect();
         for agent in agents {
-            let node = run
+            let mut node = run
                 .workflow_type
                 .definition
                 .graph
@@ -47,6 +76,22 @@ impl Application {
                 .expect("graph")
                 .decisions[&agent.role]
                 .clone();
+            let graph = run.workflow_type.definition.graph.as_ref().expect("graph");
+            for option in &mut node.options {
+                if let Some(edge) = graph.edges.iter().find(|edge| {
+                    edge.from == agent.role
+                        && edge.id == option.id
+                        && edge.output.as_ref() == Some(&option.id)
+                }) && let Some(role) = run
+                    .workflow_type
+                    .definition
+                    .roles
+                    .iter()
+                    .find(|role| role.id.0 == edge.to)
+                {
+                    option.name.clone_from(&role.name);
+                }
+            }
             let request = run
                 .graph
                 .as_mut()
