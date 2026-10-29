@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-10-27
 - Related issue: [HAND-81](https://linear.app/standing-desks/issue/HAND-81)
+- Partially superseded by: [ADR 0016](0016-sessions-own-their-file-and-browser-tabs.md); file and browser tabs now belong to sessions
 
 ## Context
 
