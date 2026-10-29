@@ -60,7 +60,7 @@ struct WorkflowGraphAgentPopover: View {
             Section {
                 DisclosureGroup("Advanced", isExpanded: $advanced) {
                     WorkflowAgentDefaultsEditor(role: binding)
-                }.accessibilityIdentifier("agentAdvanced")
+                }.disclosureGroupStyle(WorkflowDisclosureStyle(identifier: "agentAdvanced"))
             }
         }.formStyle(.grouped).scrollContentBackground(.hidden)
     }
@@ -138,35 +138,11 @@ struct WorkflowGraphAgentPopover: View {
 
 }
 
-private struct WorkflowDisclosureStyle: DisclosureGroupStyle {
-    @Environment(\.effectiveReduceMotion) private var reduceMotion
-    let identifier: String
-
-    func makeBody(configuration: Configuration) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Button {
-                withAnimation(reduceMotion ? nil : Motion.disclosure) { configuration.isExpanded.toggle() }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "chevron.right").font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .rotationEffect(.degrees(configuration.isExpanded ? 90 : 0))
-                        .accessibilityHidden(true)
-                    configuration.label
-                    Spacer(minLength: 0)
-                }.frame(maxWidth: .infinity, minHeight: 24, alignment: .leading).contentShape(.rect)
-            }.buttonStyle(.plain)
-                .accessibilityValue(configuration.isExpanded ? "Expanded" : "Collapsed")
-                .accessibilityIdentifier(identifier)
-            if configuration.isExpanded { configuration.content }
-        }
-    }
-}
-
 struct WorkflowLinkPopover: View {
     @Bindable var model: WorkflowDesignerModel
     let edge: CoreWorkflowType.Edge
     let close: () -> Void
+    @State private var choiceCreation: WorkflowDecisionChoiceCreation?
 
     private var events: [CoreWorkflowType.GraphEvent] {
         let events: [CoreWorkflowType.GraphEvent] = [.done, .pieceReady, .feedback, .approved]
@@ -175,9 +151,13 @@ struct WorkflowLinkPopover: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("\(name(edge.from)) → \(name(edge.to))").font(.headline)
+            Text(choiceCreation == nil ? "\(name(edge.from)) → \(name(edge.to))" : "New choice").font(.headline)
+            if choiceCreation != nil {
+                Text("\(name(edge.from)) → \(name(edge.to))").font(.caption).foregroundStyle(.secondary)
+            }
             if model.definition.graph?.decisions[edge.from] != nil {
-                WorkflowDecisionEdgeOutputPicker(model: model, edge: edge)
+                WorkflowDecisionEdgeOutputPicker(
+                    model: model, edge: edge, close: close, cancel: cancelChoiceCreation, creation: $choiceCreation)
             } else {
                 Picker(
                     "Send work when",
@@ -221,14 +201,30 @@ struct WorkflowLinkPopover: View {
                     })
             }
             HStack {
-                Button("Delete link", role: .destructive) {
-                    close()
-                    model.removeGraphEdge(edge.id)
+                if choiceCreation == nil {
+                    Button("Delete link", role: .destructive) {
+                        close()
+                        model.removeGraphEdge(edge.id)
+                    }
                 }
                 Spacer()
+                if choiceCreation != nil {
+                    Button("Cancel", role: .cancel, action: cancelChoiceCreation).keyboardShortcut(.cancelAction)
+                        .accessibilityIdentifier("decisionCancelNewChoice")
+                }
                 Button("Done", action: close).keyboardShortcut(.defaultAction)
             }
         }.padding(16).frame(width: 300)
+            .onChange(of: choiceCreation?.isValid(in: model.definition)) { _, valid in
+                if valid == false { choiceCreation = nil }
+            }
+    }
+
+    private func cancelChoiceCreation() {
+        guard let choiceCreation else { return }
+        model.cancelDecisionOptionCreation(choiceCreation.option, restoring: choiceCreation.previous)
+        self.choiceCreation = nil
+        close()
     }
 
     private var eventDescription: String {

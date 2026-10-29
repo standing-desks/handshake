@@ -31,24 +31,16 @@ extension WorkflowDesignerModel {
         let link = UUID().uuidString
         guard let node = definition.graph?.decisions[id] else { return }
         let used = Set(definition.graph?.edges.filter { $0.from == id }.compactMap(\.output) ?? [])
-        let output: String?
-        switch node.kind {
-        case .choice: output = node.outputs.first { !used.contains($0.id) }?.id
-        case .noul: output = node.outputs.first { !used.contains($0.id) }?.id
-        case .score:
-            let name = nodeName(destination)
-            definition.graph?.decisions[id]?.options.append(.init(id: link, name: name, description: name))
-            output = link
-        }
+        let output = node.outputs.first { !used.contains($0.id) }?.id
         definition.graph?.edges.append(.init(id: link, from: id, to: destination, event: .done, output: output))
     }
 
     func removeGraphEdge(_ id: String) {
         guard let edge = definition.graph?.edges.first(where: { $0.id == id }) else { return }
         definition.graph?.edges.removeAll { $0.id == id }
-        if let kind = definition.graph?.decisions[edge.from]?.kind, kind != .choice {
+        if let kind = definition.graph?.decisions[edge.from]?.kind, kind == .noul {
             definition.graph?.decisions[edge.from]?.options.removeAll {
-                kind == .score ? $0.id == edge.output : $0.id == edge.id
+                $0.id == edge.id
             }
         }
     }

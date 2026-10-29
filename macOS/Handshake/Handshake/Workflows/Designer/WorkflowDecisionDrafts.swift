@@ -26,27 +26,18 @@ struct WorkflowDecisionDrafts {
         node.minConfidence = draft?.node.minConfidence
         node.trueThreshold = draft?.node.trueThreshold ?? 5_000
         node.falseThreshold = draft?.node.falseThreshold ?? 5_000
-        if kind == .choice {
+        node.scoreThresholds = kind == .score ? draft?.node.scoreThresholds : nil
+        if kind != .noul {
             node.options = draft?.node.options ?? []
             if draft == nil {
-                for _ in 0..<max(2, edges.count) {
+                for _ in 0..<min(kind == .score ? 10 : 255, max(2, edges.count)) {
                     node.options.append(WorkflowDesignerModel.newChoiceOption(in: node.options))
                 }
             }
             assignChoice(node: node, edges: edges, previous: draft?.outputs ?? [:], graph: &graph)
         } else {
             node.options = options(from: draft, edges: edges, names: names)
-            if kind == .noul {
-                assignBinary(id, node: node, previous: draft?.outputs ?? [:], graph: &graph)
-            } else {
-                for index in graph.edges.indices where graph.edges[index].from == id && !graph.edges[index].always {
-                    let edge = graph.edges[index]
-                    let saved = draft?.outputs[edge.id]
-                    graph.edges[index].output =
-                        node.options.first { $0.id == saved }?.id
-                        ?? node.options.first { $0.id == edge.id }?.id
-                }
-            }
+            assignBinary(id, node: node, previous: draft?.outputs ?? [:], graph: &graph)
         }
         graph.decisions[id] = node
     }

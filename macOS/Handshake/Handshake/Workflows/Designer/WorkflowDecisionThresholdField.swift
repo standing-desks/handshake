@@ -6,21 +6,38 @@ struct WorkflowDecisionThresholdField: View {
     @Binding var value: Int
     let range: ClosedRange<Int>
     let identifier: String
+    let scale: Int
+    let suffix: String?
+    let step: Int
     @Environment(\.locale) private var locale
     @State private var text = ""
     @State private var typedValue: Int?
     @FocusState private var focused: Bool
+
+    init(
+        title: String, value: Binding<Int>, range: ClosedRange<Int>, identifier: String,
+        scale: Int = 100, suffix: String? = "%", step: Int = 100
+    ) {
+        self.title = title
+        self._value = value
+        self.range = range
+        self.identifier = identifier
+        self.scale = scale
+        self.suffix = suffix
+        self.step = step
+    }
 
     private var entry: Binding<String> {
         Binding(
             get: { text },
             set: { proposed in
                 text = proposed
-                guard let percentage = try? Double(proposed, format: .number.locale(locale)), percentage.isFinite else {
+                guard let number = try? Double(proposed, format: .number.locale(locale)), number.isFinite else {
                     return
                 }
-                let basisPoints = Int((min(100, max(0, percentage)) * 100).rounded())
-                let clamped = min(range.upperBound, max(range.lowerBound, basisPoints))
+                let bounded = min(
+                    Double(range.upperBound) / Double(scale), max(Double(range.lowerBound) / Double(scale), number))
+                let clamped = Int((bounded * Double(scale)).rounded())
                 typedValue = clamped
                 value = clamped
             })
@@ -36,15 +53,16 @@ struct WorkflowDecisionThresholdField: View {
     }
 
     private var formatted: String {
-        (Double(value) / 100).formatted(.number.precision(.fractionLength(0...2)).locale(locale))
+        (Double(value) / Double(scale)).formatted(.number.precision(.fractionLength(0...4)).locale(locale))
     }
 
     var body: some View {
         LabeledContent(title) {
             HStack(spacing: 6) {
-                TextField(title, text: entry).focused($focused).textFieldStyle(.roundedBorder)
+                TextField("", text: entry).labelsHidden().focused($focused).textFieldStyle(.roundedBorder)
                     .multilineTextAlignment(.trailing).frame(width: 60)
-                    .accessibilityLabel("\(title), percent").accessibilityIdentifier(identifier)
+                    .accessibilityLabel(suffix == "%" ? "\(title), percent" : title)
+                    .accessibilityIdentifier(identifier)
                     .onChange(of: value, initial: true) {
                         let fromTyping = typedValue == value
                         typedValue = nil
@@ -56,10 +74,10 @@ struct WorkflowDecisionThresholdField: View {
                             text = formatted
                         }
                     }
-                Text("%").foregroundStyle(.secondary)
-                Stepper("", value: increment, in: range, step: 100).labelsHidden().fixedSize()
+                if let suffix { Text(suffix).foregroundStyle(.secondary) }
+                Stepper("", value: increment, in: range, step: step).labelsHidden().fixedSize()
                     .accessibilityLabel("Adjust \(title.lowercased())")
-                    .accessibilityValue("\(Double(value) / 100) percent")
+                    .accessibilityValue(suffix == "%" ? "\(formatted) percent" : formatted)
             }
         }
     }

@@ -277,6 +277,8 @@ pub struct Application {
     /// Makes harness lookup search only this `PATH`, so tests don't depend on installed tools.
     #[cfg(test)]
     harness_path: Option<std::ffi::OsString>,
+    #[cfg(test)]
+    nouli_home: Option<PathBuf>,
     run_processes: Mutex<HashMap<WorkflowId, runs::RunProcesses>>,
     harness_steps: Mutex<HashMap<TerminalId, harness_steps::HarnessRecording>>,
     history: Mutex<crate::harness::history::HistoryWorkers>,
@@ -484,6 +486,8 @@ impl Application {
             login_path: Arc::new(LoginPath::spawn(crate::terminal::login_shell())),
             #[cfg(test)]
             harness_path: None,
+            #[cfg(test)]
+            nouli_home: None,
         };
 
         // Restored agents need their native profile and prompt hooks on their first launch.

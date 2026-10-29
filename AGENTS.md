@@ -5,6 +5,7 @@ Handshake consists of its macOS front end and the reusable `handshake-core` appl
 Use the terms defined in [CONTEXT.md](CONTEXT.md) when naming folder, session, workflow, role, harness, agent, or trace concepts in code or UI.
 
 For identity, interface design, and compatibility changes, follow the [brand and compatibility rules](CONTRIBUTING.md#brand-and-interface-design).
+For macOS interaction targets and row activation, follow [macOS/AGENTS.md](macOS/AGENTS.md#interaction-targets).
 
 ## Architecture
 

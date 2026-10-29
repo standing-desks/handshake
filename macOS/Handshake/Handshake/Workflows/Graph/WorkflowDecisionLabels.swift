@@ -13,16 +13,11 @@ enum WorkflowDecisionLabels {
         case .noul: return node.outputs.first { $0.id == edge.output }?.name ?? "Unassigned"
         case .score:
             guard let index = node.options.firstIndex(where: { $0.id == edge.output }) else { return "Unassigned" }
-            let label = scoreLevelName(node.options[index], edge: edge, definition: definition)
-            return "\(index) · \(label)"
+            return scoreOutputTitle(node, index: index)
         }
     }
 
-    static func scoreLevelName(
-        _ option: CoreWorkflowType.DecisionOption, edge: CoreWorkflowType.Edge?,
-        definition: CoreWorkflowType.Definition
-    ) -> String {
-        guard let edge, option.id == edge.id else { return option.name }
-        return definition.roles.first { $0.id == edge.to }?.name ?? edge.to
+    static func scoreOutputTitle(_ node: CoreWorkflowType.DecisionNode, index: Int) -> String {
+        "\(index) · \(node.options[index].name) · \(WorkflowDecisionScoreRanges.title(node, index: index))"
     }
 }

@@ -29,15 +29,18 @@ extension WorkflowDesignerModel {
         definition.graph = graph
     }
 
-    func assignDecisionOutput(_ id: String, edge edgeID: String, output: String) {
+    func assignDecisionOutput(_ id: String, edge edgeID: String, output: String?) {
         guard var graph = definition.graph, let node = graph.decisions[id],
-            node.outputs.contains(where: { $0.id == output }),
+            output == nil || node.outputs.contains(where: { $0.id == output }),
             let index = graph.edges.firstIndex(where: { $0.id == edgeID && $0.from == id })
         else { return }
         let previous = graph.edges[index].output
         let wasAlways = graph.edges[index].always
         graph.edges[index].always = false
-        if let other = graph.edges.firstIndex(where: { $0.from == id && $0.output == output && $0.id != edgeID }) {
+        let other = output.flatMap { output in
+            graph.edges.firstIndex { $0.from == id && $0.output == output && $0.id != edgeID }
+        }
+        if let other {
             graph.edges[other].output = previous
             graph.edges[other].always = wasAlways
         }

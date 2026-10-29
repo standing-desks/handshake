@@ -575,6 +575,25 @@ mod tests {
     }
 
     #[test]
+    fn retry_decision_dispatch_preserves_the_run_and_generation() {
+        let command = decode(
+            r#"{"requestId":1,"command":{"type":"retryDecision","workflowId":7,"generation":3}}"#,
+        );
+        assert!(
+            matches!(command, Command::RetryDecision { workflow_id, generation: 3 } if workflow_id.0 == 7)
+        );
+        for invalid in [
+            r#"{"requestId":1,"command":{"type":"retryDecision","workflowId":7}}"#,
+            r#"{"requestId":1,"command":{"type":"retryDecision","workflowId":7,"generation":3,"extra":true}}"#,
+        ] {
+            assert!(matches!(
+                decode_command(invalid.as_bytes()),
+                Err(BridgeError::MalformedCommand)
+            ));
+        }
+    }
+
+    #[test]
     fn agent_commands_decode_their_harness_prompt_and_size() {
         let size = r#""size": {"rows": 24, "columns": 80, "pixelWidth": 800, "pixelHeight": 480}"#;
         let start = decode(&format!(

@@ -166,6 +166,8 @@ fn decode_retry(raw: &Value) -> Result<Command, BridgeError> {
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase", deny_unknown_fields)]
     struct Raw {
+        #[serde(rename = "type")]
+        _kind: String,
         workflow_id: u64,
         generation: u64,
     }

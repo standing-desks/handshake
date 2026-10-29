@@ -3,7 +3,7 @@ import SwiftUI
 /// Actionable form feedback supplements core's authoritative workflow validation.
 struct WorkflowDecisionIssue: Equatable, Identifiable {
     enum Field: Hashable {
-        case question, connections
+        case question, connections, thresholds
         case answer(String)
     }
     let nodeID: String
@@ -47,29 +47,53 @@ extension WorkflowDesignerModel {
                     ))
             }
         } else if node.kind == .choice {
-            issues += choiceValidation(id, node: node, edges: edges)
-        } else if node.kind == .score && !(2...10).contains(edges.count) {
-            issues.append(
-                .init(
-                    nodeID: id, field: .connections,
-                    message: "Score needs between 2 and 10 decision levels. Always outputs are not levels."))
+            issues += optionValidation(id, node: node, edges: edges)
+        } else if node.kind == .score {
+            issues += scoreValidation(id, node: node, edges: edges)
         }
         return issues
     }
-    private func choiceValidation(
+
+    private func scoreValidation(
+        _ id: String, node: CoreWorkflowType.DecisionNode, edges: [CoreWorkflowType.Edge]
+    ) -> [WorkflowDecisionIssue] {
+        var issues = optionValidation(id, node: node, edges: edges)
+        if node.options.count > 10 {
+            issues.append(.init(nodeID: id, field: .connections, message: "Score supports at most 10 ordered options."))
+        }
+        if !node.validScoreThresholds {
+            issues.append(
+                .init(
+                    nodeID: id, field: .thresholds,
+                    message:
+                        "Use cutoffs in increasing order inside the score scale. "
+                        + "Reset to automatic to repair them."
+                ))
+        }
+        return issues
+    }
+
+    private func optionValidation(
         _ id: String, node: CoreWorkflowType.DecisionNode, edges: [CoreWorkflowType.Edge]
     ) -> [WorkflowDecisionIssue] {
         var issues: [WorkflowDecisionIssue] = []
         if node.options.count < 2 {
-            issues.append(.init(nodeID: id, field: .connections, message: "Add at least two choices."))
+            issues.append(
+                .init(
+                    nodeID: id, field: .connections,
+                    message: node.kind == .score ? "Add at least two score levels." : "Add at least two choices."))
         }
         for option in node.options {
             let text = option.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            let description = option.description.trimmingCharacters(in: .whitespacesAndNewlines)
+            let invalidDescription = description.isEmpty || option.description.utf8.count > 8_192
             let message: String?
             if text.isEmpty {
                 message = "Enter text for this option."
             } else if option.name.utf8.count > 8_192 {
                 message = "This option is too long. Shorten its text."
+            } else if node.kind == .score && invalidDescription {
+                message = "Describe this score level in 8,192 bytes or fewer."
             } else if edges.filter({ $0.output == option.id }).count != 1 {
                 message = "Choose one connected agent for \(option.name)."
             } else {

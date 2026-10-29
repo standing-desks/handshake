@@ -4851,6 +4851,7 @@ os.execvp('pi', ['pi', '--append-system-prompt', instructions, '--', prompt])
             true_threshold: 8000,
             false_threshold: 2000,
             min_confidence: None,
+            score_thresholds: None,
             provider: None,
             model: None,
             include_task: true,
@@ -4946,39 +4947,21 @@ os.execvp('pi', ['pi', '--append-system-prompt', instructions, '--', prompt])
         accepted(&app, Command::CancelWorkflowRun { workflow_id: id });
     }
 
-    fn nouli_report(answer: &serde_json::Value) -> String {
-        serde_json::json!({"version":1,"result":{"kind":"turn","report":{"outcome":{"version":1,"provider":{"provider":"fixture","model":"offline"},"outcomes":[{"question_id":"route","status":"answered","answer":answer}]}}}}).to_string()
-    }
-
-    fn fake_nouli(bin: &Path, body: &str) {
-        let path = bin.join("nouli");
-        std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
-    }
-
-    fn successful_nouli(bin: &Path, delay: bool) {
-        let yes = nouli_report(&serde_json::json!({"type":"noul","probability":0.94}));
-        let choice = nouli_report(
-            &serde_json::json!({"type":"choice","selected":"continue","distribution":[{"option_id":"continue","probability":0.8},{"option_id":"other","probability":0.1},{"option_id":"large","probability":0.1}]}),
-        );
-        let score = nouli_report(
-            &serde_json::json!({"type":"score","value":1.43,"probabilities":[0.,0.57,0.43]}),
-        );
-        fake_nouli(
-            bin,
-            &format!(
-                "request=$(cat)\n{}\ncase \"$request\" in\n*'\"type\":\"noul\"'*) printf '%s' '{yes}';;\n*'\"type\":\"choice\"'*) printf '%s' '{choice}';;\n*) printf '%s' '{score}';;\nesac",
-                if delay { "sleep 0.15" } else { "" }
-            ),
-        );
+    fn prepare_nouli(
+        app: &mut Application,
+        home: &Path,
+    ) -> crate::harness::nouli::fixture::Provider {
+        app.nouli_home = Some(home.to_owned());
+        crate::harness::nouli::fixture::Provider::new(home)
     }
 
     #[test]
     fn nouli_chain_preserves_typed_inputs_traces_and_skips_unselected_results() {
         let folder = tempfile::tempdir().unwrap();
         let bin = tempfile::tempdir().unwrap();
-        let app = application(folder.path(), bin.path(), "exec cat");
-        successful_nouli(bin.path(), false);
+        let mut app = application(folder.path(), bin.path(), "exec cat");
+        let provider = prepare_nouli(&mut app, bin.path());
+        assert!(!bin.path().join("nouli").exists());
         let id = launch_graph(
             &app,
             folder.path(),
@@ -4996,6 +4979,7 @@ os.execvp('pi', ['pi', '--append-system-prompt', instructions, '--', prompt])
                 .len()
                 == 3
         });
+        assert_eq!(provider.calls(), 3);
         let run = workflow.run.as_ref().unwrap();
         let graph = run.graph.as_ref().unwrap();
         let implementer = run.agents.iter().find(|a| a.role == "implementer").unwrap();
@@ -5061,12 +5045,11 @@ os.execvp('pi', ['pi', '--append-system-prompt', instructions, '--', prompt])
     fn nouli_refusal_needs_explicit_retry_and_keeps_the_frozen_input() {
         let folder = tempfile::tempdir().unwrap();
         let bin = tempfile::tempdir().unwrap();
-        let app = application(folder.path(), bin.path(), "exec cat");
-        let report = serde_json::json!({"version":1,"result":{"kind":"turn","report":{"outcome":{"version":1,"provider":{"provider":"fixture","model":"offline"},"outcomes":[{"question_id":"route","status":"refused","reason":"fixture refusal"}]}}}});
-        fake_nouli(
-            bin.path(),
-            &format!("cat >/dev/null\nprintf '%s' '{report}'"),
-        );
+        let mut app = application(folder.path(), bin.path(), "exec cat");
+        let provider = prepare_nouli(&mut app, bin.path());
+        provider
+            .refuse
+            .store(true, std::sync::atomic::Ordering::Relaxed);
         let id = launch_graph(
             &app,
             folder.path(),
@@ -5086,7 +5069,9 @@ os.execvp('pi', ['pi', '--append-system-prompt', instructions, '--', prompt])
             app.snapshot().unwrap().workflows.workflows[0].status,
             WorkflowStatus::Interrupted
         );
-        successful_nouli(bin.path(), false);
+        provider
+            .refuse
+            .store(false, std::sync::atomic::Ordering::Relaxed);
         accepted(
             &app,
             Command::RetryDecision {
@@ -5126,7 +5111,7 @@ os.execvp('pi', ['pi', '--append-system-prompt', instructions, '--', prompt])
                 path: folder.path().to_owned(),
             },
         );
-        successful_nouli(bin.path(), true);
+        let _provider = prepare_nouli(&mut app, bin.path());
         let id = launch_graph(&app, folder.path(), &decision_chain_definition(), "Task");
         let connection = fail_run_updates(data.path());
         let deadline = Instant::now() + Duration::from_secs(15);
@@ -5166,7 +5151,7 @@ os.execvp('pi', ['pi', '--append-system-prompt', instructions, '--', prompt])
         accepted(&app, Command::CancelWorkflowRun { workflow_id: id });
     }
     #[test]
-    fn nouli_launch_waits_for_publication_and_cancel_owns_the_process() {
+    fn nouli_launch_waits_for_publication_and_cancel_joins_the_evaluation() {
         let folder = tempfile::tempdir().unwrap();
         let bin = tempfile::tempdir().unwrap();
         let data = tempfile::tempdir().unwrap();
@@ -5179,14 +5164,10 @@ os.execvp('pi', ['pi', '--append-system-prompt', instructions, '--', prompt])
                 path: folder.path().to_owned(),
             },
         );
-        let pid_file = folder.path().join("nouli.pid");
-        fake_nouli(
-            bin.path(),
-            &format!(
-                "cat >/dev/null\nprintf '%s' \"$$\" > '{}'\nsleep 60 &\nwait",
-                pid_file.display()
-            ),
-        );
+        let provider = prepare_nouli(&mut app, bin.path());
+        provider
+            .stall
+            .store(true, std::sync::atomic::Ordering::Relaxed);
         let definition = decision_chain_definition();
         let reference = WorkflowCatalog::new(app.lock_inner().unwrap().folders.store())
             .create(&definition)
@@ -5232,7 +5213,7 @@ os.execvp('pi', ['pi', '--append-system-prompt', instructions, '--', prompt])
             },
         );
         assert!(result.is_ok());
-        assert!(!pid_file.exists());
+        assert_eq!(provider.calls(), 0);
         assert!(
             app.run_processes
                 .lock()
@@ -5247,18 +5228,21 @@ os.execvp('pi', ['pi', '--append-system-prompt', instructions, '--', prompt])
             app.snapshot().unwrap().workflows.workflows[0].status,
             WorkflowStatus::Failed
         );
-        let app = application(folder.path(), bin.path(), "exec cat");
+        let mut app = application(folder.path(), bin.path(), "exec cat");
+        app.nouli_home = Some(bin.path().to_owned());
         let id = launch_graph(&app, folder.path(), &definition, "Task");
-        wait_for(&app, id, |_| {
-            std::fs::read_to_string(&pid_file)
-                .ok()
-                .and_then(|value| value.parse::<i32>().ok())
-                .is_some()
-        });
-        let pid: i32 = std::fs::read_to_string(pid_file).unwrap().parse().unwrap();
+        wait_for(&app, id, |_| provider.calls() == 1);
+        let start = Instant::now();
         accepted(&app, Command::CancelWorkflowRun { workflow_id: id });
+        assert!(start.elapsed() < Duration::from_secs(2));
         assert!(!app.run_processes.lock().unwrap().contains_key(&id));
-        // SAFETY: signal zero only probes the fixture PID; the owned child was reaped on cancellation.
-        assert_eq!(unsafe { libc::kill(pid, 0) }, -1);
+        provider
+            .stall
+            .store(false, std::sync::atomic::Ordering::Relaxed);
+        thread::sleep(Duration::from_millis(50));
+        assert_eq!(
+            app.snapshot().unwrap().workflows.workflows[0].status,
+            WorkflowStatus::Cancelled
+        );
     }
 }

@@ -8,6 +8,7 @@ extension CoreWorkflowType {
         var trueThreshold = 8_000
         var falseThreshold = 2_000
         var minConfidence: Int?
+        var scoreThresholds: [Int]?
         var provider: String?
         var model: String?
         var includeTask = true
@@ -58,6 +59,24 @@ extension CoreWorkflowType.DecisionNode {
         case trueThreshold = "true_threshold"
         case falseThreshold = "false_threshold"
         case minConfidence = "min_confidence"
+        case scoreThresholds = "score_thresholds"
         case includeTask = "include_task"
+    }
+}
+
+extension CoreWorkflowType.DecisionNode {
+    var automaticScoreThresholds: [Int] {
+        guard options.count > 1 else { return [] }
+        return (0..<(options.count - 1)).map { $0 * 10_000 + 5_000 }
+    }
+
+    var effectiveScoreThresholds: [Int] { scoreThresholds ?? automaticScoreThresholds }
+
+    var validScoreThresholds: Bool {
+        guard let scoreThresholds else { return true }
+        let top = max(0, options.count - 1) * 10_000
+        return kind == .score && scoreThresholds.count == options.count - 1
+            && scoreThresholds.allSatisfy { $0 > 0 && $0 < top }
+            && zip(scoreThresholds, scoreThresholds.dropFirst()).allSatisfy { $0 < $1 }
     }
 }

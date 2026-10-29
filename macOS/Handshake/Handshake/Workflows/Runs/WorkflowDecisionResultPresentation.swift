@@ -29,10 +29,13 @@ struct WorkflowDecisionResultPresentation {
             guard let value = answer.value, value.isFinite, let node, node.options.count >= 2,
                 let index = node.options.firstIndex(where: { $0.id == output })
             else { return fallback }
+            let range = WorkflowDecisionScoreRanges.title(node, index: index)
             let score = value.formatted(.number.precision(.fractionLength(0...4)).locale(locale))
             return .init(
                 title: "Score \(score) / \(node.options.count - 1) → \(destination)",
-                detail: "Scale starts at 0; routed to level \(index).")
+                detail:
+                    "Level \(index): \(node.options[index].name) · \(range)"
+            )
         case "choice":
             let title = node?.outputs.first { $0.id == output }.map { "\($0.name) → \(destination)" } ?? fallback.title
             guard let probability = answer.distribution?.first(where: { $0.optionId == output })?.probability,

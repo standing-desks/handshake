@@ -2,6 +2,73 @@ import XCTest
 
 extension HandshakeUITests {
     @MainActor
+    func testEdgeChoicesCreateCancelAndMoveThroughUnassignedConnections() throws {
+        let folder = try makeTestFolder(prefix: "HandshakeEdgeChoices")
+        let app = try makeApp(lastOpenFolder: folder)
+        app.launch()
+        defer { app.terminate() }
+        XCTAssertTrue(app.buttons["workflowCreateOwn"].waitForExistence(timeout: 10))
+        resizeWindow(app.windows.firstMatch, to: CGSize(width: 1200, height: 850))
+        let editor = WorkflowGraphExampleUI(app: app, testCase: self)
+        createAuthoredChoiceGraph(editor, app: app)
+        cancelNewEdgeChoice(editor, app: app, label: "Router to Audit: Always", escape: false)
+        cancelNewEdgeChoice(editor, app: app, label: "Router to Builder: Small change", escape: true)
+        chooseEdgeOutput(editor, app: app, label: "Router to Audit: Always", output: "Unassigned")
+        beginNewEdgeChoice(editor, app: app, label: "Router to Audit: Unassigned")
+        editor.replace("decisionNewChoiceText", with: "Needs audit")
+        app.typeKey(.return, modifierFlags: [])
+        XCTAssertTrue(app.popovers.firstMatch.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Router to Audit: Needs audit"].exists)
+        chooseEdgeOutput(editor, app: app, label: "Router to Audit: Needs audit", output: "Unassigned")
+        XCTAssertTrue(app.buttons["Router to Audit: Unassigned"].exists)
+        chooseEdgeOutput(editor, app: app, label: "Router to Audit: Unassigned", output: "Small change")
+        XCTAssertTrue(app.buttons["Router to Builder: Unassigned"].exists)
+        XCTAssertTrue(app.buttons["Router to Audit: Small change"].exists)
+        chooseEdgeOutput(editor, app: app, label: "Router to Builder: Unassigned", output: "Needs audit")
+        editor.saveAndReopen()
+        XCTAssertTrue(app.buttons["Router to Builder: Needs audit"].exists)
+        XCTAssertTrue(app.buttons["Router to Audit: Small change"].exists)
+        XCTAssertTrue(app.buttons["Router to Planner: Large change"].exists)
+    }
+
+    @MainActor
+    private func beginNewEdgeChoice(_ editor: WorkflowGraphExampleUI, app: XCUIApplication, label: String) {
+        app.buttons[label].click()
+        editor.item("decisionEdgeOutput").click()
+        app.menuItems["New choice…"].click()
+        XCTAssertTrue(editor.item("decisionNewChoiceText").waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Delete link"].exists)
+        XCTAssertFalse(app.buttons["Create choice"].exists)
+        XCTAssertEqual(app.buttons.matching(identifier: "decisionCancelNewChoice").count, 1)
+        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label == 'Done'")).count, 1)
+    }
+
+    @MainActor
+    private func cancelNewEdgeChoice(
+        _ editor: WorkflowGraphExampleUI, app: XCUIApplication, label: String, escape: Bool
+    ) {
+        beginNewEdgeChoice(editor, app: app, label: label)
+        editor.replace("decisionNewChoiceText", with: "Discarded draft")
+        if escape {
+            app.typeKey(.escape, modifierFlags: [])
+        } else {
+            editor.item("decisionCancelNewChoice").click()
+        }
+        XCTAssertTrue(app.popovers.firstMatch.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.buttons[label].exists)
+    }
+
+    @MainActor
+    private func chooseEdgeOutput(
+        _ editor: WorkflowGraphExampleUI, app: XCUIApplication, label: String, output: String
+    ) {
+        app.buttons[label].click()
+        editor.item("decisionEdgeOutput").click()
+        app.menuItems[output].click()
+        app.buttons["Done"].click()
+    }
+
+    @MainActor
     func testChoiceOptionsMapToAgentsAndEdgeMenuIncludesAlways() throws {
         let folder = try makeTestFolder(prefix: "HandshakeChoiceOptions")
         let app = try makeApp(lastOpenFolder: folder)
@@ -31,6 +98,7 @@ extension HandshakeUITests {
         let canvas = editor.item("designerContent")
         canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.45)).doubleClick()
         editor.replace("graphAgentName", with: "Router")
+        editor.verifyDisclosureRow("agentAdvanced")
         editor.item("graphNodeKind").radioButtons["Decision"].click()
         let texts = app.textFields.matching(NSPredicate(format: "identifier BEGINSWITH 'decisionOptionText-'"))
         XCTAssertEqual(texts.count, 2)

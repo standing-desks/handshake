@@ -285,7 +285,7 @@ fn check_decisions(
         if outgoing > 1 && decision.kind == super::DecisionKind::Choice {
             check_choice_options(graph, id, decision, outgoing, report);
         }
-        let valid = passthrough || decision.with_connected_names(definition, id).validate();
+        let valid = passthrough || decision.validate();
         if !roles.contains(id.as_str()) || !valid {
             report(
                 ElementPath::Graph,

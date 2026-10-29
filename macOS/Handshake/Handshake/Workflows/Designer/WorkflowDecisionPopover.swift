@@ -22,11 +22,11 @@ struct WorkflowDecisionPopover: View {
     private var routes: [CoreWorkflowType.Edge] { model.decisionEdges(role.id) }
     private var preferredHeight: CGFloat {
         if advanced || model.usesAlwaysOutputs(role.id) { return 680 }
-        if routes.count == 1 { return decision.wrappedValue.kind == .choice ? 540 : 310 }
+        if routes.count == 1 { return decision.wrappedValue.kind == .noul ? 310 : 600 }
         switch decision.wrappedValue.kind {
         case .choice: return min(680, 440 + CGFloat(decision.wrappedValue.options.count) * 54)
         case .noul: return decision.wrappedValue.trueThreshold > decision.wrappedValue.falseThreshold ? 660 : 600
-        case .score: return min(680, 460 + CGFloat(routes.count) * 40)
+        case .score: return 680
         }
     }
 
@@ -90,13 +90,13 @@ struct WorkflowDecisionPopover: View {
                     }
                 }.id(WorkflowDecisionIssue.Field.question)
             }
-            if routes.count != 1 || decision.wrappedValue.kind == .choice {
+            if routes.count != 1 || decision.wrappedValue.kind != .noul {
                 WorkflowDecisionAnswerSettings(model: model, id: role.id, decision: decision)
             }
             WorkflowDecisionAlwaysSettings(model: model, id: role.id)
             Section {
                 DisclosureGroup("Advanced", isExpanded: $advanced) { advancedSettings }
-                    .accessibilityIdentifier("decisionAdvanced")
+                    .disclosureGroupStyle(WorkflowDisclosureStyle(identifier: "decisionAdvanced"))
             }
         }.formStyle(.grouped).scrollContentBackground(.hidden)
     }

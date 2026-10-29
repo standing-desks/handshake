@@ -44,7 +44,7 @@ fn hook_arguments(command: &str) -> Vec<OsString> {
     let mut states = serde_json::Map::new();
     for (event, key) in EVENTS {
         // Codex fingerprints normalized TOML as JSON with recursively sorted object keys.
-        // serde_json's default Map is sorted. Absent optional TOML fields are omitted.
+        // Absent optional TOML fields are omitted.
         let hash = trusted_hash(key, &handler);
         let state_key = format!("/<session-flags>/config.toml:{key}:0:0");
         hooks.insert(event.into(), json!([group.clone()]));
@@ -60,7 +60,9 @@ fn hook_arguments(command: &str) -> Vec<OsString> {
 }
 
 fn trusted_hash(event: &str, handler: &Value) -> String {
-    let identity = json!({"event_name": event, "hooks": [handler]});
+    let mut identity = json!({"event_name": event, "hooks": [handler]});
+    // Dependencies can enable serde_json's preserve_order feature for the entire build.
+    identity.sort_all_objects();
     let hex_digest = Sha256::digest(identity.to_string().as_bytes()).iter().fold(
         String::new(),
         |mut acc, byte| {

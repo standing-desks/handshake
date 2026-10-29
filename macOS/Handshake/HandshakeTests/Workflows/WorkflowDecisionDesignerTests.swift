@@ -83,17 +83,21 @@ struct WorkflowDecisionDesignerTests {
         model.setDecisionKind(node, kind: .score)
         model.definition.graph?.decisions[node]?.question = "How complex is the work?"
         for _ in 0..<3 { model.connect(from: node, to: model.addGraphRole()) }
+        model.addDecisionOption(node)
+        let options = try #require(model.definition.graph?.decisions[node]?.options)
         let edges = try #require(model.definition.graph?.edges)
-        model.moveDecisionLevel(node, option: edges[2].id, to: 0)
+        model.moveDecisionLevel(node, option: options[2].id, to: 0)
         #expect(model.definition.graph?.edges == edges)
-        #expect(model.definition.graph?.decisions[node]?.options.map(\.id) == [edges[2].id, edges[0].id, edges[1].id])
+        #expect(
+            model.definition.graph?.decisions[node]?.options.map(\.id) == [options[2].id, options[0].id, options[1].id])
         #expect(model.outputTitle(edges[2]).hasPrefix("0 · "))
         #expect(model.outputTitle(edges[0]).hasPrefix("1 · "))
         #expect(model.decisionIssues(node).isEmpty)
         model.setDecisionKind(node, kind: .noul)
         model.setDecisionKind(node, kind: .score)
         #expect(model.definition.graph?.edges.map(\.id) == edges.map(\.id))
-        #expect(model.definition.graph?.decisions[node]?.options.map(\.id) == [edges[2].id, edges[0].id, edges[1].id])
+        #expect(
+            model.definition.graph?.decisions[node]?.options.map(\.id) == [options[2].id, options[0].id, options[1].id])
         #expect(model.definition.graph?.decisions[node]?.question == "How complex is the work?")
         let encoded = try JSONEncoder().encode(model.definition)
         #expect(try JSONDecoder().decode(CoreWorkflowType.Definition.self, from: encoded) == model.definition)
@@ -117,9 +121,7 @@ struct WorkflowDecisionDesignerTests {
         let options = try #require(model.definition.graph?.decisions[node]?.options)
         for (index, option) in options.enumerated() {
             let edge = try #require(edges.first { $0.output == option.id })
-            #expect(
-                WorkflowDecisionLabels.scoreLevelName(option, edge: edge, definition: model.definition) == option.name)
-            #expect(model.outputTitle(edge) == "\(index) · \(option.name)")
+            #expect(model.outputTitle(edge).hasPrefix("\(index) · \(option.name) · "))
         }
     }
 

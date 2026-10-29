@@ -19,7 +19,7 @@ struct WorkflowDecisionResultPresentationTests {
         node.options = (0..<3).map { .init(id: "level-\($0)", name: "Level \($0)", description: "Level \($0)") }
         let result = presentation(#"{"type":"score","value":1.43}"#, node: node, output: "level-1")
         #expect(result.title == "Score 1.43 / 2 → Receiver")
-        #expect(result.detail == "Scale starts at 0; routed to level 1.")
+        #expect(result.detail == "Level 1: Level 1 · 0.5 ≤ score < 1.5")
     }
 
     @Test func optionProbabilityIsPresentedWithoutCallingItConfidence() {

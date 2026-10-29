@@ -82,46 +82,6 @@ struct WorkflowDecisionAnswerSettings: View {
     }
 
     private var scoreSettings: some View {
-        Section("Destinations — lowest to highest") {
-            ForEach(Array(decision.options.enumerated()), id: \.element.id) { index, option in
-                scoreRow(option, index: index)
-            }
-            Text("Move levels up or down, or drag them to reorder. Scores route to the nearest level; ties go higher.")
-                .font(.caption).foregroundStyle(.secondary)
-            Text("The original fractional score is retained in the result.")
-                .font(.caption).foregroundStyle(.secondary)
-        }
+        WorkflowDecisionScoreSettings(model: model, id: id, decision: $decision)
     }
-
-    private func scoreRow(_ option: CoreWorkflowType.DecisionOption, index: Int) -> some View {
-        let edge = edges.first { $0.output == option.id }
-        let name = WorkflowDecisionLabels.scoreLevelName(option, edge: edge, definition: model.definition)
-        return HStack {
-            Text("\(index)").monospacedDigit().foregroundStyle(.secondary).frame(width: 20)
-            Text(name).frame(maxWidth: .infinity, alignment: .leading)
-            Button {
-                model.moveDecisionLevel(id, option: option.id, to: index - 1)
-            } label: {
-                Image(systemName: "chevron.up").frame(width: 28, height: 28).contentShape(.rect)
-            }.disabled(index == 0).accessibilityLabel("Move \(name) up")
-                .accessibilityIdentifier("decisionLevelUp-\(option.id)")
-            Button {
-                model.moveDecisionLevel(id, option: option.id, to: index + 1)
-            } label: {
-                Image(systemName: "chevron.down").frame(width: 28, height: 28).contentShape(.rect)
-            }.disabled(index == decision.options.count - 1).accessibilityLabel("Move \(name) down")
-                .accessibilityIdentifier("decisionLevelDown-\(option.id)")
-        }
-        .buttonStyle(.borderless).contentShape(.rect)
-        .accessibilityIdentifier("decisionLevel-\(option.id)")
-        .draggable(option.id)
-        .dropDestination(for: String.self) { options, _ in
-            guard let option = options.first, decision.options.contains(where: { $0.id == option }) else {
-                return false
-            }
-            model.moveDecisionLevel(id, option: option, to: index)
-            return true
-        }
-    }
-
 }

@@ -106,6 +106,10 @@ impl ModelListRequest {
         let cancelled = Arc::new(AtomicBool::new(false));
         let flag = Arc::clone(&cancelled);
         let spawned = crate::blocking_worker::spawn("harness-models".into(), move || {
+            if harness == HarnessId::Nouli {
+                let _ = sender.send(harness.parse_models(""));
+                return;
+            }
             let located = locate();
             let result = if flag.load(Ordering::Relaxed) {
                 Err(ModelListError::Cancelled)

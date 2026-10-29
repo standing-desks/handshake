@@ -22,7 +22,7 @@ pub struct DecisionOption {
     pub description: String,
 }
 
-/// Thresholds use basis points (0–10,000) to keep saved workflow definitions exact.
+/// Probability thresholds use basis points; Score cutoffs use 10,000 ticks per rubric level.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DecisionNode {
@@ -37,6 +37,9 @@ pub struct DecisionNode {
     pub false_threshold: u16,
     #[serde(default)]
     pub min_confidence: Option<u16>,
+    /// None uses midpoints. Explicit cutoffs are strictly ascending, one per adjacent pair.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub score_thresholds: Option<Vec<u32>>,
     #[serde(default)]
     pub provider: Option<String>,
     #[serde(default)]
@@ -66,35 +69,6 @@ pub enum DecisionResultError {
 }
 
 impl DecisionNode {
-    /// Choice text is authored independently; only generated Score levels follow connected names.
-    pub(crate) fn with_connected_names(
-        &self,
-        definition: &super::WorkflowTypeDefinition,
-        role: &str,
-    ) -> Self {
-        let mut node = self.clone();
-        if node.kind != DecisionKind::Score {
-            return node;
-        }
-        if let Some(graph) = &definition.graph {
-            for option in &mut node.options {
-                if let Some(edge) = graph.edges.iter().find(|edge| {
-                    edge.from == role
-                        && edge.output.as_ref() == Some(&option.id)
-                        && edge.id == option.id
-                }) && let Some(target) = definition
-                    .roles
-                    .iter()
-                    .find(|target| target.id.0 == edge.to)
-                {
-                    option.name.clone_from(&target.name);
-                    option.description.clone_from(&target.name);
-                }
-            }
-        }
-        node
-    }
-
     pub(crate) fn validate(&self) -> bool {
         let text = |s: &str| !s.trim().is_empty() && s.len() <= 8_192;
         let selector = |s: &str| crate::harness::launch::validate_model(s).is_some();
@@ -105,6 +79,7 @@ impl DecisionNode {
             || self.provider.as_deref().is_some_and(|s| !selector(s))
             || self.model.as_deref().is_some_and(|s| !selector(s))
             || self.kind != DecisionKind::Choice && self.min_confidence.is_some()
+            || !self.valid_score_thresholds()
         {
             return false;
         }
@@ -125,6 +100,19 @@ impl DecisionNode {
                     && text(&o.description)
                     && ids.insert(&o.id)
             })
+    }
+
+    fn valid_score_thresholds(&self) -> bool {
+        let Some(cutoffs) = &self.score_thresholds else {
+            return true;
+        };
+        if self.kind != DecisionKind::Score || !(2..=10).contains(&self.options.len()) {
+            return false;
+        }
+        let top = u32::try_from(self.options.len() - 1).unwrap_or(0) * 10_000;
+        cutoffs.len() + 1 == self.options.len()
+            && cutoffs.iter().all(|v| *v > 0 && *v < top)
+            && cutoffs.windows(2).all(|pair| pair[0] < pair[1])
     }
 
     #[must_use]
@@ -276,9 +264,16 @@ impl DecisionNode {
         {
             return Err(Invalid);
         }
-        let index = (0..self.options.len() - 1)
-            .filter(|i| score >= f64::from(u16::try_from(*i).unwrap_or(0)) + 0.5)
-            .count();
+        let index = if let Some(cutoffs) = &self.score_thresholds {
+            cutoffs
+                .iter()
+                .filter(|cutoff| score >= f64::from(**cutoff) / 10_000.)
+                .count()
+        } else {
+            (0..self.options.len() - 1)
+                .filter(|i| score >= f64::from(u16::try_from(*i).unwrap_or(0)) + 0.5)
+                .count()
+        };
         Ok(self.options[index].id.clone())
     }
 }
@@ -307,6 +302,7 @@ mod tests {
             true_threshold: 8000,
             false_threshold: 2000,
             min_confidence: None,
+            score_thresholds: None,
             provider: None,
             model: None,
             include_task: true,
@@ -314,6 +310,60 @@ mod tests {
     }
     fn result(answer: &Value) -> Value {
         json!({"version":1,"result":{"kind":"turn","report":{"outcome":{"version":1,"provider":{"provider":"fixture","model":"offline"},"outcomes":[{"question_id":"route","status":"answered","answer":answer}]}}}})
+    }
+    #[test]
+    fn custom_score_cutoffs_cover_the_scale_and_include_the_upper_boundary() {
+        let mut node = node(DecisionKind::Score);
+        node.score_thresholds = Some(vec![2500, 14_000]);
+        for (value, expected) in [
+            (0., "0"),
+            (0.2499, "0"),
+            (0.25, "1"),
+            (1.3999, "1"),
+            (1.4, "2"),
+            (2., "2"),
+        ] {
+            let probabilities = if value <= 1. {
+                vec![1. - value, value, 0.]
+            } else {
+                vec![0., 2. - value, value - 1.]
+            };
+            let report =
+                result(&json!({"type":"score", "value":value, "probabilities":probabilities}));
+            assert_eq!(node.route(&report).unwrap(), expected);
+        }
+        let saved = serde_json::to_value(&node).unwrap();
+        assert_eq!(serde_json::from_value::<DecisionNode>(saved).unwrap(), node);
+        assert!(
+            node.request("Task", "Evidence")["questions"][0]["answer_space"]
+                .get("score_thresholds")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn score_cutoffs_reject_wrong_counts_order_bounds_and_question_types() {
+        let mut node = node(DecisionKind::Score);
+        for invalid in [
+            vec![],
+            vec![5000],
+            vec![5000, 5000],
+            vec![15_000, 5000],
+            vec![0, 15_000],
+            vec![5000, 20_000],
+            vec![5000, u32::MAX],
+        ] {
+            node.score_thresholds = Some(invalid);
+            assert!(!node.validate());
+        }
+        node.score_thresholds = Some(vec![1, 19_999]);
+        assert!(node.validate());
+        node.kind = DecisionKind::Choice;
+        assert!(!node.validate());
+        node.kind = DecisionKind::Noul;
+        assert!(!node.validate());
+        node.score_thresholds = None;
+        assert!(node.validate());
     }
     #[test]
     fn fractional_scores_route_without_replacing_the_answer() {
@@ -431,8 +481,7 @@ mod tests {
             .unwrap()
             .name = "Renamed planner".into();
         crate::validate(&definition).unwrap();
-        let node = definition.graph.as_ref().unwrap().decisions["classify"]
-            .with_connected_names(&definition, "classify");
+        let node = &definition.graph.as_ref().unwrap().decisions["classify"];
         let request = node.request("Incoming task", "Prepared evidence");
         assert_eq!(request["questions"][0]["prompt"], node.question);
         assert_eq!(
@@ -473,23 +522,27 @@ mod tests {
                 .find(|option| Some(&option.id) == edge.output.as_ref())
                 .unwrap();
             option.id.clone_from(&edge.id);
-            option.name.clear();
-            option.description.clear();
+            option.name = format!("Rubric for {}", edge.id);
+            option.description.clone_from(&option.name);
             edge.output = Some(edge.id.clone());
         }
         graph.decisions.insert("scope".into(), node.clone());
         crate::validate(&definition).unwrap();
-        let resolved = node.with_connected_names(&definition, "scope");
+        let resolved = node.clone();
         let request = resolved.request("Task", "Evidence");
         assert_eq!(
             request["questions"][0]["answer_space"]["levels"],
-            json!(["Implementer", "Planner", "Architect"])
+            json!([
+                "Rubric for scope-small",
+                "Rubric for scope-medium",
+                "Rubric for scope-large"
+            ])
         );
         let answer =
             result(&json!({"type":"score", "value":1.43, "probabilities":[0.0,0.57,0.43]}));
         assert_eq!(resolved.route(&answer).unwrap(), "scope-medium");
         node.options.swap(0, 1);
-        let reordered = node.with_connected_names(&definition, "scope");
+        let reordered = node;
         assert_eq!(reordered.route(&answer).unwrap(), "scope-small");
         assert_eq!(
             answer["result"]["report"]["outcome"]["outcomes"][0]["answer"]["value"],

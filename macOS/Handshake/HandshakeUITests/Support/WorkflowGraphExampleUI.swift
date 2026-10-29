@@ -93,9 +93,86 @@ struct WorkflowGraphExampleUI {
         saveAndReopen()
     }
 
+    private func configureScoreOptions() {
+        let fields = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH 'decisionScoreOptionText-'"))
+        XCTAssertEqual(fields.count, 3)
+        for (index, name) in ["Small change", "Medium change", "Large change"].enumerated() {
+            replace(fields.element(boundBy: index).identifier, with: name)
+        }
+        let destinations = app.popUpButtons.matching(
+            NSPredicate(format: "identifier BEGINSWITH 'decisionScoreDestination-'"))
+        for (index, name) in ["Builder", "Planner", "Escalator"].enumerated() {
+            let picker = destinations.element(boundBy: index)
+            reveal(picker)
+            picker.click()
+            app.menuItems[name].click()
+        }
+    }
+
+    func verifyDisclosureRow(_ id: String) {
+        let header = item(id)
+        reveal(header)
+        XCTAssertGreaterThan(header.frame.width, 250)
+        XCTAssertGreaterThanOrEqual(header.frame.height, 28)
+        header.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).click()
+        assertDisclosureState(header, expanded: true)
+        header.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+        assertDisclosureState(header, expanded: false)
+    }
+
+    private func assertDisclosureState(_ header: XCUIElement, expanded: Bool) {
+        let raw = header.value
+        let matches =
+            (raw as? NSNumber)?.boolValue == expanded
+            || raw as? String == (expanded ? "Expanded" : "Collapsed")
+            || raw as? String == (expanded ? "1" : "0")
+        XCTAssertTrue(matches, "Unexpected disclosure value: \(String(describing: raw))\n\(app.debugDescription)")
+    }
+
+    private func editInlineScoreCutoffs() {
+        XCTAssertFalse(item("decisionScoreThresholds").exists)
+        replace("decisionScoreThreshold-0", with: "0.7")
+        replace("decisionScoreThreshold-1", with: "1.8")
+        XCTAssertEqual(item("decisionScoreThreshold-0").value as? String, "0.7")
+        XCTAssertEqual(item("decisionScoreThreshold-1").value as? String, "1.8")
+        verifyCutoffField("decisionScoreThreshold-0", label: "Level 1 starts at")
+        verifyCutoffField("decisionScoreThreshold-1", label: "Level 2 starts at")
+        verifyDisclosureRow("decisionAdvanced")
+        let field = item("decisionScoreThreshold-1")
+        reveal(field)
+        field.click()
+        let image = XCTAttachment(screenshot: app.popovers.firstMatch.screenshot())
+        image.name = "Inline score cutoffs and full-row Advanced control"
+        image.lifetime = .keepAlways
+        testCase.add(image)
+    }
+
+    private func verifyCutoffField(_ id: String, label: String) {
+        let field = item(id)
+        XCTAssertEqual(field.label, label)
+        XCTAssertGreaterThanOrEqual(field.frame.width, 59)
+        XCTAssertLessThanOrEqual(field.frame.height, 28)
+    }
+
+    private func verifyPersistedScoreCutoffs() {
+        XCTAssertTrue(app.buttons["Router to Escalator: 0 · Large change · score < 0.7"].exists)
+        XCTAssertTrue(app.buttons["Router to Builder: 1 · Small change · 0.7 ≤ score < 1.8"].exists)
+        XCTAssertTrue(app.buttons["Router to Planner: 2 · Medium change · score ≥ 1.8"].exists)
+        router.click()
+        XCTAssertEqual(item("decisionScoreThreshold-0").value as? String, "0.7")
+        XCTAssertEqual(item("decisionScoreThreshold-1").value as? String, "1.8")
+        click("decisionResetScoreThresholds")
+        XCTAssertEqual(item("decisionScoreThreshold-0").value as? String, "0.5")
+        XCTAssertEqual(item("decisionScoreThreshold-1").value as? String, "1.5")
+        app.buttons["Done"].click()
+        saveAndReopen()
+    }
+
     func verifyScore() {
         router.click()
         chooseAnswerType("Score")
+        configureScoreOptions()
         let question = item("decisionQuestion")
         question.click()
         app.typeKey("a", modifierFlags: .command)
@@ -104,19 +181,17 @@ struct WorkflowGraphExampleUI {
         item("designerDecisionValidation").click()
         XCTAssertTrue(app.staticTexts["Enter a question for this decision."].waitForExistence(timeout: 5))
         replace("decisionQuestion", with: "How much attention does this work need?")
-        let move = app.buttons["Move Escalator up"]
+        let move = app.buttons["Move Large change up"]
         reveal(move)
         move.click()
         move.click()
-        let image = XCTAttachment(screenshot: app.screenshot())
-        image.name = "Ordered score levels and square diamond"
-        image.lifetime = .keepAlways
-        testCase.add(image)
+        editInlineScoreCutoffs()
         app.buttons["Done"].click()
         saveAndReopen()
-        XCTAssertTrue(app.buttons["Router to Escalator: 0 · Escalator"].exists)
-        XCTAssertTrue(app.buttons["Router to Builder: 1 · Builder"].exists)
-        XCTAssertTrue(app.buttons["Router to Planner: 2 · Planner"].exists)
+        verifyPersistedScoreCutoffs()
+        XCTAssertTrue(app.buttons["Router to Escalator: 0 · Large change · score < 0.5"].exists)
+        XCTAssertTrue(app.buttons["Router to Builder: 1 · Small change · 0.5 ≤ score < 1.5"].exists)
+        XCTAssertTrue(app.buttons["Router to Planner: 2 · Medium change · score ≥ 1.5"].exists)
         for _ in 0..<4 { app.buttons["Zoom out"].click() }
         XCTAssertGreaterThanOrEqual(app.buttons["Connect from Router"].frame.width, 27)
         XCTAssertGreaterThanOrEqual(app.buttons["Connect to Planner"].frame.height, 27)

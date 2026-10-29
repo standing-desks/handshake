@@ -1,4 +1,4 @@
-//! Decision activations use owned CLI processes and the existing graph's assignment generations.
+//! Decision activations use bundled Nouli workers and the graph's assignment generations.
 use std::collections::HashMap;
 
 use super::{Application, ApplicationError, CommandDisposition};
@@ -39,6 +39,7 @@ impl Application {
         for agent in run
             .agents
             .iter()
+            .filter(|agent| agent.harness != crate::HarnessId::Nouli)
             .filter(|agent| graph.is_none_or(|graph| graph.passthrough_edge(&agent.role).is_none()))
         {
             if let std::collections::hash_map::Entry::Vacant(entry) = harnesses.entry(agent.harness)
@@ -75,7 +76,7 @@ impl Application {
                 .as_ref()
                 .expect("graph")
                 .decisions[&agent.role]
-                .with_connected_names(&run.workflow_type.definition, &agent.role);
+                .clone();
             let request = run
                 .graph
                 .as_mut()
@@ -134,11 +135,16 @@ impl Application {
             if processes.decisions.contains_key(&call.agent) {
                 continue;
             }
+            #[cfg(test)]
+            let home = self.nouli_home.clone();
+            #[cfg(not(test))]
+            let home = None;
             let result = Invocation::start(
-                &processes.harnesses[&crate::HarnessId::Nouli],
                 &processes.folder,
                 &call.node,
                 &call.request,
+                home,
+                std::sync::Arc::clone(&self.login_path),
             );
             let call_state = match result {
                 Ok(invocation) => DecisionCall::Running(invocation),
@@ -229,7 +235,7 @@ impl Application {
             .as_ref()
             .expect("graph")
             .decisions[&role]
-            .with_connected_names(&run.workflow_type.definition, &role);
+            .clone();
         let routed = result.and_then(|report| match node.route(&report) {
             Ok(output) => Ok((report, output)),
             Err(error) => {

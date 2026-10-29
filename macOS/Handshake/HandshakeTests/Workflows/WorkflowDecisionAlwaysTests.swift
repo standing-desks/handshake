@@ -10,6 +10,10 @@ struct WorkflowDecisionAlwaysTests {
     func alwaysTargetsRemainSeparateFromAnswersAcrossAllModes(kind: CoreWorkflowType.DecisionKind) throws {
         let (model, node) = makeDecision()
         model.setDecisionKind(node, kind: kind)
+        if kind == .score {
+            let extras = model.definition.graph?.decisions[node]?.options.suffix(2) ?? []
+            for option in extras { model.removeDecisionOption(node, option: option.id) }
+        }
         let edges = model.decisionEdges(node)
         model.setAlwaysOutputs(node, enabled: true)
         for edge in edges.suffix(2) { model.setDecisionAlways(node, edge: edge.id, enabled: true) }

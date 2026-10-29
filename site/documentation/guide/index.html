@@ -272,15 +272,20 @@ Adversarial connects an Implementer to a Reviewer. The Reviewer can approve the 
 Coordinator connects a Planner to Worker 1 and Worker 2. Both workers receive the plan and work on their
 named parts. Their results go to a Coordinator, which waits for both and checks the combined work.
 The default files are included in <code>Handshake.app/Contents/Resources/workflows</code>.</p>
-<h3>Decision nodes</h3>
+<h3 id="decision-nodes">Decision nodes</h3>
 <p>Double-click the workflow canvas to create an agent, then switch <strong>Node type</strong>
 from <strong>Agent</strong> to <strong>Decision</strong> in its configuration popup.
 The node becomes a diamond. Its left connector accepts incoming work; drag repeatedly from its
 right connector to connect receiving agents or other decisions.</p>
 <p>With one outgoing connection, the node is a <strong>Passthrough</strong>: it forwards incoming
 work directly, makes no decision, and does not require Nouli. With two or more connections,
-<strong>Nouli</strong> chooses one route. Install the <code>nouli</code> executable on your PATH and
-configure its provider before running a workflow that needs a model decision.</p>
+<strong>Nouli</strong> chooses one route. Nouli 0.2 is included in Handshake; no CLI installation is needed.
+Configure a provider in <code>~/.nouli/config.toml</code> before running a workflow that needs a model decision.
+Handshake shares this file and the private <code>~/.nouli/auth.toml</code> credential store with the Nouli CLI.
+For providers with <code>api_key_env</code>, the app’s environment takes precedence over the workflow folder’s
+<code>.env</code>, followed by the saved credential. Saved keys, environment sources, and command sources are supported.
+On first use, Handshake creates a private starter config if none exists. Existing configuration is preserved.
+The CLI’s <code>nouli auth login PROVIDER</code> is an optional way to manage saved credentials.</p>
 <p>Pick an <strong>Answer type</strong> and enter the <strong>Question</strong> Nouli should answer.
 With <strong>Multiple choice</strong>, enter option text on the left and choose its receiving agent on the right.
 Use <strong>Add option</strong> to create more choices. Option text stays the same when agents are renamed or wires
@@ -297,18 +302,24 @@ You can also choose <strong>Always</strong> directly from any connection’s <st
 These connections are labelled <strong>Always</strong>. They do not become Choice options or Score levels, and they
 do not replace the required Yes, No, or optional Uncertain destinations. Turn the setting off to make those connections
 ordinary decision destinations again. Existing wires are kept.</p>
-<p><strong>Score</strong> uses two to ten connected agents as ordered levels, starting at zero.
-Move levels up or down, or drag them, to order the scale from lowest to highest. Work goes to the
-nearest level; halfway values go higher. A score of 1.43 on a three-level scale selects level 1.
-The original score, probabilities, and rubric stay in the typed result.</p>
+<p><strong>Score</strong> uses two to ten authored options as ordered rubric levels, starting at zero.
+Describe each level on the left and choose its receiving agent on the right. Move options up or down to order the
+scale from lowest to highest. Connections and agent names do not change the rubric.</p>
+<p>Routing defaults to the midpoint between each pair of levels: a three-level scale uses cutoffs of 0.5 and 1.5.
+Edit the <strong>starts at</strong> value directly under each option to change its lower cutoff, or choose
+<strong>Reset thresholds</strong> to restore midpoints. The first option starts at zero.
+Cutoffs stay strictly increasing inside the scale, and values at a cutoff go to the higher range. Each edge shows
+its option and active score range. Adding or removing an option restores automatic thresholds; switching answer
+types preserves the score form while editing. The original fractional score, probabilities, and rubric remain
+in the typed result.</p>
 <p>Changing answer type keeps existing wires. While editing, switching back to an answer type restores its previous
 configuration. Inline errors identify missing questions and answer assignments; fix them before saving.
 Select a validation message below the canvas to open the relevant node and field. Nodes needing attention have a warning
 indicator. A single connection remains passthrough for every type, including its label on the canvas.
 The incoming data becomes Nouli’s state. The question and selected answer type determine its request.</p>
 <p>Enter a task in the launch form, or in a starting decision’s input surface. Each model decision
-captures its incoming evidence and can include the original task. Only the selected route activates
-work. Unselected terminal roles do not need to produce results. Conditional branches must use
+captures its incoming evidence and can include the original task. The selected route and any Always destinations
+receive work. Unselected terminal roles do not need to produce results. Conditional branches must use
 <strong>Start as work arrives</strong> when waiting for alternative branches would block a join.
 Small decision graphs fit at up to 80% scale; the existing zoom controls adjust the view.</p>
 <p><strong>Advanced</strong> offers optional Nouli provider-profile and model overrides and incoming-work settings.
@@ -316,7 +327,8 @@ Empty fields use Nouli’s configured defaults. A completed decision shows its d
 Expand <strong>Typed result</strong> or <strong>Captured inputs</strong> for the original evidence in a decision’s subtab;
 Traces retain the attempts. Refusal or provider failure pauses without choosing a route.
 <strong>Retry captured decision</strong> retries frozen inputs using the configured provider settings.
-Calls use <code>--no-session</code>; Handshake retains the workflow evidence and trace history.
+Calls use Nouli’s ephemeral library API; Handshake retains the workflow evidence and trace history
+without creating a separate Nouli session or ledger.
 A chained example is in <code>examples/workflows/decision-triage.toml</code>.</p>
 <p>Start a graph, then enter the task in the first agent's terminal.
 Use <strong>Results</strong> to read all final outputs, select a result, or compare times.</p>
