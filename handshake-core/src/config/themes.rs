@@ -301,6 +301,41 @@ fn default_source(
     }
 }
 
+// Match the complete previous generated file, including comments, so custom themes stay untouched.
+fn previous_handshake_dark() -> String {
+    HANDSHAKE_DARK
+        .replace("background = \"#161616\"", "background = \"#262626\"")
+        .replace(
+            "# Background stays below dark application-drawn dividers such as Kiro's #262626.\n",
+            "# Values sampled from supplied sRGB settings screenshots; the solid background\n# matches the rendered editor with its background gradient enabled.\n",
+        )
+}
+
+fn refresh_unmodified_dark(config_directory: &Path) -> io::Result<()> {
+    let directory = fs::canonicalize(config_directory)?;
+    let path = directory.join("themes/handshake_dark.toml");
+    let preview = crate::files::read_preview(&directory, &path);
+    if preview.content != crate::files::FileContent::Text(previous_handshake_dark()) {
+        return Ok(());
+    }
+    let Some(version) = preview.version else {
+        return Ok(());
+    };
+    if version.utf8_bom {
+        return Ok(());
+    }
+    // The existing file-save contract rejects links and concurrent edits, and replaces atomically.
+    crate::files::save(&crate::files::FileSaveRequest {
+        folder: directory,
+        path,
+        text: HANDSHAKE_DARK.to_owned(),
+        expected_version: version,
+        overwrite: false,
+    })
+    .map_err(io::Error::other)?;
+    Ok(())
+}
+
 pub(super) fn publish(config_path: &Path) -> Vec<(&'static str, ConfigDiagnostic)> {
     let directory = config_path.parent().unwrap_or(Path::new("."));
     bundled::publish(directory);
@@ -323,6 +358,10 @@ pub(super) fn publish(config_path: &Path) -> Vec<(&'static str, ConfigDiagnostic
     ] {
         let path = directory.join("themes").join(name);
         let result = match fs::symlink_metadata(&path) {
+            Ok(metadata) if name == "handshake_dark.toml" && metadata.is_file() => {
+                refresh_unmodified_dark(directory)
+                    .map_err(|error| file_diagnostic(&path, &super::ConfigFileError::Create(error)))
+            }
             Ok(_) => Ok(()),
             Err(error) if error.kind() == io::ErrorKind::NotFound => {
                 default_source(directory, name, source, twine, silica, silica_source).and_then(
@@ -388,6 +427,66 @@ pub(super) fn load(
 mod tests {
     use super::*;
     use crate::config::{Config, ConfigProblem};
+
+    #[test]
+    fn refreshes_only_the_exact_previous_dark_theme_and_preserves_overrides() {
+        let directory = tempfile::tempdir().unwrap();
+        let config = directory.path().join("config.toml");
+        assert_eq!(Config::load(&config).diagnostics, []);
+        let theme = directory.path().join("themes/handshake_dark.toml");
+        let previous = previous_handshake_dark();
+        for customized in [
+            previous.clone() + "# My theme\n",
+            previous.replace("#faf1f3", "#abcdef"),
+        ] {
+            fs::write(&theme, &customized).unwrap();
+            assert_eq!(Config::load(&config).diagnostics, []);
+            assert_eq!(fs::read_to_string(&theme).unwrap(), customized);
+        }
+        let with_bom = format!("\u{feff}{previous}");
+        fs::write(&theme, &with_bom).unwrap();
+        refresh_unmodified_dark(directory.path()).unwrap();
+        assert_eq!(fs::read_to_string(&theme).unwrap(), with_bom);
+        fs::write(&theme, &previous).unwrap();
+        let loaded = Config::load(&config);
+        assert_eq!(loaded.diagnostics, []);
+        assert_eq!(fs::read_to_string(&theme).unwrap(), HANDSHAKE_DARK);
+        assert_eq!(
+            loaded.config.terminal.palettes.dark.background.as_str(),
+            "#161616"
+        );
+        fs::write(&config, "[terminal.colors]\nbackground = '#262626'\n").unwrap();
+        assert_eq!(
+            Config::load(&config)
+                .config
+                .terminal
+                .palettes
+                .dark
+                .background
+                .as_str(),
+            "#262626"
+        );
+    }
+
+    #[test]
+    fn dark_theme_refresh_leaves_symlinked_files_and_directories_untouched() {
+        use std::os::unix::fs::symlink;
+        let directory = tempfile::tempdir().unwrap();
+        let external = tempfile::tempdir().unwrap();
+        let original = previous_handshake_dark();
+        let target = external.path().join("handshake_dark.toml");
+        fs::write(&target, &original).unwrap();
+        let themes = directory.path().join("themes");
+        symlink(external.path(), &themes).unwrap();
+        refresh_unmodified_dark(directory.path()).unwrap();
+        assert_eq!(fs::read_to_string(&target).unwrap(), original);
+        fs::remove_file(&themes).unwrap();
+        fs::create_dir(&themes).unwrap();
+        symlink(&target, themes.join("handshake_dark.toml")).unwrap();
+        refresh_unmodified_dark(directory.path()).unwrap();
+        assert_eq!(fs::read_to_string(&target).unwrap(), original);
+        assert!(themes.join("handshake_dark.toml").is_symlink());
+    }
 
     #[test]
     fn selectors_resolve_independent_palettes_and_theme_files_import_colors_only() {

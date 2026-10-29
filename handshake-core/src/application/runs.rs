@@ -616,7 +616,10 @@ impl Application {
                     .and_then(|()| {
                         Self::append_agent_instructions(
                             agent.harness,
-                            &run.instructions(agent.agent_id, &command),
+                            (
+                                &run.instructions(agent.agent_id, &command),
+                                self.browser_control.is_enabled(),
+                            ),
                             &mut arguments,
                             hooks.as_ref(),
                             &processes.harnesses[&agent.harness],
@@ -2465,6 +2468,8 @@ $prompt" ;; esac
                 && w.agents[0].terminal_id != old_terminal
                 && std::fs::read_to_string(folder.path().join("kiro-arguments"))
                     .is_ok_and(|args| args.contains("--resume-id\nsess_fixture"))
+                && std::fs::read_to_string(folder.path().join("kiro-profile"))
+                    .is_ok_and(|value| value == profile)
         });
         assert_eq!(
             std::fs::read_to_string(folder.path().join("kiro-profile")).unwrap(),

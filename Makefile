@@ -40,6 +40,10 @@ needs = $(if $(PREBUILT),,$(1))
 # Tests outside this list are retired from default runs, but remain available with ONLY or ALL=1.
 # Add a test here to re-enable it in local and CI default runs.
 UI_DEFAULT_TESTS := testFirstLaunchShowsStartPage \
+	testBrowserCLIControlsNativePageAndUserCanTakeOver \
+	testBrowserCLINestedDocumentsAndRichInteractions \
+	testBrowserControlFlagGatesAgentInstructionsAndRevokesLiveCommands \
+	testBrowserControlFlagGatesClaudeMCPAndRevokesLiveCommands \
 	testKeepAwakeSharesWindowsStopsOnQuitAndRelaunchesOff \
 	testKeepAwakeRecoversChildFailureAndReleasesAfterForceQuit \
 	testBrowserTabsShareRenamePinMoveReopenAndRestore \
@@ -236,12 +240,12 @@ check-bundle: ## Test and lint the release scripts
 # Build stages. debug, release and the app targets run these first.
 .PHONY: framework-debug
 framework-debug:
-	cargo build --package handshake-bridge --profile debug --locked --target $(LIB_TARGET)
+	cargo build --package handshake-cli --package handshake-bridge --profile debug --locked --target $(LIB_TARGET)
 	$(FRAMEWORK_BUILD) debug
 
 .PHONY: framework-release
 framework-release:
-	cargo build --package handshake-bridge --profile release --locked --target $(LIB_TARGET)
+	cargo build --package handshake-cli --package handshake-bridge --profile release --locked --target $(LIB_TARGET)
 	$(FRAMEWORK_BUILD) release
 
 .PHONY: deps-debug
@@ -338,3 +342,7 @@ check-assets: ## Verify shared brand sources and component copies
 
 sync-assets: ## Refresh component copies and the generated README lockup
 	node assets/sync.cjs --write
+
+.PHONY: cli
+cli: ## Build the browser CLI
+	cargo build --package handshake-cli --locked

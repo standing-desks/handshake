@@ -16,11 +16,13 @@ struct ExperimentalView: View {
                             VStack(alignment: .leading, spacing: 5) {
                                 HStack(spacing: 8) {
                                     Text(feature.title).font(.headline)
-                                    if feature.id == .crossAgentMemoryConsolidation {
+                                    if feature.id == .crossAgentMemoryConsolidation || feature.id == .browserControl {
                                         Text("Beta").font(.caption.weight(.medium))
                                             .padding(.horizontal, 6).padding(.vertical, 2)
                                             .background(.quaternary, in: .capsule)
-                                            .accessibilityIdentifier("crossAgentMemoryBeta")
+                                            .accessibilityIdentifier(
+                                                feature.id == .browserControl
+                                                    ? "browserControlBeta" : "crossAgentMemoryBeta")
                                     }
                                 }
                                 Text(feature.description).font(.callout).foregroundStyle(.secondary)
@@ -32,12 +34,12 @@ struct ExperimentalView: View {
                         }
                         .toggleStyle(.switch)
                         .accessibilityLabel(
-                            feature.id == .crossAgentMemoryConsolidation ? "\(feature.title), Beta" : feature.title
+                            "\(feature.title), Beta"
                         )
                         .accessibilityIdentifier("experimentalFeature-\(feature.id.rawValue)")
                         .disabled(configurationHasChanges || model.isSaving || model.needsApply)
                     }
-                    Text("Changes save and apply immediately. Running work stays intact.")
+                    Text("Changes save and apply immediately.")
                         .font(.caption).foregroundStyle(.secondary)
                 } else if model.failure == nil {
                     ProgressView("Loading experimental features…")

@@ -1,5 +1,5 @@
 [workspace]
-members = ["handshake-core", "handshake-bridge"]
+members = ["handshake-core", "handshake-bridge", "handshake-cli"]
 resolver = "3"
 
 [profile.release]

@@ -12,6 +12,7 @@ final class FolderWindowSession: Identifiable {
     let coreClient: CoreClient
     let tabs: FileTabsModel
     let browsers: BrowserTabsModel
+    let browserControl: BrowserControlHost
     var requestedFolder: String?
     let restoresFolder: Bool
     var hasStarted = false
@@ -25,6 +26,7 @@ final class FolderWindowSession: Identifiable {
         browsers = BrowserTabsModel(selection: tabs.contentSelection, windowID: id)
         worker = CoreWorker(dataDirectory: dataDirectory, windowMode: true)
         coreClient = CoreClient(transport: worker)
+        browserControl = BrowserControlHost(core: coreClient, browsers: browsers)
         requestedFolder = folder
         restoresFolder = restore
     }

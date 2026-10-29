@@ -12,6 +12,13 @@ pub struct HandshakeClient {
 }
 
 impl HandshakeClient {
+    pub(crate) fn browser_control(&self, bytes: &[u8]) -> Result<Vec<u8>, BridgeError> {
+        let command = serde_json::from_slice(bytes).map_err(|_| BridgeError::MalformedCommand)?;
+        Ok(serde_json::to_vec(
+            &self.application.browser_control(command),
+        )?)
+    }
+
     pub(crate) fn save_file(&self, bytes: &[u8]) -> Result<Vec<u8>, BridgeError> {
         let text = std::str::from_utf8(bytes).map_err(|_| BridgeError::InvalidUtf8)?;
         let request: protocol::files::SaveRequest =

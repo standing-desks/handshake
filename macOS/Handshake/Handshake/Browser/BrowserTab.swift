@@ -7,6 +7,10 @@ import WebKit
 final class BrowserTab: NSObject, Identifiable, WKNavigationDelegate, WKUIDelegate {
     let id: UUID
     let webView: WKWebView
+    private(set) var navigationGeneration: UInt64 = 0
+    var controlOwner: String?
+    var stopControl: (() -> Void)?
+    var controlDidClose: (() -> Void)?
     var customName: String? { didSet { changed?() } }
     private(set) var pageTitle = ""
     private(set) var url: URL?
@@ -34,11 +38,12 @@ final class BrowserTab: NSObject, Identifiable, WKNavigationDelegate, WKUIDelega
 
     init(
         id: UUID = UUID(), configuration: WKWebViewConfiguration = WKWebViewConfiguration(), customName: String? = nil,
-        hasNavigated: Bool = false
+        hasNavigated: Bool = false, automation: Bool = false
     ) {
         self.id = id
         self.customName = customName
         self.hasNavigated = hasNavigated
+        if automation { BrowserAutomationDriver.configure(configuration) }
         webView = WKWebView(frame: .zero, configuration: configuration)
         super.init()
         webView.navigationDelegate = self
@@ -81,6 +86,7 @@ final class BrowserTab: NSObject, Identifiable, WKNavigationDelegate, WKUIDelega
 
     func load(_ url: URL) {
         guard !isClosed else { return }
+        navigationGeneration &+= 1
         isStopped = false
         stoppedURL = nil
         hasNavigated = true
@@ -130,6 +136,10 @@ final class BrowserTab: NSObject, Identifiable, WKNavigationDelegate, WKUIDelega
 
     func close() {
         guard !isClosed else { return }
+        controlDidClose?()
+        controlDidClose = nil
+        stopControl = nil
+        controlOwner = nil
         isClosed = true
         isVisible = false
         navigation = nil
@@ -176,6 +186,7 @@ final class BrowserTab: NSObject, Identifiable, WKNavigationDelegate, WKUIDelega
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation?) {
         guard !isClosed else { return }
+        navigationGeneration &+= 1
         if let navigation, navigation === stoppedNavigation {
             if self.navigation == nil { webView.stopLoading() }
             return
@@ -224,6 +235,9 @@ final class BrowserTab: NSObject, Identifiable, WKNavigationDelegate, WKUIDelega
         syncState()
     }
 
+}
+
+extension BrowserTab {
     func webView(
         _ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for action: WKNavigationAction,
         windowFeatures: WKWindowFeatures

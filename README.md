@@ -132,6 +132,26 @@ tab. Saved workflows are TOML files in `$XDG_CONFIG_HOME/handshake/workflows`
 in version control. Agent instructions use native harness instruction channels;
 setup does not start agent work.
 
+Enable **Agent browser control (Beta)** in **Settings → Experimental** to try it;
+it is off by default. Start a new terminal or agent after enabling.
+Agents started or resumed through Handshake then receive browser instructions automatically.
+They can control the embedded browser from a Handshake terminal through
+`"$HANDSHAKE_CLI" browser --help`. Use `browser open URL` to create an owned tab,
+then `browser --tab ID snapshot` to inspect it. Commands support native input,
+hover, dropdown selection, editing-key modifiers, scrolling, screenshots,
+text/URL/load/element waits and console inspection. Snapshots include nested
+same-origin frames and open shadow roots. Native dropdown selection requires a
+unique initial ASCII letter; other options require manual selection. Hover requires
+a focused browser window and compatible WebKit. The browser shows
+which terminal controls it; **Stop / Take over** cancels pending commands and
+revokes that terminal's control while leaving the page open. Passwords, dialogs
+and uploads require the user. See [the browser-control decision](architecture/decisions/0012-control-the-embedded-browser-through-core.md)
+for the supported scope. Codex and Claude Code receive a session-local MCP browser tool. Their shell
+sandbox and permission settings stay unchanged. Other sandboxed agents may need approval to run the browser
+CLI outside their sandbox so it can connect to Handshake's local socket. Approve
+the specific command through the agent's permission prompt; disabling the whole
+sandbox is not required. If approval is unavailable, use a plain Handshake terminal.
+
 Common tasks, each covered in the
 [user guide](https://standing-desks.github.io/handshake/documentation/guide/):
 
@@ -256,6 +276,14 @@ make          # list every target
 ```
 
 `make ui-test` runs the UI suite and takes over the desktop while it runs.
+The authenticated Codex browser check is opt-in: set `TEST_RUNNER_HANDSHAKE_LIVE_CODEX`
+to the path of a logged-in Codex executable and run
+`make ui-test ONLY=testBrowserCodexMCPWorksWithNormalSandbox`. It uses Codex's
+workspace sandbox with automatic approval review for the local fixture task.
+For Claude Code, set `TEST_RUNNER_HANDSHAKE_LIVE_CLAUDE` to its authenticated
+executable and run `make ui-test ONLY=testBrowserClaudeMCPControlsNativePage`.
+This test allows only the fixture's browser MCP tool through Claude's normal
+permission configuration; production launches do not auto-approve tools.
 
 ### Find your way around
 

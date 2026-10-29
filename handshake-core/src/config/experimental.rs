@@ -10,12 +10,14 @@ use crate::{FileContent, FilePreview, FileSaveOutcome, FileSaveRequest, FileVers
 #[serde(default)]
 pub struct ExperimentalConfig {
     pub cross_agent_memory_consolidation: bool,
+    pub browser_control: bool,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ExperimentalFeature {
     CrossAgentMemoryConsolidation,
+    BrowserControl,
 }
 
 #[derive(Debug, Serialize)]
@@ -32,16 +34,23 @@ pub struct ExperimentalSnapshot {
 }
 
 impl ExperimentalFeature {
-    const ALL: [Self; 1] = [Self::CrossAgentMemoryConsolidation];
+    const ALL: [Self; 2] = [Self::CrossAgentMemoryConsolidation, Self::BrowserControl];
 
     fn key(self) -> &'static str {
         match self {
             Self::CrossAgentMemoryConsolidation => "cross_agent_memory_consolidation",
+            Self::BrowserControl => "browser_control",
         }
     }
 
     fn state(self, features: &ExperimentalConfig) -> ExperimentalFeatureState {
         match self {
+            Self::BrowserControl => ExperimentalFeatureState {
+                id: self,
+                title: "Agent browser control",
+                description: "Let agents use the embedded browser. Start a new agent or terminal after enabling. Turning this off immediately revokes browser control and keeps pages open.",
+                enabled: features.browser_control,
+            },
             Self::CrossAgentMemoryConsolidation => ExperimentalFeatureState {
                 id: self,
                 title: "Cross-agent memory consolidation",
@@ -162,7 +171,9 @@ mod tests {
                 );
                 let features = ExperimentalFeature::ALL
                     .map(|feature| feature.state(&loaded.config.experimental));
-                assert_eq!(features.len(), 1);
+                assert_eq!(features.len(), 2);
+                assert_eq!(features[1].id, ExperimentalFeature::BrowserControl);
+                assert!(!features[1].enabled);
                 assert_eq!(
                     features[0].id,
                     ExperimentalFeature::CrossAgentMemoryConsolidation

@@ -61,6 +61,7 @@ nonisolated enum CoreFailure: Error, Equatable, LocalizedError, Sendable {
 }
 
 nonisolated protocol CoreTransport: Sendable {
+    func browserControl(_ request: Data) async throws -> Data
     func open() async throws -> CoreSnapshot
     func close() async
     func send(_ command: CoreCommand) async throws -> CoreCommandReceipt
@@ -95,6 +96,7 @@ nonisolated protocol CoreTransport: Sendable {
 }
 
 extension CoreTransport {
+    func browserControl(_ request: Data) async throws -> Data { throw CoreFailure.unexpectedCommandResult }
     func keepAwake(_ enabled: Bool?) async throws -> Bool { throw CoreFailure.unexpectedCommandResult }
 
     func handshakeMemories(folder: String, action: HandshakeMemoryAction) async throws -> HandshakeMemorySnapshot {

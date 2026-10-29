@@ -114,6 +114,10 @@ HandshakeStatus handshake_client_poll_files(
     HandshakeClient *client, const uint8_t *request_bytes, size_t request_length, HandshakeBuffer *out_snapshot
 );
 
+HandshakeStatus handshake_client_browser_control(
+    HandshakeClient *client, const uint8_t *request_bytes, size_t request_length, HandshakeBuffer *out_snapshot
+);
+
 // Starts listing a harness's models and effort levels on a core thread; returns at once. Request
 // {"harness": "codex" | "claudeCode" | "pi"}, with the same input rules as send_command. Poll until
 // it isn't EMPTY: the JSON status is listed (with models) or failed (with message). Destroy exactly

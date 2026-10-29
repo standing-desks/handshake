@@ -65,6 +65,10 @@ final class BrowserTabsModel {
         insert(snapshot: .init(id: UUID()), configuration: configuration(), select: true)
     }
 
+    func createControlled(id: UUID) -> BrowserTab {
+        insert(snapshot: .init(id: id), configuration: configuration(), select: true, automation: true)
+    }
+
     @discardableResult
     func restore(_ snapshot: Snapshot) -> BrowserTab {
         if let existing = tabs.first(where: { $0.id == snapshot.id }) {
@@ -75,10 +79,12 @@ final class BrowserTabsModel {
     }
 
     private func insert(
-        snapshot: Snapshot, configuration: WKWebViewConfiguration, select: Bool, hasNavigated: Bool = false
+        snapshot: Snapshot, configuration: WKWebViewConfiguration, select: Bool, hasNavigated: Bool = false,
+        automation: Bool = false
     ) -> BrowserTab {
         let tab = BrowserTab(
-            id: snapshot.id, configuration: configuration, customName: snapshot.customName, hasNavigated: hasNavigated)
+            id: snapshot.id, configuration: configuration, customName: snapshot.customName, hasNavigated: hasNavigated,
+            automation: automation)
         tab.changed = { [weak self] in self?.remember() }
         tab.popup = { [weak self, weak tab] configuration in
             guard let self, let tab, !isClosing, tabs.contains(where: { $0 === tab }) else { return nil }

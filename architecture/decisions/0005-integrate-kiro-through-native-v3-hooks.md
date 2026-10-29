@@ -42,6 +42,21 @@ native call IDs, matched start times, model calls, or child lineage. Terminal by
 remain separate. Workflow advancement still requires the explicit completion
 command; a Stop hook or process exit does not imply task success.
 
+### Terminal divider contrast
+
+Kiro's native dark theme draws dividers in truecolor `#262626`. The original
+Handshake dark terminal background used that same color, making complete divider
+rows invisible even though the terminal received and rendered them correctly.
+Use `#161616` for Handshake's default dark terminal background, including the
+app's fallback asset. Preserve application-supplied RGB colors, terminal output,
+and Kiro's native theme and preferences.
+
+Refresh only the byte-for-byte previous generated `handshake_dark.toml`, using
+the existing version-checked atomic file save. Leave customized files, symlinks,
+legacy theme sources, other themes, and explicit color overrides unchanged.
+A conflicting edit wins over the default refresh. This palette correction is
+separate from the rename-only color preservation recorded in ADR 0009.
+
 ## Consequences
 
 Kiro conversations started in Handshake can resume independently in the same

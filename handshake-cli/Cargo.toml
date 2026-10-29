@@ -1,0 +1,16 @@
+[package]
+name = "handshake-cli"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "handshake"
+path = "src/main.rs"
+
+[dependencies]
+handshake-core = { path = "../handshake-core" }
+serde_json = "1.0.151"

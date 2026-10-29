@@ -249,6 +249,7 @@ struct Inner {
 }
 
 pub struct Application {
+    browser_control: Arc<crate::browser_control::BrowserControl>,
     memory_worker: Option<crate::memories::handshake::Worker>,
     window_storage: Option<windows::WindowStorageLease>,
     /// Window runtimes share their recorder; only its final owner shuts it down.
@@ -271,6 +272,14 @@ pub struct Application {
 }
 
 impl Application {
+    #[must_use]
+    pub fn browser_control(
+        &self,
+        command: crate::browser_control::HostCommand,
+    ) -> serde_json::Value {
+        self.browser_control.host(command)
+    }
+
     #[cfg_attr(test, allow(clippy::unused_self))]
     fn attach_memories(&mut self, data_directory: &Path, enabled: bool) {
         #[cfg(not(test))]
@@ -409,7 +418,13 @@ impl Application {
             DEFAULT_TERMINAL_CAPACITY_CHUNKS,
             transcripts,
         )?);
-        let terminals = TerminalManager::new(Arc::clone(&terminal_output));
+        let browser_control = Arc::new(
+            crate::browser_control::BrowserControl::new()
+                .map_err(ApplicationError::BrowserControl)?,
+        );
+        browser_control.set_enabled(config.experimental.browser_control);
+        let mut terminals = TerminalManager::new(Arc::clone(&terminal_output));
+        terminals.browser_control = Some(Arc::clone(&browser_control));
         #[cfg(test)]
         let terminals = {
             let mut terminals = terminals;
@@ -419,6 +434,7 @@ impl Application {
         };
         let memory_enabled = config.experimental.cross_agent_memory_consolidation;
         let mut application = Self {
+            browser_control,
             window_storage: None,
             shared_recording,
             memory_worker: None,
@@ -810,6 +826,8 @@ fn rejection(code: &str, error: &dyn std::error::Error) -> CommandDisposition {
 
 #[derive(Debug, Error)]
 pub enum ApplicationError {
+    #[error("Could not start browser control: {0}")]
+    BrowserControl(std::io::Error),
     #[error(transparent)]
     Memory(#[from] crate::memories::handshake::Error),
     #[error(transparent)]

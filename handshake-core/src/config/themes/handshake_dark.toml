@@ -1,10 +1,9 @@
 # Handshake dark terminal colors. Edit this file, then restart Handshake.
 # Base and accent colors adapted from Xcode 27 Standard theme settings.
-# Values sampled from supplied sRGB settings screenshots; the solid background
-# matches the rendered editor with its background gradient enabled.
+# Background stays below dark application-drawn dividers such as Kiro's #262626.
 # ANSI bright variants are adapted for terminal use.
 [terminal.colors]
-background = "#262626"
+background = "#161616"
 foreground = "#faf1f3"
 cursor = "#007aff"
 selection = "#3f638b"

@@ -48,6 +48,8 @@ impl Application {
                 .append(EventKind::State(StateEvent::ConfigChanged(Box::new(
                     loaded.config.clone(),
                 ))))?;
+            self.browser_control
+                .set_enabled(loaded.config.experimental.browser_control);
             inner.config = loaded.config;
         }
         drop(inner);
@@ -66,6 +68,32 @@ impl Application {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reload_applies_browser_flag_and_invalid_config_cannot_reenable_it() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.toml");
+        let app = Application::with_event_capacity(64).unwrap();
+        assert!(!app.browser_control.is_enabled());
+        for enabled in [true, false] {
+            std::fs::write(
+                &path,
+                format!("[experimental]\nbrowser_control = {enabled}\n"),
+            )
+            .unwrap();
+            assert_eq!(
+                app.reload_config_from(&path).unwrap(),
+                CommandDisposition::Accepted
+            );
+            assert_eq!(app.browser_control.is_enabled(), enabled);
+        }
+        std::fs::write(&path, "[experimental]\nbrowser_control = 'invalid'\n").unwrap();
+        assert!(matches!(
+            app.reload_config_from(&path).unwrap(),
+            CommandDisposition::Rejected { .. }
+        ));
+        assert!(!app.browser_control.is_enabled());
+    }
 
     #[test]
     fn reload_migrates_legacy_sections_and_newly_added_imports_before_publishing() {

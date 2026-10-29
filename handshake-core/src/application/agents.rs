@@ -176,7 +176,7 @@ impl Application {
                 .and_then(|()| {
                     Self::append_agent_instructions(
                         harness,
-                        "",
+                        ("", self.browser_control.is_enabled()),
                         &mut arguments,
                         hooks.as_ref(),
                         &located,
