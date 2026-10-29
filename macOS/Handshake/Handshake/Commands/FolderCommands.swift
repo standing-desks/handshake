@@ -128,8 +128,6 @@ struct FolderCommands: Commands {
             Button(closeTitle) {
                 if showsSettings {
                     settings?.close()
-                } else if session?.browsers.selected != nil, let close = tabActions?.closeTab {
-                    close()
                 } else if let browser = session?.browsers.selected {
                     session?.browsers.close(browser.id)
                 } else if openFilePath != nil, let close = tabActions?.closeTab {

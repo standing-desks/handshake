@@ -70,13 +70,11 @@ nonisolated private struct CommandPayload: Encodable {
         case .openFolder, .restoreFolder, .closeFolder, .closeFolderIfOpen, .removeRecentFolder, .refreshGitBranch:
             type = ""
             configureFolder(command)
-        case .createSession, .renameSession, .selectSession, .deleteSession:
+        case .createSession, .renameSession, .selectSession, .deleteSession, .moveWorkflow:
             type = ""
             configureSession(command)
-        case .renameWorkflow, .moveWorkflow, .reopenWorkflow:
-            type = ""
-            configureTab(command)
-        case .createWorkflow, .activateWorkflow, .nameDraftWorkflow, .closeWorkflow, .startAgent, .resumeAgent,
+        case .createWorkflow, .activateWorkflow, .nameDraftWorkflow, .renameWorkflow, .reopenWorkflow, .closeWorkflow,
+            .startAgent, .resumeAgent,
             .cancelAgent:
             type = ""
             configureWorkflow(command)
@@ -195,25 +193,10 @@ nonisolated private struct CommandPayload: Encodable {
         case .deleteSession(let sessionID):
             type = "deleteSession"
             self.sessionID = sessionID
-        default:
-            break
-        }
-    }
-
-    /// A workflow's tab: its title, its session, and reopening its saved history.
-    private mutating func configureTab(_ command: CoreCommand) {
-        switch command {
-        case .renameWorkflow(let workflowID, let name):
-            type = "renameWorkflow"
-            self.workflowID = workflowID
-            self.name = name
         case .moveWorkflow(let workflowID, let sessionID):
             type = "moveWorkflow"
             self.workflowID = workflowID
             self.sessionID = sessionID
-        case .reopenWorkflow(let workflowID):
-            type = "reopenWorkflow"
-            self.workflowID = workflowID
         default:
             break
         }
@@ -235,6 +218,13 @@ nonisolated private struct CommandPayload: Encodable {
             type = "nameDraftWorkflow"
             self.workflowID = workflowID
             self.name = name
+        case .renameWorkflow(let workflowID, let name):
+            type = "renameWorkflow"
+            self.workflowID = workflowID
+            self.name = name
+        case .reopenWorkflow(let workflowID):
+            type = "reopenWorkflow"
+            self.workflowID = workflowID
         case .closeWorkflow(let workflowID):
             type = "closeWorkflow"
             self.workflowID = workflowID

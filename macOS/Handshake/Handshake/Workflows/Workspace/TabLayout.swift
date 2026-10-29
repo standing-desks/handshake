@@ -1,7 +1,7 @@
 import Foundation
 
 /// Where folder windows show their tabs. An app-wide presentation preference, kept out of core.
-nonisolated enum TabLayout: String, CaseIterable, Sendable {
+nonisolated enum TabLayout: String, Sendable {
     /// Each session lists its tabs in the sidebar, and the window has no tab bar.
     case sidebar
     /// One tab bar above the terminal panel shows the selected session's tabs.

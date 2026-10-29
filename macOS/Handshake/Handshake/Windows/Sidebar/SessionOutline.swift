@@ -16,9 +16,6 @@ struct SessionOutline: View {
     @Binding var selection: WorkflowTabSelection
     let presentation: SidebarPresentation
     var compact = false
-    let rename: (CoreSession) -> Void
-    let delete: (CoreSession) -> Void
-    let reportFailure: (String) -> Void
     @State private var drag: Drag?
     @State private var frames: [Row: CGRect] = [:]
     @State private var springLoad: Task<Void, Never>?
@@ -71,7 +68,7 @@ struct SessionOutline: View {
                 client: client, model: model, files: files, browsers: browsers, layouts: layouts, folder: folder,
                 selection: $selection, currentSession: selectedSession),
             presentation: presentation, workflows: allWorkflows, selectedReference: selectedReference,
-            reportFailure: reportFailure, undoManager: undoManager)
+            undoManager: undoManager)
     }
 
     var body: some View {
@@ -135,10 +132,9 @@ struct SessionOutline: View {
                         }
                     }),
                 tabCount: items.count, activity: activity, isDropTarget: isTarget,
-                select: { commands.selectSession(session) }, rename: { rename(session) }, delete: { delete(session) },
-                newWorkflow: { commands.newWorkflow(in: session.id) },
-                setAllExpanded: { expand in presentation.expandedSessions = expand ? Set(sessions.map(\.id)) : [] },
-                switchLayout: { tabLayout = .top })
+                select: { commands.selectSession(session) }, rename: { presentation.sessionToRename = session },
+                delete: { presentation.sessionToDelete = session },
+                newWorkflow: { commands.newWorkflow(in: session.id) })
         }
     }
 
@@ -259,8 +255,8 @@ extension SessionOutline {
     private func sessionActions(_ session: CoreSession, commands: SessionOutlineCommands) -> some View {
         Button("New Workflow", systemImage: "plus") { commands.newWorkflow(in: session.id) }
         Divider()
-        Button("Rename Session", systemImage: "pencil") { rename(session) }
-        Button("Delete Session", systemImage: "trash", role: .destructive) { delete(session) }
+        Button("Rename Session", systemImage: "pencil") { presentation.sessionToRename = session }
+        Button("Delete Session", systemImage: "trash", role: .destructive) { presentation.sessionToDelete = session }
         Divider()
         Button(TabLayout.sidebar.toggleTitle, systemImage: "rectangle.topthird.inset.filled") { tabLayout = .top }
     }

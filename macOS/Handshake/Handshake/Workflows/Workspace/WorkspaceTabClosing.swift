@@ -35,16 +35,6 @@ struct WorkspaceTabClosing {
         if wasSelected { selectTabReference(next) }
     }
 
-    /// Closes a browser tab, selecting its neighbor in the same session rather than another session's page.
-    func closeBrowser(_ id: UUID) {
-        let reference = WorkspaceTabsModel.browser(id)
-        let next = WorkspaceTabsModel.neighbor(in: displayedTabReferences, closing: [reference], selected: reference)
-        let wasSelected = isCurrentSession && browsers.selectedID == id
-        browsers.close(id)
-        tabManagement.release(reference, session: sessionID)
-        if wasSelected { selectTabReference(next) }
-    }
-
     /// Closing a tab from another session's row leaves the visible selection alone.
     private var isCurrentSession: Bool { coreClient.snapshot?.workflows.session?.id == sessionID }
 

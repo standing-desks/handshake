@@ -1,7 +1,4 @@
-import OSLog
 import SwiftUI
-
-private let sessionLogger = Logger(subsystem: "com.twineproject.Twine", category: "sessions")
 
 /// The sidebar's sheets and alerts. The window presents them, so they stay open when the peek closes.
 struct SidebarDialogs: ViewModifier {
@@ -15,7 +12,7 @@ struct SidebarDialogs: ViewModifier {
         content
             .sheet(item: $presentation.sessionToRename) { session in
                 SessionNameForm(name: session.name) { name in
-                    run { try await coreClient.renameSession(sessionID: session.id, name: name) }
+                    presentation.run { try await coreClient.renameSession(sessionID: session.id, name: name) }
                 }
                 .appZoom()
             }
@@ -42,7 +39,7 @@ struct SidebarDialogs: ViewModifier {
                     guard let session = presentation.sessionToDelete else { return }
                     presentation.sessionToDelete = nil
                     guard closePages(of: session.id) else { return }
-                    run { try await coreClient.deleteSession(sessionID: session.id) }
+                    presentation.run { try await coreClient.deleteSession(sessionID: session.id) }
                 }
             } message: {
                 let name = presentation.sessionToDelete?.name ?? ""
@@ -71,14 +68,5 @@ struct SidebarDialogs: ViewModifier {
             browsers.close(page.id)
         }
         return true
-    }
-
-    private func run(_ operation: @escaping @MainActor () async throws -> Void) {
-        Task {
-            do { try await operation() } catch {
-                presentation.failure = error.localizedDescription
-                sessionLogger.error("Could not update session: \(error.localizedDescription, privacy: .public)")
-            }
-        }
     }
 }

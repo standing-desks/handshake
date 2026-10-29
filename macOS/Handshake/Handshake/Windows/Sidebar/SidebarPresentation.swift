@@ -1,5 +1,8 @@
 import AppKit
+import OSLog
 import Observation
+
+private let sessionLogger = Logger(subsystem: "com.twineproject.Twine", category: "sessions")
 
 /// The sidebar layout's presentation: whether the minimized sidebar shows its rail or peeks over the
 /// content, and which sessions disclose their tabs. Docking stays with the split view's column visibility.
@@ -64,6 +67,16 @@ final class SidebarPresentation {
     func menuTrackingChanged(isOpen: Bool) {
         isMenuOpen = isOpen
         if !isOpen && !isPointerInside { pointerExited() }
+    }
+
+    /// Runs a sidebar action, showing and logging its failure.
+    func run(_ operation: @escaping @MainActor () async throws -> Void) {
+        Task {
+            do { try await operation() } catch {
+                failure = error.localizedDescription
+                sessionLogger.error("Could not update session: \(error.localizedDescription, privacy: .public)")
+            }
+        }
     }
 
     /// Returns to the rail at once, for Esc, typing, docking, and leaving the sidebar layout.

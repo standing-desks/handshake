@@ -1,8 +1,5 @@
 import Foundation
-import OSLog
 import SwiftUI
-
-private let sessionLogger = Logger(subsystem: "com.twineproject.Twine", category: "sessions")
 
 struct FolderSidebar: View {
     @Environment(CoreClient.self) private var coreClient
@@ -17,8 +14,6 @@ struct FolderSidebar: View {
     @Bindable var presentation: SidebarPresentation
     /// The minimized sidebar's rail: sessions and their tabs as icons.
     var compact = false
-    /// Opens the full sidebar from the rail, for the Files and Memories sections.
-    var dock: () -> Void = {}
     private var sessions: [CoreSession] {
         coreClient.snapshot?.workflows.sessions.filter { $0.folder == path } ?? []
     }
@@ -101,30 +96,11 @@ struct FolderSidebar: View {
             }
             .scrollIndicators(.never)
             .scrollBounceBehavior(.basedOnSize)
-            Divider().padding(.horizontal, 10)
-            railButton("Files", systemImage: "folder") {
-                memories.isExpanded = false
-                presentation.isFilesExpanded = true
-            }
-            railButton("Memories", systemImage: "brain") { memories.isExpanded = true }
-                .padding(.bottom, 4)
         }
         .frame(maxHeight: .infinity, alignment: .top)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Sessions")
         .accessibilityIdentifier("sidebarRail")
-    }
-
-    private func railButton(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
-        Button {
-            action()
-            dock()
-        } label: {
-            Image(systemName: systemImage).font(.system(size: 13))
-                .frame(maxWidth: .infinity).frame(height: 36).contentShape(.rect)
-        }
-        .buttonStyle(.plain).foregroundStyle(.secondary).help(title)
-        .accessibilityLabel(title).accessibilityIdentifier("rail\(title)")
     }
 
     @ViewBuilder private var sessionList: some View {
@@ -142,12 +118,11 @@ struct FolderSidebar: View {
                             if session.id == selectedSession?.id {
                                 fileTabs.contentSelection.showSession()
                             } else {
-                                run { try await coreClient.selectSession(sessionID: session.id) }
+                                presentation.run { try await coreClient.selectSession(sessionID: session.id) }
                             }
                         },
                         rename: { presentation.sessionToRename = session },
-                        delete: { presentation.sessionToDelete = session },
-                        switchLayout: { tabLayout = .sidebar })
+                        delete: { presentation.sessionToDelete = session })
                 }
             }
         }
@@ -156,9 +131,7 @@ struct FolderSidebar: View {
     private func outline(compact: Bool) -> some View {
         SessionOutline(
             folder: path, sessions: sessions, selectedSession: selectedSession?.id, model: tabManagement,
-            selection: $selection, presentation: presentation, compact: compact,
-            rename: { presentation.sessionToRename = $0 }, delete: { presentation.sessionToDelete = $0 },
-            reportFailure: { presentation.failure = $0 })
+            selection: $selection, presentation: presentation, compact: compact)
     }
 
     private func sectionHeader<Actions: View>(
@@ -195,22 +168,13 @@ struct FolderSidebar: View {
 
     private func create() {
         let name = "Session \(sessions.count + 1)"
-        run {
-            let id = try await coreClient.createSession(folder: path, name: name)
+        presentation.run {
+            _ = try await coreClient.createSession(folder: path, name: name)
             withAnimation(reduceMotion ? nil : Motion.sectionToggle) {
                 presentation.isSessionsExpanded = true
-                presentation.expandedSessions.insert(id)
                 memories.isExpanded = false
             }
-        }
-    }
-
-    private func run(_ operation: @escaping @MainActor () async throws -> Void) {
-        Task {
-            do { try await operation() } catch {
-                presentation.failure = error.localizedDescription
-                sessionLogger.error("Could not update session: \(error.localizedDescription, privacy: .public)")
-            }
+            fileTabs.contentSelection.showSession()
         }
     }
 }

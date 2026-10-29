@@ -6,6 +6,9 @@ import Foundation
 actor DeferredBrowserTransport {
     private var polls: [CheckedContinuation<Data, Never>] = []
     private(set) var pollCount = 0
+    private let ready: CoreSnapshot
+
+    init(snapshot: CoreSnapshot = .testReady()) { ready = snapshot }
 
     func browserControl(_ request: Data) async throws -> Data {
         let command = try JSONSerialization.jsonObject(with: request) as? [String: Any]
@@ -15,8 +18,8 @@ actor DeferredBrowserTransport {
     }
 
     func releasePoll(_ json: String = "{}") { polls.removeFirst().resume(returning: Data(json.utf8)) }
-    func open() -> CoreSnapshot { .testReady() }
-    func snapshot() -> CoreSnapshot { .testReady() }
+    func open() -> CoreSnapshot { ready }
+    func snapshot() -> CoreSnapshot { ready }
     func close() {}
     func send(_ command: CoreCommand) throws -> CoreCommandReceipt { throw CoreFailure.unexpectedCommandResult }
     func pollFiles(_ request: FileBrowserRequest) throws -> FileBrowserSnapshot? {

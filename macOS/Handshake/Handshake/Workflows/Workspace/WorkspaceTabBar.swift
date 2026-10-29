@@ -18,7 +18,6 @@ struct WorkspaceTabBar: View {
     @Binding var selection: WorkflowTabSelection
     let close: (UInt64) -> Void
     let closeFile: (UUID) -> Void
-    let closeBrowser: (UUID) -> Void
     let cancel: (UInt64) -> Void
     let create: () -> Void
     let reportFailure: (String) -> Void
@@ -121,7 +120,8 @@ struct WorkspaceTabBar: View {
             if !files.isClosingPresentation { model.reconcile(references, session: sessionID) }
         }
         .onChange(of: pages) {
-            // A tab opened from the file tree, a memory, or the browser joins the selected session.
+            // A tab opened from the file tree, a memory, or the browser joins the selected session, and an agent's
+            // page joins its own.
             if prepared && !files.isClosingPresentation { adoptUnheldPages() }
         }
         .onChange(of: files.editors.map(\.path)) { previous, current in
@@ -135,8 +135,11 @@ struct WorkspaceTabBar: View {
         }
         .onChange(of: selected) {
             guard prepared && preparedSession == sessionID && !files.isClosingPresentation else { return }
-            // Opening a file another session holds shares its editor with this session too.
+            // A page opened with its selection is placed first. Opening a file another session holds shares its
+            // editor with this session too, but a browser page stays with its session when an agent selects it.
+            adoptUnheldPages()
             if let selected, WorkspaceTabsModel.isPage(selected), !model.holds(selected, session: sessionID) {
+                guard selected.hasPrefix("file:") else { return }
                 model.adopt(selected, session: sessionID)
             }
             model.select(selected, session: sessionID)
@@ -190,7 +193,7 @@ struct WorkspaceTabBar: View {
         if let workflow = item.workflow {
             close(workflow.id)
         } else if let browser = item.browser {
-            closeBrowser(browser.id)
+            browsers.close(browser.id)
         } else if let id = item.fileID {
             closeFile(id)
         }
@@ -198,26 +201,12 @@ struct WorkspaceTabBar: View {
 
     private func moveToSession(_ item: WorkspaceTabItem, _ destination: UInt64) {
         guard let sessionID else { return }
-        let destinationReferences = sessionReferences(destination)
-        let isSelected = item.id == selected
-        let returning = navigator.placement(of: item.id, in: sessionID)
-        let merges = WorkspaceTabsModel.isPage(item.id) && model.holds(item.id, session: destination)
         let navigator = navigator
         Task {
-            do {
-                try await navigator.move(
-                    item.id, from: sessionID, to: destination, destinationReferences: destinationReferences,
-                    isSelected: isSelected)
-                if !merges {
-                    navigator.registerUndo(
-                        of: item.id, from: sessionID, to: destination, returningTo: returning, undoManager: undoManager)
-                }
-            } catch { reportFailure(error.localizedDescription) }
+            do { try await navigator.move(item.id, from: sessionID, to: destination, undoManager: undoManager) } catch {
+                reportFailure(error.localizedDescription)
+            }
         }
-    }
-
-    private func sessionReferences(_ session: UInt64) -> [String] {
-        navigator.catalog.items(session: session, among: workflows).map(\.id)
     }
 
     /// Every session's tabs, each named with its session, so the switcher finds tabs in other sessions too.
@@ -243,8 +232,12 @@ struct WorkspaceTabBar: View {
         }
     }
 
+    /// A page an agent opened joins the agent's session; any other page joins the selected session.
     private func adoptUnheldPages() {
-        model.adoptUnheld(pages, session: sessionID, sessions: Set(sessions.map(\.id)))
+        let owners = browsers.tabs.reduce(into: [String: UInt64]()) { owners, tab in
+            owners[WorkspaceTabsModel.browser(tab.id)] = tab.agentSession
+        }
+        model.adoptUnheld(pages, session: sessionID, sessions: Set(sessions.map(\.id)), owners: owners)
     }
 
     private func rename(_ item: WorkspaceTabItem, name: String?) async {

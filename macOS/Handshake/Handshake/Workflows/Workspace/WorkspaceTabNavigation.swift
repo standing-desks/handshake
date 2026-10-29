@@ -48,14 +48,14 @@ struct WorkspaceTabNavigator {
     }
 
     /// The placement that puts a tab back where it is now in its session.
-    func placement(of reference: String, in session: UInt64) -> TabPlacement {
+    private func placement(of reference: String, in session: UInt64) -> TabPlacement {
         let order = catalog.items(session: session, among: workflows).map(\.id)
         guard let index = order.firstIndex(of: reference), index + 1 < order.count else { return .end }
         return .before(order[index + 1])
     }
 
     /// Lets ⌘Z send a tab that moved between sessions back where it was, and ⌘⇧Z move it again.
-    func registerUndo(
+    private func registerUndo(
         of reference: String, from source: UInt64, to destination: UInt64, returningTo placement: TabPlacement,
         undoManager: UndoManager?
     ) {
@@ -69,13 +69,11 @@ struct WorkspaceTabNavigator {
             current.registerUndo(
                 of: reference, from: destination, to: source,
                 returningTo: current.placement(of: reference, in: destination), undoManager: undoManager)
-            let references = current.catalog.items(session: source, among: current.workflows).map(\.id)
             let isSelected = current.currentSession == destination && current.selectedReference == reference
             Task {
                 do {
                     try await current.move(
-                        reference, from: destination, to: source, at: placement, destinationReferences: references,
-                        isSelected: isSelected)
+                        reference, from: destination, to: source, at: placement, isSelected: isSelected)
                 } catch {
                     tabLogger.error("Could not undo a tab move: \(error.localizedDescription, privacy: .public)")
                 }
@@ -107,13 +105,30 @@ struct WorkspaceTabNavigator {
         }
     }
 
-    /// Moves a tab within its session or to another one. Workflows move in core with every pane of their split;
-    /// files and browser pages move between session arrangements. A selected tab stays selected, so its new
-    /// session becomes the current one.
+    /// Moves a tab within its session or to another one, and lets ⌘Z send it back when it changed sessions. A
+    /// file that merges into a tab the destination already holds can't be separated again, so that move isn't
+    /// undoable.
     func move(
         _ reference: String, from source: UInt64, to destination: UInt64, at placement: TabPlacement = .end,
-        destinationReferences: [String], isSelected: Bool
+        undoManager: UndoManager?
     ) async throws {
+        let returning = self.placement(of: reference, in: source)
+        let merges = WorkspaceTabsModel.isPage(reference) && model.holds(reference, session: destination)
+        try await move(
+            reference, from: source, to: destination, at: placement,
+            isSelected: currentSession == source && selectedReference == reference)
+        if !merges {
+            registerUndo(of: reference, from: source, to: destination, returningTo: returning, undoManager: undoManager)
+        }
+    }
+
+    /// Workflows move in core with every pane of their split; files and browser pages move between session
+    /// arrangements. A selected tab stays selected, so its new session becomes the current one.
+    private func move(
+        _ reference: String, from source: UInt64, to destination: UInt64, at placement: TabPlacement,
+        isSelected: Bool
+    ) async throws {
+        let destinationReferences = catalog.items(session: destination, among: workflows).map(\.id)
         if source != destination, reference.hasPrefix("workflow:"), let root = UInt64(reference.dropFirst(9)) {
             var moved: [UInt64] = []
             do {

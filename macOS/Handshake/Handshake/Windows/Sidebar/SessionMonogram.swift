@@ -4,7 +4,7 @@ import SwiftUI
 struct SessionMonogram: View {
     let letters: String
     let isActive: Bool
-    var size: CGFloat = SidebarLayout.monogramSize
+    private let size = SidebarLayout.monogramSize
 
     var body: some View {
         Text(letters)

@@ -88,8 +88,10 @@ final class BrowserTabsModel {
         tab.changed = { [weak self] in self?.remember() }
         tab.popup = { [weak self, weak tab] configuration in
             guard let self, let tab, !isClosing, tabs.contains(where: { $0 === tab }) else { return nil }
-            return insert(snapshot: .init(id: UUID()), configuration: configuration, select: true, hasNavigated: true)
-                .webView
+            let popup = insert(
+                snapshot: .init(id: UUID()), configuration: configuration, select: true, hasNavigated: true)
+            popup.agentSession = tab.agentSession
+            return popup.webView
         }
         tab.closeRequested = { [weak self, weak tab] in if let tab { self?.close(tab.id) } }
         tabs.append(tab)

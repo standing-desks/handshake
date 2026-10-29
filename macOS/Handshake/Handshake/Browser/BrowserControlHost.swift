@@ -126,6 +126,10 @@ final class BrowserControlHost {
                 let tab: BrowserTab
                 if job.action.action == "open" {
                     tab = browsers.createControlled(id: id)
+                    tab.agentSession =
+                        core.snapshot?.workflows.workflows.first {
+                            $0.terminalIDs.contains(job.terminal)
+                        }?.sessionID
                     tab.controlOwner = job.session
                     tab.stopControl = { [weak self] in self?.stop(job.session) }
                     tab.controlDidClose = { [weak self] in self?.closed(job.tab) }

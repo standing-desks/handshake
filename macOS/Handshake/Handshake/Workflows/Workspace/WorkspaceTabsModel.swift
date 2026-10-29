@@ -231,16 +231,17 @@ extension WorkspaceTabsModel {
         update(value, session: session)
     }
 
-    /// Pages that no listed session holds join `session`. This places tabs opened before sessions held
-    /// pages, and any left by a session that no longer exists.
-    func adoptUnheld(_ references: [String], session: UInt64?, sessions: Set<UInt64>) {
+    /// Pages that no listed session holds join the listed session `owners` names for them, or else `session`.
+    /// This places pages agents open, tabs opened before sessions held pages, and any left by a session that
+    /// no longer exists.
+    func adoptUnheld(
+        _ references: [String], session: UInt64?, sessions: Set<UInt64>, owners: [String: UInt64] = [:]
+    ) {
         let held = Set(
             saved.arrangements.filter { key, _ in UInt64(key).map(sessions.contains) == true }.values.flatMap(\.pages))
-        let unheld = references.filter { Self.isPage($0) && !held.contains($0) }
-        guard !unheld.isEmpty else { return }
-        var value = arrangement(session)
-        value.pages += unheld.filter { !value.pages.contains($0) }
-        update(value, session: session)
+        for reference in references where Self.isPage(reference) && !held.contains(reference) {
+            adopt(reference, session: owners[reference].flatMap { sessions.contains($0) ? $0 : nil } ?? session)
+        }
     }
 
     /// Removes a tab from one session's arrangement. Returns whether another session still holds it.

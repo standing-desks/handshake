@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 
 struct SessionRow: View {
@@ -16,9 +15,6 @@ struct SessionRow: View {
     let rename: () -> Void
     let delete: () -> Void
     var newWorkflow: (() -> Void)?
-    /// Option-clicking a disclosure triangle expands or collapses every session, as in Finder.
-    var setAllExpanded: ((Bool) -> Void)?
-    var switchLayout: (() -> Void)?
     @State private var isHovered = false
 
     var body: some View {
@@ -76,14 +72,7 @@ struct SessionRow: View {
 
     private func disclosure(_ isExpanded: Binding<Bool>) -> some View {
         Button {
-            let expand = !isExpanded.wrappedValue
-            withAnimation(reduceMotion ? nil : Motion.sectionToggle) {
-                if NSEvent.modifierFlags.contains(.option), let setAllExpanded {
-                    setAllExpanded(expand)
-                } else {
-                    isExpanded.wrappedValue = expand
-                }
-            }
+            withAnimation(reduceMotion ? nil : Motion.sectionToggle) { isExpanded.wrappedValue.toggle() }
         } label: {
             Image(systemName: "chevron.right")
                 .font(.system(size: 9, weight: .semibold)).foregroundStyle(.secondary)
@@ -133,12 +122,10 @@ struct SessionRow: View {
         }
         Button("Rename Session", systemImage: "pencil", action: rename)
         Button("Delete Session", systemImage: "trash", role: .destructive, action: delete)
-        if let switchLayout {
-            Divider()
-            Button(
-                tabLayout.toggleTitle,
-                systemImage: tabLayout == .sidebar ? "rectangle.topthird.inset.filled" : "sidebar.left",
-                action: switchLayout)
-        }
+        Divider()
+        Button(
+            tabLayout.toggleTitle,
+            systemImage: tabLayout == .sidebar ? "rectangle.topthird.inset.filled" : "sidebar.left"
+        ) { tabLayout = tabLayout.toggled }
     }
 }

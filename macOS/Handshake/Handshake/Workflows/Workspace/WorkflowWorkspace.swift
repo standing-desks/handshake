@@ -53,8 +53,7 @@ struct WorkflowWorkspace: View {
                 WorkspaceTabBar(
                     model: tabManagement, folder: folder, sessionID: sessionID, workflows: allWorkflows,
                     tabWorkflows: tabWorkflows, selectedRoot: selectedRoot, selection: $selection,
-                    close: closeGroup, closeFile: tabClosing.closeFile, closeBrowser: tabClosing.closeBrowser,
-                    cancel: cancelAgent,
+                    close: closeGroup, closeFile: tabClosing.closeFile, cancel: cancelAgent,
                     create: { Task { await create() } }, reportFailure: { failureMessage = $0 })
                 if tabLayout == .top { TerminalSplitControls(split: split, isEnabled: canSplit) }
             }

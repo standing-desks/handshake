@@ -279,9 +279,6 @@ extension FolderView {
     private func sidebar(compact: Bool) -> some View {
         FolderSidebar(
             path: path, files: files, memories: memories, tabManagement: tabManagement, selection: $selection,
-            presentation: sidebarPresentation, compact: compact,
-            dock: {
-                withAnimation(reduceMotion ? nil : Motion.sidebarReveal) { sidebarVisibility = .all }
-            })
+            presentation: sidebarPresentation, compact: compact)
     }
 }

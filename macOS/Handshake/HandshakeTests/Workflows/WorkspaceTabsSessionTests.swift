@@ -48,6 +48,14 @@ struct WorkspaceTabsSessionTests {
         #expect(model.arrangement(20).pages == ["file:/tmp/held.swift"])
     }
 
+    @Test func pagesAgentsOpenJoinTheAgentsSessionWhileItExists() throws {
+        let model = WorkspaceTabsModel(folder: "/tmp/agents", defaults: try store())
+        let (agent, orphan) = ("browser:\(UUID())", "browser:\(UUID())")
+        model.adoptUnheld([agent, orphan], session: 10, sessions: [10, 20], owners: [agent: 20, orphan: 30])
+        #expect(model.arrangement(20).pages == [agent])
+        #expect(model.arrangement(10).pages == [orphan])
+    }
+
     @Test func movingToAnotherSessionUnpinsAndKeepsPinnedTabsFirst() throws {
         let model = WorkspaceTabsModel(folder: "/tmp/transfer", defaults: try store())
         model.reconcile(["workflow:1", "workflow:2"], session: 10)

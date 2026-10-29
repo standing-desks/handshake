@@ -9,6 +9,8 @@ final class BrowserTab: NSObject, Identifiable, WKNavigationDelegate, WKUIDelega
     let webView: WKWebView
     private(set) var navigationGeneration: UInt64 = 0
     var controlOwner: String?
+    /// The session of the agent that opened this page, which holds it when it first appears.
+    var agentSession: UInt64?
     var stopControl: (() -> Void)?
     var controlDidClose: (() -> Void)?
     var customName: String? { didSet { changed?() } }
