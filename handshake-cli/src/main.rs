@@ -3,7 +3,7 @@ mod mcp;
 use handshake_core::browser_control::{Action, ElementState, Request};
 use std::path::Path;
 
-const HELP: &str = "Usage: handshake browser [--tab ID] COMMAND [ARGS]\n\nCommands: list, open URL, navigate URL, snapshot, click ELEMENT, hover ELEMENT,\n  fill ELEMENT TEXT, select ELEMENT VALUE, press KEY, scroll PIXELS, screenshot,\n  wait TEXT, wait-url SUBSTRING, wait-load, wait-element ELEMENT visible|hidden|enabled,\n  console, close\n\nKeys: Enter, Tab, Escape, Backspace, Delete, Space, Home, End, PageUp, PageDown,\n  arrows or a single letter, with optional Shift+, Control+, Alt+, Meta+ modifiers.\nSelect uses native typeahead for options with a unique initial ASCII letter; other\noptions require manual selection. Meta shortcuts support arrows and Backspace;\nControl/Alt support arrows and deletion. Edit-menu shortcuts (Meta+A/Z) are not supported;\nfill replaces a text field without Select All.\nSnapshots include nested same-origin frames and open shadow roots. Cross-origin\nframes are reported as unavailable; refs become stale when their document changes.\nRun from a Handshake terminal. open returns a tab ID; subsequent commands\nrequire --tab ID. screenshot returns base64 PNG in JSON. Commands time out after 30s.\nStop / Take over revokes authority; start a new terminal to grant it again.\nCodex launches receive a session-local MCP browser tool (browser mcp). Other\nsandboxed agents may request normal approval for the exact CLI command; never\ndisable their sandbox to connect.\n";
+const HELP: &str = "Usage: handshake browser [--tab ID] COMMAND [ARGS]\n\nCommands: list, open URL_OR_PATH, navigate URL_OR_PATH, snapshot, click ELEMENT, hover ELEMENT,\n  fill ELEMENT TEXT, select ELEMENT VALUE, press KEY, scroll PIXELS, screenshot,\n  wait TEXT, wait-url SUBSTRING, wait-load, wait-element ELEMENT visible|hidden|enabled,\n  console, close\n\nKeys: Enter, Tab, Escape, Backspace, Delete, Space, Home, End, PageUp, PageDown,\n  arrows or a single letter, with optional Shift+, Control+, Alt+, Meta+ modifiers.\nSelect uses native typeahead for options with a unique initial ASCII letter; other\noptions require manual selection. Meta shortcuts support arrows and Backspace;\nControl/Alt support arrows and deletion. Edit-menu shortcuts (Meta+A/Z) are not supported;\nfill replaces a text field without Select All.\nSnapshots include nested same-origin frames and open shadow roots. Cross-origin\nframes are reported as unavailable; refs become stale when their document changes.\nOpen and navigate accept HTTP(S), file:// URLs, and local paths (relative to the CLI working directory). Local pages can load assets from their directory.\nOpening, navigation and inspection keep your current tab selected; native input and screenshots reveal the browser.\nRun from a Handshake terminal. open returns a tab ID; subsequent commands\nrequire --tab ID. screenshot returns base64 PNG in JSON. Commands time out after 30s.\nStop / Take over revokes authority; start a new terminal to grant it again.\nCodex launches receive a session-local MCP browser tool (browser mcp). Other\nsandboxed agents may request normal approval for the exact CLI command; never\ndisable their sandbox to connect.\n";
 
 fn parse(args: &[String], token: String) -> Result<Request, String> {
     let mut args = args.iter().map(String::as_str);
@@ -25,8 +25,12 @@ fn parse(args: &[String], token: String) -> Result<Request, String> {
     };
     let action = match next {
         "list" => Action::List,
-        "open" => Action::Open { url: argument()? },
-        "navigate" => Action::Navigate { url: argument()? },
+        "open" => Action::Open {
+            url: navigation_target(argument()?)?,
+        },
+        "navigate" => Action::Navigate {
+            url: navigation_target(argument()?)?,
+        },
         "snapshot" => Action::Snapshot,
         "click" => Action::Click {
             element: argument()?,
@@ -69,6 +73,27 @@ fn parse(args: &[String], token: String) -> Result<Request, String> {
         return Err("Unexpected arguments".into());
     }
     Ok(Request { token, tab, action })
+}
+
+fn navigation_target(value: String) -> Result<String, String> {
+    if value.is_empty() {
+        return Err("A URL or file path is required".into());
+    }
+    // Resolve paths in the caller's directory, before sending them to the app host.
+    let has_scheme = value.split_once(':').is_some_and(|(scheme, _)| {
+        scheme.starts_with(|c: char| c.is_ascii_alphabetic())
+            && scheme
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
+    });
+    if has_scheme {
+        return Ok(value);
+    }
+    std::path::absolute(value)
+        .map_err(|error| error.to_string())?
+        .into_os_string()
+        .into_string()
+        .map_err(|_| "The file path must be UTF-8".into())
 }
 
 fn run() -> Result<bool, Box<dyn std::error::Error>> {
@@ -132,6 +157,29 @@ fn main() -> std::process::ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn resolves_local_paths_in_the_callers_directory() {
+        for relative in [
+            "reports/my page #1.html",
+            "./reports/12:30.html",
+            "reports/build:debug/index.html",
+        ] {
+            let expected = std::path::absolute(relative).unwrap();
+            assert_eq!(
+                navigation_target(relative.into()).unwrap(),
+                expected.to_str().unwrap()
+            );
+        }
+        for value in [
+            "https://example.test",
+            "file:///tmp/my%20page.html",
+            "javascript:alert(1)",
+        ] {
+            assert_eq!(navigation_target(value.into()).unwrap(), value);
+        }
+        assert!(navigation_target(String::new()).is_err());
+    }
+
     #[test]
     fn preserves_literal_input_and_rejects_extra_arguments() {
         let args = ["browser", "--tab", "tab", "fill", "e1", "a\n'b"].map(str::to_owned);

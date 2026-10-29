@@ -145,7 +145,7 @@ final class BrowserControlHost {
                     browsers.close(id)
                     result = .init(success: true)
                 } else {
-                    browsers.select(id)
+                    if BrowserAutomationDriver.requiresVisiblePage(job.action) { browsers.select(id) }
                     result = try await BrowserAutomationDriver(tab: tab).execute(job.action)
                 }
             }

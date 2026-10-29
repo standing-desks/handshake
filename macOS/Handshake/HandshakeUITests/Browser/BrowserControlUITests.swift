@@ -2,6 +2,40 @@ import XCTest
 
 extension HandshakeUITests {
     @MainActor
+    func testBrowserCLIOpensLocalFilesWithoutLeavingTheTerminal() async throws {
+        let folder = try makeTestFolder(prefix: "HandshakeLocalBrowser")
+        let page = folder.appending(path: "my page #1.html")
+        try "document.title='Local assets loaded';document.body.textContent='Local script works';".write(
+            to: folder.appending(path: "asset.js"), atomically: true, encoding: .utf8)
+        // Run after the body exists so the fixture verifies a real sibling resource load.
+        try "<title>Local page</title><body><script src='asset.js'></script></body>".write(
+            to: page, atomically: true, encoding: .utf8)
+        let app = try managedTabApp(folder: folder)
+        let config = folder.appending(path: "browser-config.toml")
+        try "[experimental]\nbrowser_control = true\n".write(to: config, atomically: true, encoding: .utf8)
+        app.launchEnvironment["HANDSHAKE_CONFIG_PATH"] = config.path
+        app.launch()
+        defer { app.terminate() }
+        XCTAssertTrue(app.buttons["workflowTab-1"].waitForExistence(timeout: 10))
+        let cli = try BrowserCLIProbe(directory: folder)
+        app.typeText("sh browser-driver.sh &\r")
+        waitForFile(folder.appending(path: "browser-ready"), containing: "ready", in: app)
+        let opened = try await cli.run(["open", "my page #1.html"])
+        let tab = try XCTUnwrap(opened["tab"] as? String)
+        _ = try await cli.run(["--tab", tab, "wait", "Local script works"])
+        _ = try await cli.run(["--tab", tab, "snapshot"])
+        _ = try await cli.run(["--tab", tab, "navigate", page.absoluteString])
+        _ = try await cli.run(["--tab", tab, "wait-load"])
+        XCTAssertFalse(app.textFields["browserAddress"].exists)
+        app.typeText("printf 'still in terminal' > keyboard-result\r")
+        waitForFile(folder.appending(path: "keyboard-result"), containing: "still in terminal", in: app)
+        _ = try await cli.run(["--tab", tab, "navigate", folder.appending(path: "missing.html").path], succeeds: false)
+        _ = try await cli.run(["--tab", tab, "press", "ArrowDown"])
+        XCTAssertTrue(app.textFields["browserAddress"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.webViews.staticTexts["Local script works"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
     func testBrowserCLIControlsNativePageAndUserCanTakeOver() async throws {
         let folder = try makeTestFolder(prefix: "HandshakeBrowserControl")
         let server = try BrowserFixtureServer(root: folder.appending(path: "site"))
@@ -23,6 +57,7 @@ extension HandshakeUITests {
         try await verifyBrowserActions(cli, opened: opened, tab: tab, server: server, app: app)
         try await verifyClosingPendingTab(cli, server: server, app: app)
         _ = try await cli.run(["--tab", tab, "snapshot"])
+        app.buttons["browserTab-\(tab.uppercased())"].click()
         let pending = try cli.start(["--tab", tab, "wait", "never appears"])
         try await Task.sleep(for: .milliseconds(200))
         app.buttons["browserStopControl"].click()
@@ -46,6 +81,7 @@ extension HandshakeUITests {
         let otherID = try XCTUnwrap(other["tab"] as? String)
         let pending = try cli.start(["--tab", otherID, "wait", "never appears"])
         try await Task.sleep(for: .milliseconds(200))
+        app.buttons["browserTab-\(otherID.uppercased())"].click()
         app.typeKey("w", modifierFlags: .command)
         let cancelled = try await cli.finish(pending)
         XCTAssertEqual((cancelled["error"] as? [String: Any])?["code"] as? String, "cancelled")
@@ -60,8 +96,8 @@ extension HandshakeUITests {
         let elements = try XCTUnwrap(snapshot["elements"] as? [[String: Any]])
         let input = try XCTUnwrap(elements.first { $0["name"] as? String == "Name" }?["ref"] as? String)
         let button = try XCTUnwrap(elements.first { $0["name"] as? String == "Save" }?["ref"] as? String)
-        XCTAssertTrue(app.buttons["browserStopControl"].waitForExistence(timeout: 5))
         _ = try await cli.run(["--tab", tab, "fill", input, "From the agent"])
+        XCTAssertTrue(app.buttons["browserStopControl"].waitForExistence(timeout: 5))
         _ = try await cli.run(["--tab", tab, "press", "ArrowLeft"])
         _ = try await cli.run(["--tab", tab, "wait", "key:ArrowLeft:true"])
         _ = try await cli.run(["--tab", tab, "click", button])

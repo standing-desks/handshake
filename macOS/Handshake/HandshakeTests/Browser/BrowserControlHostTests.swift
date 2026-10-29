@@ -60,6 +60,7 @@ struct BrowserControlHostTests {
             """)
         try await waitUntil { !browsers.tabs.isEmpty }
         #expect(browsers.tabs.first?.agentSession == 2)
+        #expect(browsers.selection.content == nil)
         try await waitUntil { await transport.pollCount == 2 }
         running.cancel()
         await transport.releasePoll()
