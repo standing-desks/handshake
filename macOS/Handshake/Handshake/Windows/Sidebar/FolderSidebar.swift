@@ -36,33 +36,17 @@ struct FolderSidebar: View {
                 case (true, false): 1
                 default: 0
                 }
+            let filesHeight = availableHeight * (presentation.isFilesExpanded ? 1 - sessionsShare : 0)
             ScrollView {
                 VStack(spacing: 0) {
-                    sectionHeader("Sessions", isExpanded: $presentation.isSessionsExpanded) {
-                        Button(action: create) {
-                            Image(systemName: "plus").font(.system(size: 11, weight: .semibold))
-                                .frame(width: 26, height: 26)
-                        }
-                        .buttonStyle(.plain).help("New Session")
-                        .accessibilityLabel("New Session").accessibilityIdentifier("newSession")
+                    // The sidebar layout puts its navigation first; the top layout keeps Files first.
+                    if tabLayout == .sidebar {
+                        sessionsSection(height: availableHeight * sessionsShare)
+                        filesSection(height: filesHeight)
+                    } else {
+                        filesSection(height: filesHeight)
+                        sessionsSection(height: availableHeight * sessionsShare)
                     }
-                    SectionViewport(
-                        isExpanded: presentation.isSessionsExpanded && !memories.isExpanded,
-                        height: availableHeight * sessionsShare
-                    ) {
-                        ScrollView {
-                            sessionList.padding(.horizontal, SidebarLayout.contentInset)
-                        }
-                    }
-                    Divider().frame(height: 1).padding(.horizontal, SidebarLayout.contentInset)
-                    sectionHeader("Files", isExpanded: $presentation.isFilesExpanded) { EmptyView() }
-                    SectionViewport(
-                        isExpanded: presentation.isFilesExpanded && !memories.isExpanded,
-                        height: availableHeight * (presentation.isFilesExpanded ? 1 - sessionsShare : 0)
-                    ) {
-                        FileTree(folder: path, model: files)
-                    }
-                    Divider().frame(height: 1).padding(.horizontal, SidebarLayout.contentInset)
                     MemorySidebar(model: memories, folder: path, contentHeight: availableHeight) {
                         guard let source = memories.selected else { return }
                         let request = memories.request(folder: path, sourceID: source.id)
@@ -80,6 +64,31 @@ struct FolderSidebar: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .clipped()
+    }
+
+    @ViewBuilder private func sessionsSection(height: CGFloat) -> some View {
+        sectionHeader("Sessions", isExpanded: $presentation.isSessionsExpanded) {
+            Button(action: create) {
+                Image(systemName: "plus").font(.system(size: 11, weight: .semibold))
+                    .frame(width: 26, height: 26)
+            }
+            .buttonStyle(.plain).help("New Session")
+            .accessibilityLabel("New Session").accessibilityIdentifier("newSession")
+        }
+        SectionViewport(isExpanded: presentation.isSessionsExpanded && !memories.isExpanded, height: height) {
+            ScrollView {
+                sessionList.padding(.horizontal, SidebarLayout.contentInset)
+            }
+        }
+        Divider().frame(height: 1).padding(.horizontal, SidebarLayout.contentInset)
+    }
+
+    @ViewBuilder private func filesSection(height: CGFloat) -> some View {
+        sectionHeader("Files", isExpanded: $presentation.isFilesExpanded) { EmptyView() }
+        SectionViewport(isExpanded: presentation.isFilesExpanded && !memories.isExpanded, height: height) {
+            FileTree(folder: path, model: files)
+        }
+        Divider().frame(height: 1).padding(.horizontal, SidebarLayout.contentInset)
     }
 
     /// The rail keeps the full sidebar's row heights, so each icon stays put when the rail widens.

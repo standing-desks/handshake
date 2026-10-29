@@ -21,13 +21,13 @@ switch layouts from the context menus of tabs, sessions, and the tab bar
 upgrading from the tab bar get the sidebar layout, with a one-time hint in the
 toolbar subtitle.
 
-In both layouts, the Sessions section comes before Files and Memories, and sessions
-use a letter monogram. In the sidebar layout:
+Sessions use a letter monogram in both layouts. In the sidebar layout:
 
-- Each session discloses its tabs as rows: its workflows (one row per terminal
-  split), files, and browser pages. Rows show the kind symbol or pin, activity
-  (running, done, or needs attention), pane count, and the edited dot. A collapsed
-  session shows its tab count and most urgent activity.
+- The Sessions section comes before Files and Memories. Each session discloses its
+  tabs as rows: its workflows (one row per terminal split), files, and browser
+  pages. Rows show the kind symbol or pin, activity (running, done, or needs
+  attention), pane count, and the edited dot. A collapsed session shows its tab
+  count and most urgent activity.
 - There is no tab bar. The terminal panel takes its height and draws its full
   hairline. Split Right, Split Down, New Workflow, New Browser Tab, and Find Open Tab
   move into the window toolbar, immediately before Keep Awake, which keeps its
