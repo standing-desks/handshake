@@ -23,6 +23,14 @@ struct WorkflowDecisionSurface: View {
         return run.workflowType?.definition.roles.first { $0.id == edges[0].to }?.name ?? edges[0].to
     }
 
+    private func selectedName(_ output: String) -> String {
+        let fallback = node?.outputs.first { $0.id == output }?.name ?? output
+        guard node?.kind == .choice else { return fallback }
+        let definition = run.workflowType?.definition
+        let destination = definition?.graph?.edges.first { $0.from == role && $0.output == output }?.to
+        return definition?.roles.first { $0.id == destination }?.name ?? fallback
+    }
+
     private var isCompleted: Bool { run.agents.first { $0.id == agent.id }?.status == .completed }
 
     var body: some View {
@@ -55,7 +63,7 @@ struct WorkflowDecisionSurface: View {
                         "Inputs passed through to \(destination).",
                         systemImage: "arrow.right")
                 } else if let output = run.decisionOutputs[key] {
-                    let name = node?.outputs.first { $0.id == output }?.name ?? output
+                    let name = selectedName(output)
                     Label("Selected output: \(name)", systemImage: "arrow.right.circle")
                 } else {
                     Text(

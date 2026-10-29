@@ -68,30 +68,14 @@ impl Application {
             .cloned()
             .collect();
         for agent in agents {
-            let mut node = run
+            let node = run
                 .workflow_type
                 .definition
                 .graph
                 .as_ref()
                 .expect("graph")
                 .decisions[&agent.role]
-                .clone();
-            let graph = run.workflow_type.definition.graph.as_ref().expect("graph");
-            for option in &mut node.options {
-                if let Some(edge) = graph.edges.iter().find(|edge| {
-                    edge.from == agent.role
-                        && edge.id == option.id
-                        && edge.output.as_ref() == Some(&option.id)
-                }) && let Some(role) = run
-                    .workflow_type
-                    .definition
-                    .roles
-                    .iter()
-                    .find(|role| role.id.0 == edge.to)
-                {
-                    option.name.clone_from(&role.name);
-                }
-            }
+                .with_connected_names(&run.workflow_type.definition, &agent.role);
             let request = run
                 .graph
                 .as_mut()
@@ -245,7 +229,7 @@ impl Application {
             .as_ref()
             .expect("graph")
             .decisions[&role]
-            .clone();
+            .with_connected_names(&run.workflow_type.definition, &role);
         let routed = result.and_then(|report| match node.route(&report) {
             Ok(output) => Ok((report, output)),
             Err(error) => {

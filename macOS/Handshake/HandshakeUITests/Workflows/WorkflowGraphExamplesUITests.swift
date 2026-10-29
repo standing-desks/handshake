@@ -67,15 +67,12 @@ extension HandshakeUITests {
         editor.drag(app.buttons["Connect from Router"], to: app.buttons["Connect to Planner"])
         XCTAssertTrue(app.buttons["Router to Planner: Planner"].waitForExistence(timeout: 5))
         origin.click()
-        XCTAssertTrue(app.staticTexts["2 of 2 outputs need routing criteria."].waitForExistence(timeout: 5))
-        XCTAssertFalse(editor.item("designerSave").isEnabled)
-        let criteria = app.descendants(matching: .any).matching(
-            NSPredicate(format: "identifier BEGINSWITH 'decisionCriterion-'"))
-        XCTAssertEqual(criteria.count, 2)
-        for (index, field) in criteria.allElementsBoundByIndex.enumerated() {
-            editor.replace(
-                field.identifier, with: index == 0 ? "The implementation is specified." : "A plan is needed.")
-        }
+        XCTAssertTrue(editor.item("decisionQuestion").waitForExistence(timeout: 5))
+        editor.replace("decisionQuestion", with: "Which agent should handle the incoming work?")
+        let options = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH 'decisionOption-'"))
+        XCTAssertEqual(options.count, 2)
+        XCTAssertFalse(app.textFields["When should work go here?"].exists)
         let image = XCTAttachment(screenshot: app.screenshot())
         image.name = "Decision routing popup"
         image.lifetime = .keepAlways

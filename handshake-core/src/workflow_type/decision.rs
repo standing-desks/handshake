@@ -66,6 +66,35 @@ pub enum DecisionResultError {
 }
 
 impl DecisionNode {
+    /// Choice labels come from connected agents; persisted option IDs keep the mapping stable.
+    pub(crate) fn with_connected_names(
+        &self,
+        definition: &super::WorkflowTypeDefinition,
+        role: &str,
+    ) -> Self {
+        let mut node = self.clone();
+        if node.kind != DecisionKind::Choice {
+            return node;
+        }
+        if let Some(graph) = &definition.graph {
+            for option in &mut node.options {
+                if let Some(edge) = graph
+                    .edges
+                    .iter()
+                    .find(|edge| edge.from == role && edge.output.as_ref() == Some(&option.id))
+                    && let Some(target) = definition
+                        .roles
+                        .iter()
+                        .find(|target| target.id.0 == edge.to)
+                {
+                    option.name.clone_from(&target.name);
+                    option.description.clone_from(&target.name);
+                }
+            }
+        }
+        node
+    }
+
     pub(crate) fn validate(&self) -> bool {
         let text = |s: &str| !s.trim().is_empty() && s.len() <= 8_192;
         let selector = |s: &str| crate::harness::launch::validate_model(s).is_some();
@@ -121,7 +150,7 @@ impl DecisionNode {
     pub(crate) fn request(&self, task: &str, incoming: &str) -> Value {
         let answer_space = match self.kind {
             DecisionKind::Choice => {
-                json!({"type":"choice", "options": self.options.iter().map(|o| json!({"id":o.id,"description":format!("{}: {}",o.name,o.description)})).collect::<Vec<_>>()})
+                json!({"type":"choice", "options": self.options.iter().map(|o| json!({"id":o.id,"description":if o.name == o.description { o.name.clone() } else { format!("{}: {}",o.name,o.description) }})).collect::<Vec<_>>()})
             }
             DecisionKind::Noul => json!({"type":"noul"}),
             DecisionKind::Score => {
@@ -370,6 +399,52 @@ mod tests {
         assert_eq!(node.route(&report), Err(DecisionResultError::Invalid));
     }
     #[test]
+    fn choice_request_uses_connected_agent_names_without_routing_criteria() {
+        let file: toml::Value = toml::from_str(include_str!(
+            "../../../examples/workflows/decision-triage.toml"
+        ))
+        .unwrap();
+        let mut definition: crate::WorkflowTypeDefinition =
+            file["definition"].clone().try_into().unwrap();
+        for option in &mut definition
+            .graph
+            .as_mut()
+            .unwrap()
+            .decisions
+            .get_mut("classify")
+            .unwrap()
+            .options
+        {
+            option.name = "Stale option".into();
+            option.description.clear();
+        }
+        definition
+            .roles
+            .iter_mut()
+            .find(|role| role.id.0 == "scope")
+            .unwrap()
+            .name = "Plan the work".into();
+        crate::validate(&definition).unwrap();
+        let node = definition.graph.as_ref().unwrap().decisions["classify"]
+            .with_connected_names(&definition, "classify");
+        let request = node.request("Incoming task", "Prepared evidence");
+        assert_eq!(request["questions"][0]["prompt"], node.question);
+        assert_eq!(
+            request["questions"][0]["answer_space"]["options"],
+            json!([
+                {"id":"feature", "description":"Plan the work"},
+                {"id":"fix", "description":"Debugger"},
+                {"id":"other", "description":"Coordinator"}
+            ])
+        );
+        assert_eq!(
+            request["state"][0]["data"]["workflow_task"],
+            "Incoming task"
+        );
+        assert_eq!(request["state"][1]["text"], "Prepared evidence");
+    }
+
+    #[test]
     fn four_connections_with_two_options_are_rejected() {
         let file: toml::Value = toml::from_str(include_str!(
             "../../../examples/workflows/decision-triage.toml"
@@ -396,7 +471,7 @@ mod tests {
             issue
                 .problem
                 .to_string()
-                .contains("2 of 4 outputs need routing criteria")
+                .contains("2 of 4 connections are missing options")
         }));
     }
 

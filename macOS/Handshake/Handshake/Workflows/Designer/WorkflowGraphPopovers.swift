@@ -200,11 +200,7 @@ struct WorkflowLinkPopover: View {
                 if model.definition.graph?.agentEdges.filter({ $0.from == edge.from }).count == 1 {
                     Text("Passthrough: forward inputs directly.").font(.caption).foregroundStyle(.secondary)
                 } else if decision.kind == .choice && decision.minConfidence == nil {
-                    TextField("When should work go here?", text: model.routeCriterion(edge), axis: .vertical)
-                        .labelsHidden().multilineTextAlignment(.leading).lineLimit(2...6)
-                        .accessibilityLabel("Routing criterion")
-                    Text("Nouli chooses one connected route using these criteria.")
-                        .font(.caption).foregroundStyle(.secondary)
+                    Text("Nouli option: \(name(edge.to))").font(.caption).foregroundStyle(.secondary)
                 } else {
                     Text(model.outputTitle(edge)).font(.caption).foregroundStyle(.secondary)
                 }

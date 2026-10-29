@@ -46,7 +46,11 @@ struct WorkflowGraphOverview: View {
         }
         func name(_ id: String) -> String { definition.roles.first { $0.id == id }?.name ?? "Agent" }
         let links = (graph?.agentEdges ?? []).map { edge in
-            let output = graph?.decisions[edge.from]?.outputs.first { $0.id == edge.output }?.name ?? edge.event.title
+            let decision = graph?.decisions[edge.from]
+            let output =
+                decision?.kind == .choice
+                ? name(edge.to)
+                : decision?.outputs.first { $0.id == edge.output }?.name ?? edge.event.title
             return "\(name(edge.from)) to \(name(edge.to)): \(output)"
         }
         return (agents + links).joined(separator: "; ")

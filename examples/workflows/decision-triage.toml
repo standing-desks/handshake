@@ -98,63 +98,58 @@ y = 570
 
 [definition.graph.decisions.ready]
 kind = "choice"
-question = "Does the request specify observable desired behavior and a way to verify it?"
+question = "Should this request go to Classify change, or should the Coordinator resolve missing requirements first?"
 include_task = true
 
 [[definition.graph.decisions.ready.options]]
 id = "yes"
-name = "Ready"
-description = "The desired behavior and verification method are clear enough to proceed."
+name = "Classify change"
+description = "Classify change"
 
 [[definition.graph.decisions.ready.options]]
 id = "no"
-name = "Needs detail"
-description = "Essential requirements are missing; ask for clarification."
-
-[[definition.graph.decisions.ready.options]]
-id = "uncertain"
-name = "Needs assessment"
-description = "The request contains conflicting or ambiguous requirements that need assessment."
+name = "Coordinator"
+description = "Coordinator"
 
 [definition.graph.decisions.classify]
 kind = "choice"
-question = "What kind of change does the request describe?"
+question = "Which connected agent should handle this request: Assess scope, Debugger, or Coordinator?"
 include_task = true
 
 [[definition.graph.decisions.classify.options]]
 id = "feature"
-name = "Feature"
-description = "Adds or extends a capability."
+name = "Assess scope"
+description = "Assess scope"
 
 [[definition.graph.decisions.classify.options]]
 id = "fix"
-name = "Fix"
-description = "Corrects behavior against an existing requirement."
+name = "Debugger"
+description = "Debugger"
 
 [[definition.graph.decisions.classify.options]]
 id = "other"
-name = "Other"
-description = "Documentation, maintenance, or work outside the other categories."
+name = "Coordinator"
+description = "Coordinator"
 
 [definition.graph.decisions.scope]
 kind = "choice"
-question = "How broad is the change based on the supplied implementation context?"
+question = "Which agent is best suited to own this change given its scope: Implementer, Planner, or Architect?"
 include_task = true
 
 [[definition.graph.decisions.scope.options]]
 id = "small"
-name = "Small"
-description = "One isolated change within a component."
+name = "Implementer"
+description = "Implementer"
 
 [[definition.graph.decisions.scope.options]]
 id = "medium"
-name = "Medium"
-description = "Related changes across several components."
+name = "Planner"
+description = "Planner"
 
 [[definition.graph.decisions.scope.options]]
 id = "large"
-name = "Large"
-description = "Architectural changes spanning subsystems."
+name = "Architect"
+description = "Architect"
 
 [[definition.graph.edges]]
 id = "ready-yes"
@@ -169,13 +164,6 @@ from = "ready"
 to = "coordinator"
 event = "done"
 output = "no"
-
-[[definition.graph.edges]]
-id = "ready-uncertain"
-from = "ready"
-to = "coordinator"
-event = "done"
-output = "uncertain"
 
 [[definition.graph.edges]]
 id = "classify-feature"

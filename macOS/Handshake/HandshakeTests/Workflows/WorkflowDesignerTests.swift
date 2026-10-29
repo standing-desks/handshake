@@ -209,7 +209,7 @@ struct WorkflowDesignerTests {
         manager.redo()
         #expect(model.definition == removed)
     }
-    @Test func decisionRoutesFollowConnectionsAndKeepCriteriaThroughEdits() throws {
+    @Test func decisionOptionsFollowConnectedAgentNames() throws {
         let model = WorkflowDesignerModel()
         model.enableGraph()
         let node = model.addGraphRole(at: .init(x: 200, y: 200))
@@ -222,8 +222,15 @@ struct WorkflowDesignerTests {
         #expect(edges.count == 4 && options.count == 4)
         #expect(Set(edges.map(\.id)) == Set(options.map(\.id)))
         #expect(edges.allSatisfy { $0.output == $0.id })
-        for edge in edges.prefix(2) { model.routeCriterion(edge).wrappedValue = "Criterion for \(edge.id)" }
-        #expect(model.definition.graph?.decisions[node]?.options.filter { $0.description.isEmpty }.count == 2)
+        for edge in edges {
+            let option = try #require(options.first { $0.id == edge.id })
+            #expect(option.name == model.nodeName(edge.to))
+            #expect(option.description == model.nodeName(edge.to))
+        }
+        model.definition.graph?.decisions[node]?.minConfidence = 6_000
+        model.definition.roles[1].name = "Renamed agent"
+        #expect(model.outputTitle(edges[0]) == "Renamed agent")
+        model.definition.graph?.decisions[node]?.minConfidence = nil
         model.removeGraphEdge(edges[3].id)
         #expect(model.definition.graph?.decisions[node]?.options.count == 3)
         model.removeGraphRole(receivers[2])

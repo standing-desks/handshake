@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Routing criteria belong to the connections drawn on the canvas.
+/// The question is evaluated against options named after the connected agents.
 struct WorkflowDecisionPopover: View {
     @Bindable var model: WorkflowDesignerModel
     let role: CoreWorkflowType.Role
@@ -19,14 +19,6 @@ struct WorkflowDecisionPopover: View {
 
     private var routes: [CoreWorkflowType.Edge] {
         model.definition.graph?.agentEdges.filter { $0.from == role.id } ?? []
-    }
-
-    private var usesCriteria: Bool {
-        decision.wrappedValue.kind == .choice && decision.wrappedValue.minConfidence == nil
-    }
-    private var missingCriteria: Int {
-        routes.filter { model.routeCriterion($0).wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-            .count
     }
 
     var body: some View {
@@ -71,13 +63,14 @@ struct WorkflowDecisionPopover: View {
                     Text("No decision is made and Nouli is not called.").font(.caption).foregroundStyle(.secondary)
                 }
             } else {
-                Section("Instructions") {
+                Section("Question") {
                     TextEditor(text: decision.question).font(.body).frame(height: 80)
-                        .scrollContentBackground(.hidden).accessibilityLabel("Routing instructions")
-                    Text("Tell Nouli how to choose one of the connected routes.").font(.caption).foregroundStyle(
+                        .scrollContentBackground(.hidden).accessibilityLabel("Decision question")
+                        .accessibilityIdentifier("decisionQuestion")
+                    Text("Ask Nouli which connected agent should receive the work.").font(.caption).foregroundStyle(
                         .secondary)
                 }
-                routeSettings
+                optionSettings
             }
             Section("Inputs") {
                 Toggle("Include the workflow task", isOn: decision.includeTask)
@@ -99,34 +92,22 @@ struct WorkflowDecisionPopover: View {
         }.formStyle(.grouped).scrollContentBackground(.hidden)
     }
 
-    private var routeSettings: some View {
-        Section("Routes") {
+    private var optionSettings: some View {
+        Section("Options") {
             if routes.isEmpty {
-                Text("Drag from the right connector to a receiving node.").foregroundStyle(.secondary)
+                Text("Connect the right circle to the agents Nouli can choose from.").foregroundStyle(.secondary)
                 Label("Connect an output.", systemImage: "exclamationmark.circle")
                     .foregroundStyle(Color.statusNeedsAttention)
             } else {
-                if usesCriteria && missingCriteria > 0 {
-                    Text("\(missingCriteria) of \(routes.count) outputs need routing criteria.")
-                        .font(.caption).foregroundStyle(Color.statusNeedsAttention)
-                }
                 ForEach(routes) { edge in
-                    VStack(alignment: .leading, spacing: 6) {
-                        Label(model.nodeName(edge.to), systemImage: "arrow.right")
-                        if usesCriteria {
-                            TextField("When should work go here?", text: model.routeCriterion(edge), axis: .vertical)
-                                .labelsHidden().textFieldStyle(.plain).multilineTextAlignment(.leading)
-                                .frame(maxWidth: .infinity, alignment: .leading).lineLimit(2...5)
-                                .accessibilityLabel("When to route to \(model.nodeName(edge.to))")
-                                .accessibilityIdentifier("decisionCriterion-\(edge.id)")
-                        } else {
-                            Text(model.outputTitle(edge)).font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
+                    Label(model.nodeName(edge.to), systemImage: "arrow.right")
+                        .accessibilityIdentifier("decisionOption-\(edge.id)")
                 }
-                Text("Add or remove routes by connecting or deleting wires on the canvas.")
+                Text("The connected agents’ names are the options. Add or remove a connection to change this list.")
                     .font(.caption).foregroundStyle(.secondary)
-                if !usesCriteria { importedPolicy }
+                if decision.wrappedValue.kind != .choice || decision.wrappedValue.minConfidence != nil {
+                    importedPolicy
+                }
             }
         }
     }

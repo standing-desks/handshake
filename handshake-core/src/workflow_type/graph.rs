@@ -280,12 +280,13 @@ fn check_decisions(
             );
         }
         if outgoing > 1 && decision.kind == super::DecisionKind::Choice {
-            check_route_criteria(graph, id, decision, outgoing, report);
+            check_choice_options(graph, id, decision, outgoing, report);
         }
-        if !roles.contains(id.as_str()) || !passthrough && !decision.validate() {
+        let valid = passthrough || decision.with_connected_names(definition, id).validate();
+        if !roles.contains(id.as_str()) || !valid {
             report(
                 ElementPath::Graph,
-                "decision needs a known role, a question, valid thresholds, and distinct described options",
+                "decision needs a known role, a question, valid thresholds, and distinct options",
             );
         }
         if graph.is_review(id)
@@ -338,7 +339,7 @@ fn check_decisions(
     }
 }
 
-fn check_route_criteria(
+fn check_choice_options(
     graph: &AgentGraph,
     role: &str,
     decision: &super::DecisionNode,
@@ -350,15 +351,17 @@ fn check_route_criteria(
         .iter()
         .filter(|edge| edge.from == role)
         .filter(|edge| {
-            !(decision.options.iter().any(|option| {
-                edge.output.as_ref() == Some(&option.id) && !option.description.trim().is_empty()
-            }) || edge.output.as_deref() == Some("fallback") && decision.min_confidence.is_some())
+            !(decision
+                .options
+                .iter()
+                .any(|option| edge.output.as_ref() == Some(&option.id))
+                || edge.output.as_deref() == Some("fallback") && decision.min_confidence.is_some())
         })
         .count();
     if missing > 0 {
         report(
             ElementPath::Graph,
-            &format!("{missing} of {outgoing} outputs need routing criteria"),
+            &format!("{missing} of {outgoing} connections are missing options"),
         );
     }
 }
