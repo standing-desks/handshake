@@ -10,30 +10,20 @@ struct SidebarPresentationTests {
         SidebarPresentation(peekDelay: .milliseconds(40), closeDelay: .milliseconds(80))
     }
 
-    /// Polls, so a busy test host can't make a timed transition look missing.
-    private func eventually(_ condition: () -> Bool) async -> Bool {
-        let deadline = ContinuousClock.now + .seconds(3)
-        while ContinuousClock.now < deadline {
-            if condition() { return true }
-            try? await Task.sleep(for: .milliseconds(10))
-        }
-        return condition()
-    }
-
-    @Test func restingOnTheRailPeeksAndLeavingReturnsToTheRail() async {
+    @Test func restingOnTheRailPeeksAndLeavingReturnsToTheRail() async throws {
         let presentation = presentation()
         presentation.pointerEntered()
         #expect(presentation.overlay == .rail, "The peek waits for the pointer to rest")
-        #expect(await eventually { presentation.overlay == .peek })
+        try await waitUntil { presentation.overlay == .peek }
         presentation.pointerExited()
         #expect(presentation.overlay == .peek, "Leaving forgives a short overshoot")
-        #expect(await eventually { presentation.overlay == .rail })
+        try await waitUntil { presentation.overlay == .rail }
     }
 
     @Test func returningDuringTheGraceKeepsThePeek() async throws {
         let presentation = presentation()
         presentation.pointerEntered()
-        #expect(await eventually { presentation.overlay == .peek })
+        try await waitUntil { presentation.overlay == .peek }
         presentation.pointerExited()
         presentation.pointerEntered()
         try await Task.sleep(for: .milliseconds(200))
@@ -51,15 +41,15 @@ struct SidebarPresentationTests {
     @Test func anOpenMenuKeepsThePeekUntilThePointerHasLeft() async throws {
         let presentation = presentation()
         presentation.pointerEntered()
-        #expect(await eventually { presentation.overlay == .peek })
+        try await waitUntil { presentation.overlay == .peek }
         presentation.menuTrackingChanged(isOpen: true)
         presentation.pointerExited()
         try await Task.sleep(for: .milliseconds(200))
         #expect(presentation.overlay == .peek)
         presentation.menuTrackingChanged(isOpen: false)
-        #expect(await eventually { presentation.overlay == .rail })
+        try await waitUntil { presentation.overlay == .rail }
         presentation.pointerEntered()
-        #expect(await eventually { presentation.overlay == .peek })
+        try await waitUntil { presentation.overlay == .peek }
         presentation.collapse()
         #expect(presentation.overlay == .rail)
     }
