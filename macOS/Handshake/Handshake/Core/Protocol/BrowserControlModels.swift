@@ -3,6 +3,7 @@ import Foundation
 nonisolated struct BrowserJob: Decodable, Sendable {
     let id: String
     let session: String
+    let terminal: UInt64
     let tab: String
     let action: BrowserAction
 }

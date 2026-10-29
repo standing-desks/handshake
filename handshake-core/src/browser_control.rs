@@ -88,6 +88,7 @@ pub struct Request {
 pub struct Job {
     pub id: String,
     pub session: String,
+    pub terminal: u64,
     pub tab: String,
     pub action: Action,
 }
@@ -110,7 +111,8 @@ struct Pending {
 #[derive(Default)]
 struct State {
     enabled: bool,
-    sessions: HashMap<String, String>,
+    /// Each credential's terminal.
+    sessions: HashMap<String, u64>,
     owners: HashMap<String, String>,
     pending: HashMap<String, Pending>,
     queue: VecDeque<String>,
@@ -119,6 +121,11 @@ struct State {
 pub struct BrowserControl {
     state: Arc<Mutex<State>>,
     server: server::Server,
+}
+
+/// The name that identifies a terminal's control of browser tabs, shown in the browser.
+fn session_name(terminal: u64) -> String {
+    format!("Terminal {terminal}")
 }
 
 pub(crate) fn failure(code: &str, message: &str) -> Value {
@@ -159,8 +166,7 @@ impl BrowserControl {
             return Vec::new();
         }
         let token = uuid::Uuid::new_v4().to_string();
-        let session = format!("Terminal {terminal}");
-        state.sessions.insert(token.clone(), session);
+        state.sessions.insert(token.clone(), terminal);
         let mut environment = vec![
             (
                 "HANDSHAKE_BROWSER_SOCKET".into(),
@@ -176,7 +182,7 @@ impl BrowserControl {
 
     pub(crate) fn stop_terminal(&self, terminal: u64) {
         let _ = self.host(HostCommand::Stop {
-            session: format!("Terminal {terminal}"),
+            session: session_name(terminal),
         });
     }
 
@@ -214,7 +220,9 @@ impl BrowserControl {
                 json!({"ok":true})
             }
             HostCommand::Stop { session } => {
-                state.sessions.retain(|_, value| value != &session);
+                state
+                    .sessions
+                    .retain(|_, terminal| session_name(*terminal) != session);
                 state.owners.retain(|_, value| value != &session);
                 state.cancel(
                     |p| p.job.session == session,
@@ -263,16 +271,13 @@ impl State {
                 "Enable Agent browser control in Settings > Experimental, then start a new terminal or agent.",
             ));
         }
-        let session = self
-            .sessions
-            .get(&request.token)
-            .ok_or_else(|| {
-                failure(
-                    "unauthorized",
-                    "This terminal has no browser authority, or the user stopped it.",
-                )
-            })?
-            .clone();
+        let terminal = *self.sessions.get(&request.token).ok_or_else(|| {
+            failure(
+                "unauthorized",
+                "This terminal has no browser authority, or the user stopped it.",
+            )
+        })?;
+        let session = session_name(terminal);
         if self.pending.len() >= 16 || self.pending.values().any(|p| p.job.session == session) {
             return Err(failure(
                 "busy",
@@ -306,6 +311,7 @@ impl State {
                 job: Job {
                     id,
                     session,
+                    terminal,
                     tab,
                     action: request.action,
                 },
@@ -401,6 +407,10 @@ mod tests {
             .unwrap();
         let poll = control.host(HostCommand::Poll);
         let job = &poll["jobs"][0];
+        assert_eq!(
+            (job["session"].as_str(), job["terminal"].as_u64()),
+            (Some("Terminal 1"), Some(1))
+        );
         let tab = job["tab"].as_str().unwrap().to_owned();
         assert!(
             control
@@ -438,7 +448,7 @@ mod tests {
             enabled: true,
             ..State::default()
         };
-        state.sessions.insert("token".into(), "one".into());
+        state.sessions.insert("token".into(), 1);
         let receiver = state.submit(request("token", None, Action::List)).unwrap();
         assert!(state.submit(request("token", None, Action::List)).is_err());
         state.pending.values_mut().next().unwrap().deadline = Instant::now();
@@ -454,7 +464,7 @@ mod tests {
             enabled: true,
             ..State::default()
         };
-        state.sessions.insert("token".into(), "one".into());
+        state.sessions.insert("token".into(), 1);
         let receiver = state
             .submit(request(
                 "token",

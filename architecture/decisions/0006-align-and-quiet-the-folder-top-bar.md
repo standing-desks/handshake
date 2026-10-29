@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-10-28
 - Partially supersedes: [ADR 0001](0001-preserve-native-controls-and-add-accessible-motion.md), tab-row glass styling only
+- Partially superseded by: [ADR 0015](0015-show-tabs-in-the-sidebar-by-default.md); the sidebar layout has no tab row, and this decision still governs the top layout
 
 ## Context
 

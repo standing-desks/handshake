@@ -26,6 +26,8 @@ nonisolated enum CoreCommand: Sendable {
     case activateWorkflow(workflowID: UInt64)
     case nameDraftWorkflow(workflowID: UInt64, name: String)
     case renameWorkflow(workflowID: UInt64, name: String?)
+    /// Moves an open workflow to another session in the same folder. Its processes keep running.
+    case moveWorkflow(workflowID: UInt64, sessionID: UInt64)
     case reopenWorkflow(workflowID: UInt64)
     case closeWorkflow(workflowID: UInt64)
     /// The agent starts without a prompt and waits for the user in its terminal.

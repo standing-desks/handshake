@@ -26,20 +26,26 @@ struct WorkspaceTabClosing {
             index: arrangement.order.firstIndex(of: reference) ?? arrangement.order.count,
             pinned: arrangement.pins.contains(reference))
         let next = WorkspaceTabsModel.neighbor(in: displayedTabReferences, closing: [reference], selected: reference)
-        let wasSelected = fileTabs.selectedID == id
-        if fileTabs.close(id) {
-            tabManagement.rememberClosed(closed)
-            if wasSelected { selectTabReference(next) }
-        }
+        let wasSelected = isCurrentSession && fileTabs.selectedID == id
+        // Another session that holds the file keeps its editor, and any unsaved edits, open.
+        let isShared = !tabManagement.otherHolders(of: reference, besides: sessionID).isEmpty
+        guard isShared || fileTabs.close(id) else { return }
+        tabManagement.rememberClosed(closed)
+        tabManagement.release(reference, session: sessionID)
+        if wasSelected { selectTabReference(next) }
     }
+
+    /// Closing a tab from another session's row leaves the visible selection alone.
+    private var isCurrentSession: Bool { coreClient.snapshot?.workflows.session?.id == sessionID }
 
     private var displayedTabReferences: [String] {
         tabManagement.ordered(
             workflows.filter { layouts.splitRoot(for: $0.id, in: folder, workflows: workflows) == $0.id }.map {
                 WorkspaceTabsModel.workflow($0.id)
             }
-                + fileTabs.editors.map { WorkspaceTabsModel.file($0.path) }
-                + browsers.tabs.map { WorkspaceTabsModel.browser($0.id) }, session: sessionID)
+                + (fileTabs.editors.map { WorkspaceTabsModel.file($0.path) }
+                + browsers.tabs.map { WorkspaceTabsModel.browser($0.id) })
+                .filter { tabManagement.holds($0, session: sessionID) }, session: sessionID)
     }
 
     private func selectTabReference(_ reference: String?) {
@@ -52,7 +58,7 @@ struct WorkspaceTabClosing {
             fileTabs.select(editor.id)
         } else {
             fileTabs.showWorkflows()
-            selection.wrappedValue.selectedID = reference.flatMap { UInt64($0.dropFirst(9)) }
+            if let id = reference.flatMap({ UInt64($0.dropFirst(9)) }) { selection.wrappedValue.selectedID = id }
         }
     }
 

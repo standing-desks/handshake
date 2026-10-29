@@ -11,10 +11,8 @@ final class WorkspaceContentSelection {
     private(set) var content: Content?
     private(set) var generation = UUID()
 
-    /// Session navigation keeps a browser active and invalidates pending file navigation.
-    func showSession() {
-        if case .browser = content { select(content) } else { select(nil) }
-    }
+    /// Session navigation clears the file or browser selection; the session's own selection then restores.
+    func showSession() { select(nil) }
 
     func select(_ content: Content?) {
         self.content = content

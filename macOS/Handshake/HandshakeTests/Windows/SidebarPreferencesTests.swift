@@ -41,4 +41,15 @@ struct SidebarPreferencesTests {
         #expect(!relaunched.isOpen(in: "/first"))
         #expect(relaunched.isOpen(in: "/second"))
     }
+
+    @Test @MainActor func aFolderThatHasNotChosenUsesTheLayoutDefault() throws {
+        let suite = "com.twineproject.Twine.tests.SidebarPreferencesTests-\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = SidebarPreferences(defaults: defaults)
+        #expect(preferences.isOpen(in: "/new", defaultValue: true))
+        #expect(!preferences.isOpen(in: "/new"))
+        preferences.remember(isOpen: false, in: "/new")
+        #expect(!preferences.isOpen(in: "/new", defaultValue: true))
+    }
 }

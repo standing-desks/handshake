@@ -33,7 +33,9 @@ struct AgentSubtabs<Actions: View>: View {
         }
         .padding(.horizontal, AgentSubtabLayout.horizontalPadding)
         .frame(height: AgentSubtabLayout.height)
-        .background(.workflowTint)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(.hairline).frame(height: Surface.hairlineWidth).accessibilityHidden(true)
+        }
     }
 
     private var subtabs: some View {

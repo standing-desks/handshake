@@ -104,9 +104,7 @@ struct WorkflowPaneCanvas: View {
                     }
                 }
             }
-            .background(
-                selectedRoot.map { layouts.terminalSplit(for: $0, in: folder).ids.count > 1 } == true
-                    ? Color.workflowTint : Color(nsColor: palette.background))
+            .background(Color(nsColor: palette.background))
         }
     }
 }

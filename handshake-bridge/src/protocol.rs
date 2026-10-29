@@ -400,9 +400,8 @@ pub(crate) fn decode_command(bytes: &[u8]) -> Result<CommandEnvelope, BridgeErro
         }
         "createSession" | "renameSession" | "selectSession" | "deleteSession"
         | "createWorkflow" | "activateWorkflow" | "nameDraftWorkflow" | "renameWorkflow"
-        | "reopenWorkflow" | "closeWorkflow" | "startAgent" | "resumeAgent" | "cancelAgent" => {
-            known(workflows::decode_command(command_type, &raw.command)?)
-        }
+        | "moveWorkflow" | "reopenWorkflow" | "closeWorkflow" | "startAgent" | "resumeAgent"
+        | "cancelAgent" => known(workflows::decode_command(command_type, &raw.command)?),
         "startTerminal" => {
             let command: RawStartTerminal =
                 serde_json::from_value(raw.command).map_err(|_| BridgeError::MalformedCommand)?;
@@ -644,6 +643,24 @@ mod tests {
             .as_bytes(),
         );
         assert!(matches!(unknown, Err(BridgeError::MalformedCommand)));
+    }
+
+    #[test]
+    fn move_workflow_routes_to_the_workflow_decoder() {
+        let moved = decode(
+            r#"{"requestId": 9, "command": {"type": "moveWorkflow", "workflowId": 7, "sessionId": 3}}"#,
+        );
+        assert!(matches!(
+            moved,
+            Command::MoveWorkflow { workflow_id, session_id }
+                if workflow_id.0 == 7 && session_id.0 == 3
+        ));
+        assert!(matches!(
+            decode_command(
+                br#"{"requestId": 9, "command": {"type": "moveWorkflow", "workflowId": 7}}"#
+            ),
+            Err(BridgeError::MalformedCommand)
+        ));
     }
 
     #[test]

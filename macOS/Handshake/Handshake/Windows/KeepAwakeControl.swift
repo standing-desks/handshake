@@ -66,13 +66,15 @@ final class KeepAwakeModel {
 
 struct KeepAwakeToolbar: ToolbarContent {
     weak var window: NSWindow?
+    /// The sidebar layout's toolbar buttons come first and bring their own spacer.
+    var followsWorkspaceButtons = false
 
     var body: some ToolbarContent {
         if #available(macOS 26.1, *) {
-            ToolbarSpacer(.flexible).visibilityPriority(.high)
+            if !followsWorkspaceButtons { ToolbarSpacer(.flexible).visibilityPriority(.high) }
             item.visibilityPriority(.high)
         } else {
-            ToolbarSpacer(.flexible)
+            if !followsWorkspaceButtons { ToolbarSpacer(.flexible) }
             item
         }
     }

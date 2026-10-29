@@ -9,8 +9,9 @@ struct SidebarPreferences {
         self.defaults = defaults
     }
 
-    func isOpen(in folder: String) -> Bool {
-        defaults.dictionary(forKey: Self.key)?[FolderWindows.canonicalPath(folder)] as? Bool ?? false
+    /// Whether the folder's sidebar is open, or `defaultValue` when the folder hasn't chosen yet.
+    func isOpen(in folder: String, defaultValue: Bool = false) -> Bool {
+        defaults.dictionary(forKey: Self.key)?[FolderWindows.canonicalPath(folder)] as? Bool ?? defaultValue
     }
 
     func remember(isOpen: Bool, in folder: String) {

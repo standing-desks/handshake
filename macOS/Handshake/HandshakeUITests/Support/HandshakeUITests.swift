@@ -23,13 +23,11 @@ final class HandshakeUITests: XCTestCase {
 
     /// An app that keeps its data in a fresh temporary directory, deleted when the test ends, so each
     /// test starts clean and never touches the real data directory. `lastOpenFolder` seeds the data
-    /// as if that folder was open when Handshake last quit.
+    /// as if that folder was open when Handshake last quit. Tests use the top tab bar unless they ask for
+    /// the app's default sidebar layout.
     @MainActor
-    func makeApp(lastOpenFolder: URL? = nil) throws -> XCUIApplication {
+    func makeApp(lastOpenFolder: URL? = nil, sidebarTabs: Bool = false) throws -> XCUIApplication {
         let dataDirectory = try makeTestFolder(prefix: "com.twineproject.Twine.tests.ui")
-        addTeardownBlock {
-            UserDefaults.standard.removePersistentDomain(forName: dataDirectory.lastPathComponent)
-        }
         if let lastOpenFolder {
             try seedDatabase(in: dataDirectory, lastOpenFolder: lastOpenFolder.path(percentEncoded: false))
         }
@@ -38,6 +36,8 @@ final class HandshakeUITests: XCTestCase {
         // A fresh core database also needs a fresh window. Ignore AppKit's saved window state,
         // including an empty window list left by a unit-test host or a previous UI test.
         app.launchArguments = ["-ApplePersistenceIgnoreState", "YES"]
+        // The sandboxed runner can't write the app's preferences, so the argument domain sets the layout.
+        if !sidebarTabs { app.launchArguments += ["-tabLayout", "top"] }
         app.launchEnvironment["HANDSHAKE_DATA_DIRECTORY"] = dataDirectory.path(percentEncoded: false)
         app.launchEnvironment["XDG_CONFIG_HOME"] = dataDirectory.appending(path: "config").path
         // Remember preferences across this app's relaunches without inheriting the user's saved zoom.

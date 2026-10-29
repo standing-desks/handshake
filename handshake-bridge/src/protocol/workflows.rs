@@ -214,6 +214,13 @@ struct RawWorkflowId {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct RawMoveWorkflow {
+    workflow_id: u64,
+    session_id: u64,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct RawDraftName {
     workflow_id: u64,
     name: String,
@@ -284,6 +291,14 @@ pub(super) fn decode_command(command_type: &str, raw: &Value) -> Result<Command,
             })
         }
         "renameWorkflow" | "reopenWorkflow" => decode_tab_command(command_type, raw),
+        "moveWorkflow" => {
+            let command: RawMoveWorkflow =
+                serde_json::from_value(raw.clone()).map_err(|_| BridgeError::MalformedCommand)?;
+            Ok(Command::MoveWorkflow {
+                workflow_id: WorkflowId(command.workflow_id),
+                session_id: SessionId(command.session_id),
+            })
+        }
         "nameDraftWorkflow" => {
             let command: RawDraftName =
                 serde_json::from_value(raw.clone()).map_err(|_| BridgeError::MalformedCommand)?;
@@ -477,6 +492,30 @@ mod tests {
         ));
         assert!(decode_command("renameWorkflow", &json!({"workflowId": 7, "name": 4})).is_err());
         assert!(decode_command("reopenWorkflow", &json!({})).is_err());
+    }
+
+    #[test]
+    fn move_workflow_decodes_both_ids_and_rejects_malformed_ones() {
+        assert!(matches!(
+            decode_command("moveWorkflow", &json!({"workflowId": 7, "sessionId": 3})).unwrap(),
+            Command::MoveWorkflow {
+                workflow_id: WorkflowId(7),
+                session_id: SessionId(3)
+            }
+        ));
+        for malformed in [
+            json!({"workflowId": 7}),
+            json!({"sessionId": 3}),
+            json!({"workflowId": 7, "sessionId": null}),
+            json!({"workflowId": 7, "sessionId": "3"}),
+            json!({"workflowId": -7, "sessionId": 3}),
+            json!({"workflowId": 7, "sessionId": 3.5}),
+        ] {
+            assert!(matches!(
+                decode_command("moveWorkflow", &malformed),
+                Err(BridgeError::MalformedCommand)
+            ));
+        }
     }
 
     #[test]

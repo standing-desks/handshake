@@ -1,9 +1,11 @@
-//! User titles and explicit reopening of closed workflow history.
+//! User titles, moves between sessions, and explicit reopening of closed workflow history.
 use super::{Application, ApplicationError, CommandDisposition, RequestId};
 use crate::TerminalId;
 use crate::event::{CommandResult, EventKind, StateEvent};
 use crate::store::workflows::StoredWorkflow;
-use crate::workflow::{Agent, Workflow, WorkflowId, WorkflowStatus, timestamp, valid_name};
+use crate::workflow::{
+    Agent, SessionId, Workflow, WorkflowId, WorkflowStatus, timestamp, valid_name,
+};
 
 impl Application {
     pub(super) fn archived_command_rejection(
@@ -65,6 +67,52 @@ impl Application {
         };
         inner.folders.store().rename_workflow(id, name)?;
         inner.workflows.workflows[index].custom_name = name.map(str::to_owned);
+        let workflow = inner.workflows.workflows[index].clone();
+        inner
+            .events
+            .append(EventKind::State(StateEvent::WorkflowChanged(workflow)))?;
+        Ok(CommandDisposition::Accepted)
+    }
+
+    /// Changes only the workflow's session. Its terminals, run, traces, and transcripts are keyed
+    /// by workflow or terminal, so they move with it, and deleting the new session removes it.
+    pub(super) fn move_workflow(
+        &self,
+        id: WorkflowId,
+        session_id: SessionId,
+    ) -> Result<CommandDisposition, ApplicationError> {
+        let mut inner = self.lock_inner()?;
+        let Some(index) = inner
+            .workflows
+            .workflows
+            .iter()
+            .position(|w| w.workflow_id == id)
+        else {
+            return Ok(super::workflows::reject(
+                "workflowNotFound",
+                "The workflow is no longer open.",
+            ));
+        };
+        let Some(session) = inner
+            .workflows
+            .sessions
+            .iter()
+            .find(|session| session.session_id == session_id)
+        else {
+            return Ok(super::sessions::not_found());
+        };
+        // Loaded sessions belong to the open folder; never let a stale one move a tab across folders.
+        if inner.folders.state().open_folder.as_deref() != Some(session.folder.as_path()) {
+            return Ok(super::workflows::reject(
+                "folderChanged",
+                "The session's folder is no longer open.",
+            ));
+        }
+        if inner.workflows.workflows[index].session_id == session_id {
+            return Ok(CommandDisposition::Accepted);
+        }
+        inner.folders.store().move_workflow(id, session_id)?;
+        inner.workflows.workflows[index].session_id = session_id;
         let workflow = inner.workflows.workflows[index].clone();
         inner
             .events
@@ -218,6 +266,187 @@ mod tests {
             .last()
             .unwrap()
             .workflow_id
+    }
+
+    fn create_session(app: &Application, folder: &Path, name: &str) -> SessionId {
+        accepted(
+            app,
+            Command::CreateSession {
+                folder: folder.to_owned(),
+                name: name.to_owned(),
+            },
+        );
+        app.snapshot()
+            .unwrap()
+            .workflows
+            .session
+            .unwrap()
+            .session_id
+    }
+
+    fn rejection_code(app: &Application, command: Command) -> String {
+        match app
+            .handle_command(RequestId(101), command)
+            .unwrap()
+            .disposition
+        {
+            CommandDisposition::Rejected { code, .. } => code,
+            CommandDisposition::Accepted => panic!("expected a rejection"),
+        }
+    }
+
+    fn workflow_changes(app: &Application, after: u64) -> Vec<Workflow> {
+        app.events_after(after, 4096)
+            .unwrap()
+            .into_iter()
+            .filter_map(|event| match event.kind {
+                EventKind::State(StateEvent::WorkflowChanged(workflow)) => Some(workflow),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn moving_changes_only_the_session_survives_relaunch_and_follows_session_deletion() {
+        let root = tempfile::tempdir().unwrap();
+        let folder = tempfile::tempdir().unwrap();
+        let app = open(root.path(), folder.path());
+        let id = create(&app, folder.path());
+        let before = app.snapshot().unwrap();
+        let first = before.workflows.workflows[0].session_id;
+        let terminal = before.workflows.workflows[0].terminal_id;
+        let second = create_session(&app, folder.path(), "Second");
+        let sequence = app.snapshot().unwrap().sequence;
+        accepted(
+            &app,
+            Command::MoveWorkflow {
+                workflow_id: id,
+                session_id: second,
+            },
+        );
+        let snapshot = app.snapshot().unwrap();
+        let moved = snapshot.workflows.workflows[0].clone();
+        assert_eq!(
+            moved,
+            Workflow {
+                session_id: second,
+                ..before.workflows.workflows[0].clone()
+            }
+        );
+        assert!(snapshot.terminals.iter().any(|t| t.terminal_id == terminal));
+        app.write_terminal_input(terminal, b"\n").unwrap();
+        assert_eq!(workflow_changes(&app, sequence), [moved]);
+
+        let sequence = app.snapshot().unwrap().sequence;
+        accepted(
+            &app,
+            Command::MoveWorkflow {
+                workflow_id: id,
+                session_id: second,
+            },
+        );
+        assert_eq!(workflow_changes(&app, sequence), []);
+        for (command, code) in [
+            (
+                Command::MoveWorkflow {
+                    workflow_id: WorkflowId(id.0 + 100),
+                    session_id: first,
+                },
+                "workflowNotFound",
+            ),
+            (
+                Command::MoveWorkflow {
+                    workflow_id: id,
+                    session_id: SessionId(second.0 + 100),
+                },
+                "sessionNotFound",
+            ),
+        ] {
+            assert_eq!(rejection_code(&app, command), code);
+        }
+        assert_eq!(
+            app.snapshot().unwrap().workflows.workflows[0].session_id,
+            second
+        );
+
+        drop(app);
+        let app = open(root.path(), folder.path());
+        let restored = app.snapshot().unwrap().workflows.workflows[0].clone();
+        assert_eq!((restored.workflow_id, restored.session_id), (id, second));
+        accepted(&app, Command::DeleteSession { session_id: first });
+        assert_eq!(app.snapshot().unwrap().workflows.workflows.len(), 1);
+        accepted(&app, Command::DeleteSession { session_id: second });
+        let snapshot = app.snapshot().unwrap();
+        assert_eq!(snapshot.workflows.workflows, []);
+        assert_eq!(snapshot.terminals, []);
+    }
+
+    #[test]
+    fn saved_history_can_move_but_not_into_another_folder_or_past_a_failed_write() {
+        let root = tempfile::tempdir().unwrap();
+        let folder = tempfile::tempdir().unwrap();
+        let other = tempfile::tempdir().unwrap();
+        let app = open(root.path(), folder.path());
+        let id = create(&app, folder.path());
+        accepted(&app, Command::CloseWorkflow { workflow_id: id });
+        accepted(&app, Command::ReopenWorkflow { workflow_id: id });
+        let second = create_session(&app, folder.path(), "Second");
+        accepted(
+            &app,
+            Command::MoveWorkflow {
+                workflow_id: id,
+                session_id: second,
+            },
+        );
+        let workflow = app.snapshot().unwrap().workflows.workflows[0].clone();
+        assert!(workflow.archived);
+        assert_eq!(workflow.session_id, second);
+
+        let first = {
+            let mut inner = app.lock_inner().unwrap();
+            let first = inner.workflows.sessions[0].session_id;
+            let mut stale = inner.workflows.sessions[0].clone();
+            other.path().clone_into(&mut stale.folder);
+            stale.session_id = SessionId(second.0 + 100);
+            inner.workflows.sessions.push(stale);
+            first
+        };
+        assert_eq!(
+            rejection_code(
+                &app,
+                Command::MoveWorkflow {
+                    workflow_id: id,
+                    session_id: SessionId(second.0 + 100),
+                },
+            ),
+            "folderChanged"
+        );
+        app.lock_inner().unwrap().folders.store().execute_test_sql(
+            "CREATE TRIGGER reject_move BEFORE UPDATE OF session_id ON workflows
+             BEGIN SELECT RAISE(FAIL, 'temporary move failure'); END;",
+        );
+        assert!(
+            app.handle_command(
+                RequestId(102),
+                Command::MoveWorkflow {
+                    workflow_id: id,
+                    session_id: first,
+                },
+            )
+            .is_err()
+        );
+        assert_eq!(app.snapshot().unwrap().workflows.workflows, [workflow]);
+        app.lock_inner()
+            .unwrap()
+            .folders
+            .store()
+            .execute_test_sql("DROP TRIGGER reject_move;");
+
+        drop(app);
+        let app = open(root.path(), folder.path());
+        let restored = app.snapshot().unwrap().workflows.workflows[0].clone();
+        assert!(restored.archived);
+        assert_eq!((restored.workflow_id, restored.session_id), (id, second));
     }
 
     #[test]

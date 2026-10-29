@@ -11,6 +11,11 @@ struct WorkspaceTabItem: Identifiable {
     var isDirty = false
     var browser: BrowserTab?
     var pinned = false
+    /// The tab's session, when a list mixes sessions and one file can appear in several.
+    var scope: UInt64?
+
+    /// Unique in the tab switcher, even when the same file is open in two sessions.
+    var switcherKey: String { scope.map { "\($0)|\(id)" } ?? id }
 
     var accessibilityID: String {
         if let workflow { return "workflowTab-\(workflow.id)" }
@@ -27,6 +32,31 @@ struct WorkspaceTabItem: Identifiable {
     var renameValue: String { customName ?? workflow?.name ?? browser?.defaultTitle ?? title }
     var customName: String? { workflow?.customName ?? browser?.customName }
     var status: String? { workflow?.status == .completed ? "Done" : nil }
+
+    /// What a sidebar row shows about its workflow, most urgent first.
+    enum Activity: Int, Comparable {
+        case done, running, needsAttention
+
+        static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
+
+        var description: String {
+            switch self {
+            case .done: "Done"
+            case .running: "Running"
+            case .needsAttention: "Needs attention"
+            }
+        }
+    }
+
+    var activity: Activity? {
+        guard let workflow else { return nil }
+        switch (workflow.status, workflow.run?.status) {
+        case (.failed, _), (.interrupted, _), (_, .limitReached), (_, .failed): return .needsAttention
+        case (.running, _) where workflow.isRunningAgent: return .running
+        case (.completed, _): return .done
+        default: return nil
+        }
+    }
     var statusSymbol: String? { status == nil ? nil : "checkmark.circle" }
     var statusColor: Color { .green }
 
@@ -70,5 +100,47 @@ struct WorkspaceTabItem: Identifiable {
                 }
                 return (editor.id, editor.path)
             })
+    }
+}
+
+extension WorkspaceTabItem {
+    /// One session's tabs in display order: its workflows, and the file and browser tabs it holds.
+    /// `workflows` are the session's tab workflows, one per split.
+    static func items(
+        session: UInt64?, workflows: [CoreWorkflow], files: FileTabsModel, browsers: BrowserTabsModel,
+        model: WorkspaceTabsModel
+    ) -> [WorkspaceTabItem] {
+        let arrangement = model.arrangement(session)
+        let pages = Set(arrangement.pages)
+        let editors = files.editors.filter { pages.contains(WorkspaceTabsModel.file($0.path)) }
+        let pageTabs = browsers.tabs.filter { pages.contains(WorkspaceTabsModel.browser($0.id)) }
+        let workflowTitles = workflowTitles(workflows)
+        let fileTitles = fileTitles(editors)
+        let browserTitles = browserTitles(pageTabs)
+        var items = workflows.map { workflow in
+            let id = WorkspaceTabsModel.workflow(workflow.id)
+            let harnesses = workflow.run?.agents.map { $0.harness.displayName } ?? []
+            let detail =
+                ([workflow.name, workflow.harness?.displayName].compactMap { $0 } + Array(Set(harnesses)).sorted())
+                .joined(separator: " · ")
+            return WorkspaceTabItem(
+                id: id, title: workflowTitles[workflow.id] ?? workflow.name,
+                detail: detail, symbol: workflow.tabSymbol, workflow: workflow,
+                pinned: arrangement.pins.contains(id))
+        }
+        items += editors.map { editor in
+            let id = WorkspaceTabsModel.file(editor.path)
+            return WorkspaceTabItem(
+                id: id, title: fileTitles[editor.id] ?? editor.displayName, detail: editor.path,
+                symbol: "doc.text", fileID: editor.id, isDirty: editor.isDirty, pinned: arrangement.pins.contains(id))
+        }
+        items += pageTabs.map { tab in
+            let id = WorkspaceTabsModel.browser(tab.id)
+            return WorkspaceTabItem(
+                id: id, title: browserTitles[tab.id] ?? tab.title, detail: tab.address, symbol: "globe",
+                browser: tab, pinned: arrangement.pins.contains(id))
+        }
+        let lookup = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
+        return model.ordered(items.map(\.id), session: session).compactMap { lookup[$0] }
     }
 }

@@ -19,8 +19,10 @@ struct WorkspaceTabSwitcher: View {
                 .textFieldStyle(.roundedBorder).padding(12)
                 .focused($searchFocused)
                 .accessibilityIdentifier("tabSwitcherSearch")
-                .onChange(of: query) { focusedID = query.isEmpty ? selected ?? matches.first?.id : matches.first?.id }
-                .onSubmit { if let id = focusedID ?? matches.first?.id { choose(id) } }
+                .onChange(of: query) {
+                    focusedID = query.isEmpty ? selected ?? matches.first?.switcherKey : matches.first?.switcherKey
+                }
+                .onSubmit { if let id = focusedID ?? matches.first?.switcherKey { choose(id) } }
                 .onKeyPress(.downArrow) {
                     move(1)
                     return .handled
@@ -33,9 +35,9 @@ struct WorkspaceTabSwitcher: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 3) {
-                        ForEach(matches) { item in
+                        ForEach(matches, id: \.switcherKey) { item in
                             Button {
-                                choose(item.id)
+                                choose(item.switcherKey)
                             } label: {
                                 HStack(spacing: 10) {
                                     Image(systemName: item.pinned ? "pin.fill" : item.symbol).frame(width: 18)
@@ -47,18 +49,18 @@ struct WorkspaceTabSwitcher: View {
                                     if let status = item.status {
                                         Text(status).font(.caption).foregroundStyle(item.statusColor)
                                     }
-                                    if item.id == selected { Image(systemName: "checkmark") }
+                                    if item.switcherKey == selected { Image(systemName: "checkmark") }
                                 }
                                 .padding(9).frame(maxWidth: .infinity, alignment: .leading)
                                 .background(
-                                    item.id == focusedID ? Color.accentColor.opacity(0.15) : .clear,
+                                    item.switcherKey == focusedID ? Color.accentColor.opacity(0.15) : .clear,
                                     in: .rect(cornerRadius: 6)
                                 )
                                 .contentShape(.rect)
                             }
-                            .buttonStyle(.plain).id(item.id)
+                            .buttonStyle(.plain).id(item.switcherKey)
                             .accessibilityIdentifier("switchTo-\(item.accessibilityID)")
-                            .accessibilityValue(item.id == focusedID ? "Highlighted" : "")
+                            .accessibilityValue(item.switcherKey == focusedID ? "Highlighted" : "")
                         }
                         if matches.isEmpty { Text("No matching tabs").foregroundStyle(.secondary).padding(24) }
                     }.padding(8)
@@ -70,7 +72,7 @@ struct WorkspaceTabSwitcher: View {
         .defaultFocus($searchFocused, true)
         .onAppear {
             query = ""
-            focusedID = selected ?? matches.first?.id
+            focusedID = selected ?? matches.first?.switcherKey
         }
         .task {
             await Task.yield()
@@ -87,7 +89,7 @@ struct WorkspaceTabSwitcher: View {
 
     private func move(_ offset: Int) {
         guard !matches.isEmpty else { return }
-        let index = matches.firstIndex { $0.id == focusedID } ?? 0
-        focusedID = matches[(index + offset + matches.count) % matches.count].id
+        let index = matches.firstIndex { $0.switcherKey == focusedID } ?? 0
+        focusedID = matches[(index + offset + matches.count) % matches.count].switcherKey
     }
 }

@@ -70,7 +70,7 @@ nonisolated private struct CommandPayload: Encodable {
         case .openFolder, .restoreFolder, .closeFolder, .closeFolderIfOpen, .removeRecentFolder, .refreshGitBranch:
             type = ""
             configureFolder(command)
-        case .createSession, .renameSession, .selectSession, .deleteSession:
+        case .createSession, .renameSession, .selectSession, .deleteSession, .moveWorkflow:
             type = ""
             configureSession(command)
         case .createWorkflow, .activateWorkflow, .nameDraftWorkflow, .renameWorkflow, .reopenWorkflow, .closeWorkflow,
@@ -192,6 +192,10 @@ nonisolated private struct CommandPayload: Encodable {
             self.sessionID = sessionID
         case .deleteSession(let sessionID):
             type = "deleteSession"
+            self.sessionID = sessionID
+        case .moveWorkflow(let workflowID, let sessionID):
+            type = "moveWorkflow"
+            self.workflowID = workflowID
             self.sessionID = sessionID
         default:
             break

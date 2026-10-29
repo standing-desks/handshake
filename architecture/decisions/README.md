@@ -20,11 +20,11 @@ revert. Historical source inventories retain the paths recorded at that time.
 | Record | Status | Decision |
 | --- | --- | --- |
 | [0001](0001-preserve-native-controls-and-add-accessible-motion.md) | Accepted | Preserve native controls and add accessible layout motion |
-| [0002](0002-graduate-tab-management.md) | Accepted | Graduate tab management from the feature-flag catalog |
+| [0002](0002-graduate-tab-management.md) | Accepted; partially superseded by 0016 | Graduate tab management from the feature-flag catalog |
 | [0003](0003-keep-cross-agent-memory-an-opt-in-beta.md) | Accepted | Keep cross-agent memory an opt-in beta |
 | [0004](0004-bound-memory-context-and-record-explicit-corrections.md) | Accepted | Bound memory context and record explicit corrections |
 | [0005](0005-integrate-kiro-through-native-v3-hooks.md) | Accepted | Integrate Kiro through native V3 hooks and exact conversation profiles |
-| [0006](0006-align-and-quiet-the-folder-top-bar.md) | Accepted | Align the folder top bar and use quieter native controls |
+| [0006](0006-align-and-quiet-the-folder-top-bar.md) | Accepted; partially superseded by 0015 | Align the folder top bar and use quieter native controls |
 | [0008](0008-git-status-default-worktree.md) | Accepted | Limit Git status to each repository's default worktree |
 | [0009](0009-handshake-rename-inventory.md) | Accepted | Inventory Handshake rename surfaces and compatibility contracts |
 | [0010](0010-project-memory-archive.md) | Accepted | Archive forgotten memories across the project |
@@ -32,3 +32,6 @@ revert. Historical source inventories retain the paths recorded at that time.
 | [0012](0012-control-the-embedded-browser-through-core.md) | Accepted | Control the embedded browser through core and a bundled CLI |
 | [0013](0013-name-traces-and-detect-foreground-shell-agents.md) | Accepted | Name traces from prompts and recognize foreground shell agents |
 | [0014](0014-evaluate-ghostty-without-changing-terminal-ownership.md) | Accepted | Retain SwiftTerm and align terminal glyphs to device pixels |
+| [0015](0015-show-tabs-in-the-sidebar-by-default.md) | Accepted | Show tabs in the sidebar by default |
+| [0016](0016-sessions-own-their-file-and-browser-tabs.md) | Accepted | Sessions own their file and browser tabs |
+| [0017](0017-move-workflows-between-sessions.md) | Accepted | Move workflows between sessions in core |

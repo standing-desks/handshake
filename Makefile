@@ -83,6 +83,8 @@ UI_DEFAULT_TESTS := testFirstLaunchShowsStartPage \
 	testRelaunchRestoresAllFolderWindowsAndLeavesClosedFoldersClosed \
 	testClosingAnUnavailableRestoredFolderKeepsItClosedOnRelaunch \
 	testSessionsOwnTabsAndRestoreFreshShellsAfterRelaunch \
+	testSidebarTabsNestUnderSessionsMoveWithUndoAndSwitchLayouts \
+	testMinimizedSidebarRailPeeksAndDocks \
 	testQuitStopsShellAndDescendant \
 	testTerminalRunsLibraryInjectionAndDebugger \
 	testTerminalRenderingRemainsUsableAcrossZoomAndResize \
