@@ -56,7 +56,8 @@ final class CoreClient {
         let receipt = try await transport.send(command)
         if receipt.status == .accepted {
             switch command {
-            case .validateWorkflowType, .saveWorkflowType, .deleteWorkflowType, .ping, .startTerminal, .closeTerminal,
+            case .generateWorkflowType, .cancelWorkflowGeneration, .validateWorkflowType, .saveWorkflowType,
+                .deleteWorkflowType, .ping, .startTerminal, .closeTerminal,
                 .createWorkflow,
                 .activateWorkflow, .reopenWorkflow, .closeWorkflow,
                 .startAgent, .resumeAgent, .cancelAgent, .createSession, .renameSession, .selectSession, .deleteSession:
@@ -226,7 +227,8 @@ final class CoreClient {
             markTerminalRunning(terminalID, in: &snapshot)
         case .terminalClosed(let terminalID):
             markTerminalClosed(terminalID, in: &snapshot)
-        case .workflowTypeValidated, .workflowTypeSaved, .workflowTypeDeleted, .pong, .workflowCreated,
+        case .workflowDrafted, .workflowTypeValidated, .workflowTypeSaved, .workflowTypeDeleted, .pong,
+            .workflowCreated,
             .workflowActivated, .workflowReopened, .workflowClosed,
             .agentStarted, .agentCancelled,
             .sessionCreated, .sessionRenamed, .sessionSelected, .sessionDeleted:

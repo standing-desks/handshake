@@ -50,6 +50,9 @@ impl Application {
                 ))))?;
             self.browser_control
                 .set_enabled(loaded.config.experimental.browser_control);
+            if !loaded.config.experimental.workflow_assistant {
+                self.workflow_assistant.cancel_all();
+            }
             inner.config = loaded.config;
         }
         drop(inner);
@@ -68,6 +71,43 @@ impl Application {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn disabling_workflow_assistant_cancels_active_generation() {
+        use std::sync::atomic::Ordering;
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.toml");
+        let app = Application::with_event_capacity(32).unwrap();
+        app.lock_inner()
+            .unwrap()
+            .config
+            .experimental
+            .workflow_assistant = true;
+        let (started, ready) = std::sync::mpsc::channel();
+        let (finished, done) = std::sync::mpsc::channel();
+        app.workflow_assistant
+            .start("active".into(), move |cancelled| {
+                started.send(()).unwrap();
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+                while !cancelled.load(Ordering::Acquire) && std::time::Instant::now() < deadline {
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+                finished.send(cancelled.load(Ordering::Acquire)).unwrap();
+            })
+            .unwrap();
+        ready
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .unwrap();
+        std::fs::write(&path, "[experimental]\nworkflow_assistant = false\n").unwrap();
+        assert_eq!(
+            app.reload_config_from(&path).unwrap(),
+            CommandDisposition::Accepted
+        );
+        assert!(
+            done.recv_timeout(std::time::Duration::from_secs(2))
+                .unwrap()
+        );
+    }
 
     #[test]
     fn reload_applies_browser_flag_and_invalid_config_cannot_reenable_it() {

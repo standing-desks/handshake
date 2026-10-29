@@ -34,6 +34,9 @@ struct HarnessChoiceRow: View {
     let color: Color
     @Binding var choice: HarnessChoice
     let identifier: String
+    var allowedHarnesses: [CoreHarness]?
+    var showsPermissions = true
+    var showsEffort = true
     var usesInlineCustomModel = false
     var adaptsChoiceToCatalog = true
     @State private var showsCustomModel = false
@@ -81,16 +84,16 @@ struct HarnessChoiceRow: View {
                 roleLabel
                 harnessPicker
                 modelMenu
-                effortPicker
-                yoloToggle
+                if showsEffort { effortPicker }
+                if showsPermissions { yoloToggle }
             }
             VStack(alignment: .leading, spacing: NewTabLayout.choiceTextSpacing) {
                 roleLabel
                 HStack(spacing: NewTabLayout.spacing) {
                     harnessPicker
                     modelMenu
-                    effortPicker
-                    yoloToggle
+                    if showsEffort { effortPicker }
+                    if showsPermissions { yoloToggle }
                 }
             }
             VStack(alignment: .leading, spacing: NewTabLayout.choiceTextSpacing) {
@@ -100,8 +103,8 @@ struct HarnessChoiceRow: View {
                     modelMenu
                 }
                 HStack(spacing: NewTabLayout.spacing) {
-                    effortPicker
-                    yoloToggle
+                    if showsEffort { effortPicker }
+                    if showsPermissions { yoloToggle }
                 }
             }
         }
@@ -118,10 +121,11 @@ struct HarnessChoiceRow: View {
     private var harnessPicker: some View {
         // The designer sets saved defaults and must show all harnesses, not just locally installed ones.
         // The launch form adapts saved choices to the current machine's available harnesses.
-        let available: [CoreHarness] =
+        let candidates: [CoreHarness] =
             adaptsChoiceToCatalog
             ? catalog.availableHarnesses(folder: client.snapshot?.folders.openFolder)
             : CoreHarness.allCases.filter { $0 != .nouli }
+        let available = candidates.filter { allowedHarnesses?.contains($0) ?? true }
         return Picker(title, selection: Binding(get: { choice.harness }, set: { choice.switchHarness(to: $0) })) {
             if available.isEmpty {
                 Text("No agents available")

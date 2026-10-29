@@ -62,6 +62,10 @@ actor DelayedStartTransport {
         case .closeTerminal(let terminalID):
             closedTerminalIDs.insert(terminalID)
             deliver(.commandCompleted(requestID: requestID, result: .terminalClosed(terminalID: terminalID)))
+        case .generateWorkflowType, .cancelWorkflowGeneration:
+            return .init(
+                requestID: requestID, status: .rejected,
+                error: .init(code: "unsupported", message: "Unsupported fixture command"))
         case .validateWorkflowType, .saveWorkflowType, .deleteWorkflowType, .ping, .reloadConfig, .openFolder,
             .restoreFolder, .closeFolder,
             .closeFolderIfOpen,

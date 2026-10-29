@@ -5,6 +5,70 @@ use crate::workflow_type::{
 };
 
 impl Application {
+    pub(super) fn generate_workflow(
+        &self,
+        request_id: RequestId,
+        generation_id: String,
+        harness: crate::HarnessId,
+        model: Option<String>,
+        messages: &[crate::WorkflowChatMessage],
+        definition: &WorkflowTypeDefinition,
+    ) -> Result<CommandDisposition, ApplicationError> {
+        if !self.lock_inner()?.config.experimental.workflow_assistant {
+            return Ok(CommandDisposition::Rejected {
+                code: "workflowAssistantDisabled".into(),
+                message: "Enable Workflow assistant in Settings → Experimental.".into(),
+            });
+        }
+        let input = match crate::workflow_assistant::prepare(
+            harness,
+            model.as_deref(),
+            messages,
+            definition,
+        ) {
+            Ok(input) => input,
+            Err(error) => {
+                return Ok(CommandDisposition::Rejected {
+                    code: "invalidWorkflowRequest".into(),
+                    message: error.to_string(),
+                });
+            }
+        };
+        let located = match self.locate_harness(harness.definition()) {
+            Ok(located) => located,
+            Err(error) => return Ok(super::rejection("workflowHarnessUnavailable", &error)),
+        };
+        let inner = std::sync::Arc::clone(&self.inner);
+        let result = self
+            .workflow_assistant
+            .start(generation_id, move |cancelled| {
+                let result = crate::workflow_assistant::generate(
+                    harness,
+                    model.as_deref(),
+                    &input,
+                    &located,
+                    cancelled,
+                );
+                let (draft, error) = match result {
+                    Ok(draft) => (Some(Box::new(draft)), None),
+                    Err(error) => (None, Some(error.to_string())),
+                };
+                if let Ok(mut inner) = inner.lock() {
+                    let _ = inner.events.append(EventKind::CommandCompleted {
+                        request_id,
+                        result: CommandResult::WorkflowDrafted { draft, error },
+                    });
+                }
+            });
+        Ok(match result {
+            Ok(()) => CommandDisposition::Accepted,
+            Err(message) => CommandDisposition::Rejected {
+                code: "workflowGenerationBusy".into(),
+                message: message.to_string(),
+            },
+        })
+    }
+
     pub(super) fn delete_workflow_type(
         &self,
         request_id: RequestId,
@@ -89,6 +153,34 @@ impl Application {
 mod tests {
     use super::*;
     use crate::{BuiltinType, Command, ElementPath};
+
+    #[test]
+    fn assistant_is_opt_in_and_disabled_requests_never_start_a_harness() {
+        let app = Application::with_event_capacity(32).unwrap();
+        let before = app.snapshot().unwrap();
+        let receipt = app
+            .handle_command(
+                RequestId(1),
+                Command::GenerateWorkflowType {
+                    generation_id: "test".into(),
+                    harness: crate::HarnessId::Codex,
+                    model: None,
+                    messages: vec![crate::WorkflowChatMessage {
+                        role: "user".into(),
+                        text: "Make a workflow".into(),
+                    }],
+                    definition: BuiltinType::Adversarial.definition(),
+                },
+            )
+            .unwrap();
+        assert!(
+            matches!(receipt.disposition, CommandDisposition::Rejected {ref code, ..} if code == "workflowAssistantDisabled")
+        );
+        assert_eq!(
+            app.snapshot().unwrap().workflow_types,
+            before.workflow_types
+        );
+    }
 
     fn save(app: &Application, source: Option<WorkflowTypeRef>, name: &str) -> WorkflowTypeRef {
         let mut definition = BuiltinType::Adversarial.definition();

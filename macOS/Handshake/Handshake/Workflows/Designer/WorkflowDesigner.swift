@@ -4,6 +4,8 @@ struct WorkflowDesigner: View {
     @Environment(CoreClient.self) private var client
     @Environment(\.undoManager) private var undoManager
     @State private var model: WorkflowDesignerModel
+    @State private var assistant = WorkflowAssistantModel()
+    @State private var showsAssistant = true
     @State private var zoom = 1.0
     @State private var viewport = CGSize.zero
     @State private var connecting: String?
@@ -35,27 +37,65 @@ struct WorkflowDesigner: View {
                     .accessibilityIdentifier("designerConversionNotice")
             }
             Divider()
-            WorkflowEditorCanvas(
-                model: model, zoom: $zoom, connecting: $connecting, selection: $selection, fitGraph: fitGraph
-            )
-            .onGeometryChange(for: CGSize.self) {
-                $0.size
-            } action: { size in
-                let firstLayout = viewport == .zero
-                viewport = size
-                if firstLayout { fitGraph() }
+            HStack(spacing: 0) {
+                if assistantEnabled && showsAssistant {
+                    WorkflowAssistantView(assistant: assistant, definition: model.definition, apply: applyDraft) {
+                        showsAssistant = false
+                    }
+                    Divider()
+                }
+                VStack(spacing: 0) {
+                    if assistantEnabled {
+                        HStack {
+                            if !showsAssistant {
+                                Button("Workflow assistant", systemImage: "sidebar.left") { showsAssistant = true }
+                                    .accessibilityIdentifier("workflowAssistantShow")
+                            }
+                            Spacer()
+                        }.padding(8)
+                    }
+                    WorkflowEditorCanvas(
+                        model: model, zoom: $zoom, connecting: $connecting, selection: $selection, fitGraph: fitGraph
+                    )
+                    .onGeometryChange(for: CGSize.self) {
+                        $0.size
+                    } action: { size in
+                        let firstLayout = viewport == .zero
+                        viewport = size
+                        if firstLayout { fitGraph() }
+                    }
+                }.frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             Divider()
             footer
         }
         .background(WorkflowEditorStyle.canvas).disabled(model.isSaving)
         .task(id: model.definition) { await model.validate(using: client) }
-        .onChange(of: model.definition) { previous, _ in model.recordUndo(from: previous, using: undoManager) }
+        .onChange(of: model.definition) { previous, _ in
+            model.recordUndo(from: previous, using: undoManager)
+        }
+        .onChange(of: assistantEnabled) { _, enabled in if !enabled { assistant.stop(using: client) } }
         .onAppear { nameFocused = model.definition.name.isEmpty }
         .focusedSceneValue(\.saveAction, isSelected ? SaveAction(isEnabled: { model.canSave }, perform: save) : nil)
-        .onDisappear { undoManager?.removeAllActions(withTarget: model) }
+        .onDisappear {
+            assistant.stop(using: client)
+            undoManager?.removeAllActions(withTarget: model)
+        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("workflowDesigner")
+    }
+
+    private var assistantEnabled: Bool { client.snapshot?.config.experimental.workflowAssistant == true }
+
+    private func applyDraft(_ draft: WorkflowDraft) {
+        guard let definition = draft.definition else { return }
+        model.definition = definition
+        selection = nil
+        connecting = nil
+        model.decisionDrafts = WorkflowDecisionDrafts()
+        model.alwaysOutputSettings = []
+        model.decisionFocus = nil
+        fitGraph()
     }
 
     private var header: some View {

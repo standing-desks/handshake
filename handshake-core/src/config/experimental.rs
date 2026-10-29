@@ -11,6 +11,7 @@ use crate::{FileContent, FilePreview, FileSaveOutcome, FileSaveRequest, FileVers
 pub struct ExperimentalConfig {
     pub cross_agent_memory_consolidation: bool,
     pub browser_control: bool,
+    pub workflow_assistant: bool,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -18,6 +19,7 @@ pub struct ExperimentalConfig {
 pub enum ExperimentalFeature {
     CrossAgentMemoryConsolidation,
     BrowserControl,
+    WorkflowAssistant,
 }
 
 #[derive(Debug, Serialize)]
@@ -34,17 +36,28 @@ pub struct ExperimentalSnapshot {
 }
 
 impl ExperimentalFeature {
-    const ALL: [Self; 2] = [Self::CrossAgentMemoryConsolidation, Self::BrowserControl];
+    const ALL: [Self; 3] = [
+        Self::CrossAgentMemoryConsolidation,
+        Self::BrowserControl,
+        Self::WorkflowAssistant,
+    ];
 
     fn key(self) -> &'static str {
         match self {
             Self::CrossAgentMemoryConsolidation => "cross_agent_memory_consolidation",
             Self::BrowserControl => "browser_control",
+            Self::WorkflowAssistant => "workflow_assistant",
         }
     }
 
     fn state(self, features: &ExperimentalConfig) -> ExperimentalFeatureState {
         match self {
+            Self::WorkflowAssistant => ExperimentalFeatureState {
+                id: self,
+                title: "Workflow assistant",
+                description: "Create and refine workflows in a chat beside the canvas. Uses an installed Codex, Claude Code, or Kiro CLI harness. Off by default.",
+                enabled: features.workflow_assistant,
+            },
             Self::BrowserControl => ExperimentalFeatureState {
                 id: self,
                 title: "Agent browser control",
@@ -171,7 +184,8 @@ mod tests {
                 );
                 let features = ExperimentalFeature::ALL
                     .map(|feature| feature.state(&loaded.config.experimental));
-                assert_eq!(features.len(), 2);
+                assert_eq!(features.len(), 3);
+                assert!(!features[2].enabled);
                 assert_eq!(features[1].id, ExperimentalFeature::BrowserControl);
                 assert!(!features[1].enabled);
                 assert_eq!(

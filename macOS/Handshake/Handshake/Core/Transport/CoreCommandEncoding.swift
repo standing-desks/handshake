@@ -20,6 +20,8 @@ nonisolated struct CommandEnvelope: Encodable {
 nonisolated private struct CommandPayload: Encodable {
     var expectedDefinition: CoreWorkflowType.Definition?
     var definition: CoreWorkflowType.Definition?
+    var generationID: String?
+    var messages: [WorkflowChatMessage]?
     var prompt: String?
     var source: CoreWorkflowType.Reference?
     var reference: CoreWorkflowType.Reference?
@@ -48,6 +50,8 @@ nonisolated private struct CommandPayload: Encodable {
     var session: String?
 
     private enum CodingKeys: String, CodingKey {
+        case generationID = "generationId"
+        case messages
         case definition, source, reference, session, prompt, expectedDefinition
         case path, folder, kind, roles, size, type, workingDirectory, name, harness, model, effort, yolo
         case terminalID = "terminalId"
@@ -60,7 +64,8 @@ nonisolated private struct CommandPayload: Encodable {
 
     init(_ command: CoreCommand) {
         switch command {
-        case .validateWorkflowType, .saveWorkflowType, .deleteWorkflowType:
+        case .generateWorkflowType, .cancelWorkflowGeneration, .validateWorkflowType, .saveWorkflowType,
+            .deleteWorkflowType:
             type = ""
             configureWorkflowType(command)
         case .ping:
@@ -94,6 +99,16 @@ nonisolated private struct CommandPayload: Encodable {
 
     private mutating func configureWorkflowType(_ command: CoreCommand) {
         switch command {
+        case .generateWorkflowType(let generationID, let choice, let messages, let definition):
+            type = "generateWorkflowType"
+            self.generationID = generationID
+            harness = choice.harness
+            model = choice.model
+            self.messages = messages
+            self.definition = definition
+        case .cancelWorkflowGeneration(let generationID):
+            type = "cancelWorkflowGeneration"
+            self.generationID = generationID
         case .validateWorkflowType(let definition):
             type = "validateWorkflowType"
             self.definition = definition

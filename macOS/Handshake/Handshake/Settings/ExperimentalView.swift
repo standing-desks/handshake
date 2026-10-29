@@ -16,14 +16,12 @@ struct ExperimentalView: View {
                             VStack(alignment: .leading, spacing: 5) {
                                 HStack(spacing: 8) {
                                     Text(feature.title).font(.headline)
-                                    if feature.id == .crossAgentMemoryConsolidation || feature.id == .browserControl {
-                                        Text("Beta").font(.caption.weight(.medium))
-                                            .padding(.horizontal, 6).padding(.vertical, 2)
-                                            .background(.quaternary, in: .capsule)
-                                            .accessibilityIdentifier(
-                                                feature.id == .browserControl
-                                                    ? "browserControlBeta" : "crossAgentMemoryBeta")
-                                    }
+                                    Text("Beta").font(.caption.weight(.medium))
+                                        .padding(.horizontal, 6).padding(.vertical, 2)
+                                        .background(.quaternary, in: .capsule)
+                                        .accessibilityIdentifier(
+                                            feature.id == .crossAgentMemoryConsolidation
+                                                ? "crossAgentMemoryBeta" : "\(feature.id.rawValue)Beta")
                                 }
                                 Text(feature.description).font(.callout).foregroundStyle(.secondary)
                                 if feature.id == .crossAgentMemoryConsolidation {

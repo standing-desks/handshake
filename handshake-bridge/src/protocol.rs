@@ -248,6 +248,10 @@ enum WireEventKind<'a> {
     rename_all_fields = "camelCase"
 )]
 enum WireCommandResult {
+    WorkflowDrafted {
+        draft: Option<Box<handshake_core::WorkflowDraft>>,
+        error: Option<String>,
+    },
     WorkflowTypeValidated {
         issues: Vec<workflow_types::WireValidationIssue>,
     },
@@ -299,6 +303,10 @@ enum WireCommandResult {
 impl From<&CommandResult> for WireCommandResult {
     fn from(result: &CommandResult) -> Self {
         match result {
+            CommandResult::WorkflowDrafted { draft, error } => Self::WorkflowDrafted {
+                draft: draft.clone(),
+                error: error.clone(),
+            },
             CommandResult::WorkflowTypeValidated { issues } => Self::WorkflowTypeValidated {
                 issues: issues.iter().map(Into::into).collect(),
             },
@@ -363,7 +371,11 @@ pub(crate) fn decode_command(bytes: &[u8]) -> Result<CommandEnvelope, BridgeErro
         .and_then(Value::as_str)
         .ok_or(BridgeError::MalformedCommand)?;
     let command = match command_type {
-        "validateWorkflowType" | "saveWorkflowType" | "deleteWorkflowType" => {
+        "generateWorkflowType"
+        | "cancelWorkflowGeneration"
+        | "validateWorkflowType"
+        | "saveWorkflowType"
+        | "deleteWorkflowType" => {
             known(workflow_types::decode_command(command_type, &raw.command)?)
         }
         "submitWorkflowTask"
@@ -728,7 +740,7 @@ mod tests {
                     "appearance": { "color_scheme": "dark" },
                     "theme": { "light": "handshake_light", "dark": "handshake_dark" },
                     "terminal": { "font_family": "Menlo", "font_size": 15.5, "cursor_style": "block", "cursor_blink": true, "colors": {}, "palettes": handshake_core::config::TerminalPalettes::default() },
-                    "experimental": {"cross_agent_memory_consolidation": false, "browser_control": false},
+                    "experimental": {"cross_agent_memory_consolidation": false, "browser_control": false, "workflow_assistant": false},
                     "traces": {"detail_budget_mb":512,"retention_days":90},
                     "editor": { "autosave": false, "autosave_delay_ms": 2000 }
                 },
