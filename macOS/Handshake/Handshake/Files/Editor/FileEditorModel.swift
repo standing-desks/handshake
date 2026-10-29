@@ -145,6 +145,9 @@ final class FileEditorModel: Identifiable {
             fileEditorLogger.error("File save failed: \(error.localizedDescription, privacy: .public)")
         }
         pendingSave = nil
+        // Applying settings can migrate the saved source. Adopt that receipt only
+        // when no newer edits remain in the buffer.
+        receive(diskFile)
         generation = UUID()
         // Edits made during the write need a new debounce against the saved version.
         autosaveID = UUID()

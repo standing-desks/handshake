@@ -5,7 +5,7 @@ struct SettingsView: View {
     @State private var section = Section.configuration
     private enum Section: String, CaseIterable {
         case configuration = "Configuration"
-        case flags = "Feature flags"
+        case experimental = "Experimental"
     }
     let settings: SettingsPopup
     let windows: FolderWindows
@@ -23,13 +23,14 @@ struct SettingsView: View {
             Picker("Settings section", selection: $section) {
                 ForEach(Section.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }.pickerStyle(.segmented).accessibilityIdentifier("settingsSection")
-            if section == .flags {
-                FeatureFlagsView(
-                    model: settings.featureFlags,
+            if section == .experimental {
+                ExperimentalView(
+                    model: settings.experimental,
                     configurationHasChanges: settings.editor?.isDirty == true || settings.editor?.isSaving == true,
-                    change: { id, value in Task { await settings.setFeatureFlag(id, enabled: value, windows: windows) }
+                    change: { id, value in
+                        Task { await settings.setExperimentalFeature(id, enabled: value, windows: windows) }
                     },
-                    retry: { Task { await settings.retryFeatureFlags(windows: windows) } })
+                    retry: { Task { await settings.retryExperimental(windows: windows) } })
             } else if let editor = settings.editor {
                 Text("Press ⌘S to save. Saved settings apply immediately to all open folders.")
                     .font(.caption).foregroundStyle(.secondary)

@@ -38,8 +38,8 @@ disabled. This decision does not reset a user's saved preferences.
 
 ## References
 
-- [Core feature defaults and persistence](../../handshake-core/src/config/features.rs)
-- [Swift feature decoding](../../macOS/Handshake/Handshake/Core/Protocol/FeatureFlagModels.swift)
-- [Feature Settings](../../macOS/Handshake/Handshake/Settings/FeatureFlagsView.swift)
+- [Core feature defaults and persistence](../../handshake-core/src/config/experimental.rs)
+- [Swift feature decoding](../../macOS/Handshake/Handshake/Core/Protocol/ExperimentalModels.swift)
+- [Feature Settings](../../macOS/Handshake/Handshake/Settings/ExperimentalView.swift)
 - [Memory sidebar gating](../../macOS/Handshake/Handshake/Memories/MemorySidebar.swift)
 - [Project sharing controls](../../macOS/Handshake/Handshake/Memories/MemorySharingControls.swift)

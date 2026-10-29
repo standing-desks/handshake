@@ -56,3 +56,7 @@ The bytes exchanged with an agent's or shell's terminal. It is distinct from str
 
 **Config file**:
 The user's settings at `~/.config/handshake/config.toml`, such as color scheme. Existing Twine configuration is adopted when the Handshake config root is not established.
+
+**Experimental features**:
+Optional app-wide capabilities that users enable while they are still being evaluated. They appear under Experimental in Settings.
+_Avoid_: Feature flags

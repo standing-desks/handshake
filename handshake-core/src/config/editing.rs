@@ -14,8 +14,8 @@ pub enum ConfigEditError {
     Migration(#[from] super::ConfigMigrationError),
     #[error("Cannot find the user config directory.")]
     MissingDirectory,
-    #[error("Cannot edit feature flags: {0}")]
-    FeatureFlags(String),
+    #[error("Cannot edit experimental features: {0}")]
+    Experimental(String),
     #[error("Could not open the config file: {0}")]
     Open(String),
     #[error("The settings editor can only save the user config file.")]

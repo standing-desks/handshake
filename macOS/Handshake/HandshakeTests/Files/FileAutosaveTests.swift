@@ -5,6 +5,33 @@ import Testing
 
 @MainActor
 struct FileAutosaveTests {
+    @Test(arguments: [false, true])
+    func saveCallbackReconcilesMigratedSettingsWithoutReplacingNewerEdits(hasNewerEdits: Bool) async throws {
+        let client = CoreClient(transport: AutosaveTransport())
+        client.start()
+        try await client.waitUntilRunning()
+        let editor = makeEditor(isConfigFile: true)
+        editor.text = "[feature_flags]\ncross_agent_memory_consolidation = true\n"
+        editor.requestSave()
+        await editor.savePending(client: client) {
+            if hasNewerEdits { editor.text = "newer unsaved edits" }
+            editor.receive(
+                FilePreview(
+                    path: editor.path, status: .text,
+                    text: "[experimental]\ncross_agent_memory_consolidation = true\n", message: nil,
+                    version: FileVersion(fingerprint: "migrated", utf8BOM: false)))
+        }
+        #expect(!editor.isSaving)
+        #expect(editor.isDirty == hasNewerEdits)
+        if hasNewerEdits {
+            #expect(editor.text == "newer unsaved edits")
+        } else {
+            #expect(editor.text.contains("[experimental]"))
+            #expect(editor.baseline?.version?.fingerprint == "migrated")
+        }
+        await client.stop()
+    }
+
     @Test func debounceRejectsOlderEditsAndCancellation() async throws {
         let editor = makeEditor()
         editor.text = "first edit"
@@ -227,6 +254,8 @@ private actor AutosaveTransport: CoreTransport {
             message: nil, version: FileVersion(fingerprint: "saved-\(requests.count)", utf8BOM: false))
         return FileSaveResult(status: status, file: file, message: status == .failed ? "Save failed" : nil)
     }
+
+    func saveConfigFile(_ request: FileSaveRequest) async -> FileSaveResult { await saveFile(request) }
 
     func finishSave() {
         holdsSave = false

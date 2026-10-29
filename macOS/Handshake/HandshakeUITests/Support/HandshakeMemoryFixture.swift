@@ -41,7 +41,7 @@ extension HandshakeUITests {
             # Existing settings
             [terminal]
             font_size = 14 # keep this
-            [feature_flags]
+            [experimental]
             cross_agent_memory_consolidation = \(featureEnabled)
 
             """

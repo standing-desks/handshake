@@ -2,7 +2,7 @@
 
 mod client;
 mod error;
-mod feature_flags;
+mod experimental;
 mod ffi;
 mod keep_awake;
 mod logging;

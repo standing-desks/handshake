@@ -300,7 +300,7 @@ impl Application {
             .lock_inner()
             .map_err(std::io::Error::other)?
             .config
-            .feature_flags
+            .experimental
             .cross_agent_memory_consolidation
         {
             return Err(crate::memories::handshake::Error::Disabled);
@@ -316,7 +316,7 @@ impl Application {
                 .lock_inner()
                 .map_err(std::io::Error::other)?
                 .config
-                .feature_flags
+                .experimental
                 .cross_agent_memory_consolidation
                 && crate::memories::handshake::feature_enabled())
         })
@@ -417,7 +417,7 @@ impl Application {
             terminals.set_test_shell(PathBuf::from("/bin/sh"));
             terminals
         };
-        let memory_enabled = config.feature_flags.cross_agent_memory_consolidation;
+        let memory_enabled = config.experimental.cross_agent_memory_consolidation;
         let mut application = Self {
             window_storage: None,
             shared_recording,

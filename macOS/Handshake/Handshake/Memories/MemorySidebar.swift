@@ -35,7 +35,7 @@ struct MemorySidebar: View {
     }
 
     private var isConsolidationEnabled: Bool {
-        client.snapshot?.config.featureFlags.crossAgentMemoryConsolidation == true
+        client.snapshot?.config.experimental.crossAgentMemoryConsolidation == true
     }
 
     private var scopeTabs: some View {

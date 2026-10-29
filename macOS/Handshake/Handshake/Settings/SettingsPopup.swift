@@ -7,7 +7,7 @@ private let settingsLogger = Logger(subsystem: "com.twineproject.Twine", categor
 /// One app-wide editing buffer, presented as a sheet in the folder window that opened it.
 @Observable
 final class SettingsPopup {
-    let featureFlags = FeatureFlagsModel()
+    let experimental = ExperimentalModel()
     let coreClient: CoreClient
     private(set) var editor: FileEditorModel?
     private(set) var failure: String?
@@ -39,7 +39,7 @@ final class SettingsPopup {
                 isConfigFile: true)
             editor.receive(file)
             self.editor = editor
-            await featureFlags.load(client: coreClient)
+            await experimental.load(client: coreClient)
         } catch is CancellationError {
             return
         } catch {
@@ -56,29 +56,30 @@ final class SettingsPopup {
         source = nil
     }
 
-    func setFeatureFlag(_ id: FeatureFlagID, enabled: Bool, windows: FolderWindows) async {
+    func setExperimentalFeature(_ id: ExperimentalFeatureID, enabled: Bool, windows: FolderWindows) async {
         guard editor?.isDirty != true, editor?.isSaving != true else { return }
-        await featureFlags.set(id, enabled: enabled, client: coreClient) { file in
+        await experimental.set(id, enabled: enabled, client: coreClient) { file in
             self.editor?.receive(file)
             try await windows.reloadConfig()
         }
-        if let file = featureFlags.snapshot?.file { editor?.receive(file) }
+        if let file = experimental.snapshot?.file { editor?.receive(file) }
     }
 
     func configurationSaved(windows: FolderWindows) async throws {
         try await windows.reloadConfig()
-        await featureFlags.configurationApplied(client: coreClient)
+        await experimental.configurationApplied(client: coreClient)
+        editor?.receive(experimental.snapshot?.file)
     }
 
-    func retryFeatureFlags(windows: FolderWindows) async {
-        if featureFlags.needsApply {
-            await featureFlags.applyAgain(client: coreClient) { file in
+    func retryExperimental(windows: FolderWindows) async {
+        if experimental.needsApply {
+            await experimental.applyAgain(client: coreClient) { file in
                 self.editor?.receive(file)
                 try await windows.reloadConfig()
             }
         } else {
-            await featureFlags.load(client: coreClient)
-            if let file = featureFlags.snapshot?.file { editor?.receive(file) }
+            await experimental.load(client: coreClient)
+            if let file = experimental.snapshot?.file { editor?.receive(file) }
         }
     }
 
