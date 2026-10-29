@@ -243,11 +243,11 @@ Click an agent or link to change its settings. The editor has compact cards on a
 Use <strong>Fit</strong> to see the full graph. The name and description fields are above the canvas.
 A valid receiving card lights up as you drag a connection. You can also use <strong>Connect to…</strong>
 under <strong>Actions</strong> in agent settings or in a card's context menu. Settings keep your draft edits when you click outside them.
-The <strong>Agent</strong> view contains the name, color, and instructions. Choose a color to tint the card and
+Agent settings contain the name, color, and instructions. Use the color control beside the name to tint the card and
 its outgoing links. Incoming work settings appear when an agent has multiple input links.
 Use <strong>When work ends</strong> to send a result or make a review decision.
-Right-click an agent and choose <strong>Duplicate agent</strong> to add another agent with the same settings. Switch to
-<strong>Launch defaults</strong> to set optional harness, model, effort, and permission choices.
+Right-click an agent and choose <strong>Duplicate agent</strong> to add another agent with the same settings. Expand
+<strong>Advanced</strong> and enable <strong>Use launch defaults</strong> to set optional harness, model, effort, and permission choices.
 These choices fill the launch form. You can change them before starting.
 Right-click empty canvas space for workflow settings and the activation limit under <strong>Advanced</strong>.
 Double-click empty canvas space to add an agent at that point.</p>
@@ -287,22 +287,26 @@ wire to change that list. Use descriptive names so Nouli can choose between agen
 <p><strong>Yes/No</strong> assigns Yes to the first connection and No to the second. Use the answer
 pickers or <strong>Swap Yes / No</strong> to change their destinations. The default cutoff sends a
 probability of yes at or above 50% to Yes, and lower values to No. Enable <strong>Use an Uncertain
-answer</strong> to use two thresholds and connect a third agent for values between them.</p>
+answer</strong> to use two thresholds and connect a third agent for values between them. Type percentages directly
+or use the steppers for small adjustments.</p>
 <p><strong>Score</strong> uses two to ten connected agents as ordered levels, starting at zero.
 Move levels up or down, or drag them, to order the scale from lowest to highest. Work goes to the
 nearest level; halfway values go higher. A score of 1.43 on a three-level scale selects level 1.
 The original score, probabilities, and rubric stay in the typed result.</p>
-<p>Changing answer type keeps existing wires. Inline errors identify incompatible counts or missing
-answer assignments; fix them before saving. A single connection remains passthrough for every type.
+<p>Changing answer type keeps existing wires. While editing, switching back to an answer type restores its previous
+configuration. Inline errors identify missing questions and answer assignments; fix them before saving.
+Select a validation message below the canvas to open the relevant node and field. Nodes needing attention have a warning
+indicator. A single connection remains passthrough for every type, including its label on the canvas.
 The incoming data becomes Nouli’s state. The question and selected answer type determine its request.</p>
 <p>Enter a task in the launch form, or in a starting decision’s input surface. Each model decision
 captures its incoming evidence and can include the original task. Only the selected route activates
 work. Unselected terminal roles do not need to produce results. Conditional branches must use
 <strong>Start as work arrives</strong> when waiting for alternative branches would block a join.
 Small decision graphs fit at up to 80% scale; the existing zoom controls adjust the view.</p>
-<p><strong>Launch defaults</strong> offers optional Nouli provider-profile and model overrides.
-Empty fields use Nouli’s configured defaults. Inspect captured inputs and typed outcomes in a
-decision’s subtab and Traces. Refusal or provider failure pauses without choosing a route.
+<p><strong>Advanced</strong> offers optional Nouli provider-profile and model overrides and incoming-work settings.
+Empty fields use Nouli’s configured defaults. A completed decision shows its destination and probability or fractional score.
+Expand <strong>Typed result</strong> or <strong>Captured inputs</strong> for the original evidence in a decision’s subtab;
+Traces retain the attempts. Refusal or provider failure pauses without choosing a route.
 <strong>Retry captured decision</strong> retries frozen inputs using the configured provider settings.
 Calls use <code>--no-session</code>; Handshake retains the workflow evidence and trace history.
 A chained example is in <code>examples/workflows/decision-triage.toml</code>.</p>

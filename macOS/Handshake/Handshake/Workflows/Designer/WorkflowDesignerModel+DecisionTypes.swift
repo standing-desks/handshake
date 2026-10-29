@@ -12,49 +12,16 @@ extension WorkflowDesignerModel {
     }
 
     func setDecisionKind(_ id: String, kind: CoreWorkflowType.DecisionKind) {
-        guard var graph = definition.graph, var node = graph.decisions[id], node.kind != kind else { return }
-        let edges = decisionEdges(id)
-        node.kind = kind
-        node.minConfidence = nil
-        node.options = edges.map { .init(id: $0.id, name: nodeName($0.to), description: nodeName($0.to)) }
-        if kind == .noul {
-            node.trueThreshold = 5_000
-            node.falseThreshold = 5_000
-        }
-        for index in graph.edges.indices where graph.edges[index].from == id {
-            let edge = graph.edges[index]
-            let rank = edges.firstIndex { $0.id == edge.id } ?? edges.count
-            graph.edges[index].output =
-                kind == .noul
-                ? (rank < 2 ? ["yes", "no"][rank] : nil) : edge.id
-        }
-        graph.decisions[id] = node
+        guard var graph = definition.graph, graph.decisions[id]?.kind != kind else { return }
+        let names = Dictionary(uniqueKeysWithValues: definition.roles.map { ($0.id, $0.name) })
+        decisionDrafts.switchKind(id, to: kind, edges: decisionEdges(id), graph: &graph, names: names)
         definition.graph = graph
     }
 
     func setDecisionUncertain(_ id: String, enabled: Bool) {
-        guard var graph = definition.graph, var node = graph.decisions[id], node.kind == .noul else { return }
-        node.trueThreshold = enabled ? 8_000 : 5_000
-        node.falseThreshold = enabled ? 2_000 : 5_000
-        graph.decisions[id] = node
-        normalizeBinaryMappings(id, outputs: node.outputs.map(\.id), graph: &graph)
+        guard var graph = definition.graph else { return }
+        decisionDrafts.setUncertain(id, enabled: enabled, graph: &graph)
         definition.graph = graph
-    }
-
-    private func normalizeBinaryMappings(_ id: String, outputs: [String], graph: inout CoreWorkflowType.Graph) {
-        var used = Set<String>()
-        for index in graph.edges.indices where graph.edges[index].from == id {
-            if let output = graph.edges[index].output, outputs.contains(output), used.insert(output).inserted {
-                continue
-            }
-            graph.edges[index].output = nil
-        }
-        for index in graph.edges.indices where graph.edges[index].from == id && graph.edges[index].output == nil {
-            if let output = outputs.first(where: { !used.contains($0) }) {
-                graph.edges[index].output = output
-                used.insert(output)
-            }
-        }
     }
 
     func assignDecisionOutput(_ id: String, edge edgeID: String, output: String) {
@@ -84,28 +51,6 @@ extension WorkflowDesignerModel {
     }
 
     func decisionIssues(_ id: String) -> [String] {
-        guard let node = definition.graph?.decisions[id] else { return [] }
-        let edges = decisionEdges(id)
-        if edges.count == 1 { return [] }
-        if edges.isEmpty { return ["Connect an output. One connection passes work through."] }
-        switch node.kind {
-        case .choice: return []
-        case .noul:
-            let expected = node.outputs.map(\.id)
-            var issues: [String] = []
-            if edges.count != expected.count {
-                issues.append(
-                    "Yes/No needs \(expected.count) connections. Existing wires are kept; adjust the connections.")
-            }
-            for output in node.outputs where edges.filter({ $0.output == output.id }).count != 1 {
-                issues.append("Assign one connected agent to \(output.name).")
-            }
-            if edges.contains(where: { !expected.contains($0.output ?? "") }) {
-                issues.append("Some connections have no answer assigned.")
-            }
-            return issues
-        case .score:
-            return (2...10).contains(edges.count) ? [] : ["Score needs between 2 and 10 connected levels."]
-        }
+        decisionValidation(id).map(\.message)
     }
 }

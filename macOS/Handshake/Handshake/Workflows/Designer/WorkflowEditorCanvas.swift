@@ -17,33 +17,41 @@ struct WorkflowEditorCanvas: View {
     @State private var visibleRect = CGRect.zero
     @State private var showsSettings = false
 
+    private var portHitSize: CGFloat { WorkflowEditorLayout.portHitSize(at: zoom) }
     private var nodes: [String] { model.definition.roles.map(\.id) }
     private var size: CGSize { WorkflowEditorLayout.canvasSize(for: model.definition) }
     private var offset: CGSize { WorkflowEditorLayout.originOffset(for: model.definition) }
 
     var body: some View {
         GeometryReader { viewport in
-            ScrollView([.horizontal, .vertical]) {
-                graph
-                    .frame(width: size.width, height: size.height)
-                    .coordinateSpace(name: "workflowCanvas")
-                    .scaleEffect(zoom, anchor: .topLeading)
-                    .frame(width: size.width * zoom, height: size.height * zoom, alignment: .topLeading)
-                    .frame(minWidth: viewport.size.width, minHeight: viewport.size.height, alignment: .topLeading)
-                    .background { canvasBackground }
-            }
-            .defaultScrollAnchor(.topLeading, for: .sizeChanges)
-            .onScrollGeometryChange(for: CGRect.self) {
-                $0.visibleRect
-            } action: { _, rect in
-                visibleRect = rect
-            }
-            .overlay {
-                if model.definition.roles.isEmpty {
-                    WorkflowFirstRoleAction {
-                        let rect = visibleRect.isEmpty ? CGRect(origin: .zero, size: viewport.size) : visibleRect
-                        addAgent(at: CGPoint(x: rect.midX, y: rect.midY))
+            ScrollViewReader { reader in
+                ScrollView([.horizontal, .vertical]) {
+                    graph
+                        .frame(width: size.width, height: size.height)
+                        .coordinateSpace(name: "workflowCanvas")
+                        .scaleEffect(zoom, anchor: .topLeading)
+                        .frame(width: size.width * zoom, height: size.height * zoom, alignment: .topLeading)
+                        .frame(minWidth: viewport.size.width, minHeight: viewport.size.height, alignment: .topLeading)
+                        .background { canvasBackground }
+                }
+                .defaultScrollAnchor(.topLeading, for: .sizeChanges)
+                .onScrollGeometryChange(for: CGRect.self) {
+                    $0.visibleRect
+                } action: { _, rect in
+                    visibleRect = rect
+                }
+                .overlay {
+                    if model.definition.roles.isEmpty {
+                        WorkflowFirstRoleAction {
+                            let rect = visibleRect.isEmpty ? CGRect(origin: .zero, size: viewport.size) : visibleRect
+                            addAgent(at: CGPoint(x: rect.midX, y: rect.midY))
+                        }
                     }
+                }
+                .task(id: model.decisionFocus?.id) {
+                    guard let issue = model.decisionFocus else { return }
+                    await Task.yield()
+                    reader.scrollTo(issue.nodeID, anchor: .center)
                 }
             }
         }
@@ -101,6 +109,7 @@ struct WorkflowEditorCanvas: View {
     }
 
     private func clearSelection() {
+        model.decisionFocus = nil
         selectedNodeID = nil
         selection = nil
         cancelConnection()
@@ -124,7 +133,7 @@ struct WorkflowEditorCanvas: View {
             )
             .frame(width: size.width, height: size.height)
             ForEach(nodes, id: \.self) { id in
-                node(id).position(point(id))
+                node(id).id(id).position(point(id))
             }
             if connecting != nil, let pointer, connectionTarget == nil {
                 Image(systemName: "circle.slash").font(.body).foregroundStyle(.secondary)
@@ -158,6 +167,8 @@ struct WorkflowEditorCanvas: View {
         } label: {
             WorkflowGraphCard(
                 title: role?.name ?? "Agent", decision: model.definition.graph?.decisions[id],
+                passthrough: model.definition.graph?.decisions[id] != nil && model.decisionEdges(id).count == 1,
+                validationMessage: model.decisionIssues(id).first,
                 emphasized: connecting == id || selectedNodeID == id || connectionTarget == id,
                 tint: role?.color?.tint,
                 startsHere: graph?.startsAgent(id) == true,
@@ -170,12 +181,12 @@ struct WorkflowEditorCanvas: View {
         .frame(width: size.width, height: size.height)
         .highPriorityGesture(moveNodeGesture(id))
         .overlay(alignment: .leading) {
-            connector(id, output: false).offset(x: -WorkflowEditorLayout.portHitSize / 2)
+            connector(id, output: false).offset(x: -portHitSize / 2)
         }
         .overlay(alignment: .trailing) {
-            connector(id, output: true).offset(x: WorkflowEditorLayout.portHitSize / 2)
+            connector(id, output: true).offset(x: portHitSize / 2)
         }
-        .popover(isPresented: nodePresentation(id)) {
+        .popover(isPresented: nodePresentation(id), attachmentAnchor: .rect(.bounds), arrowEdge: .top) {
             nodeEditor(id, role: role).onExitCommand(perform: closeNodeEditor)
         }
         .contextMenu { nodeActions(id) }
@@ -232,10 +243,10 @@ extension WorkflowEditorCanvas {
                         connecting == id || connectionTarget == id
                             ? Color.accentColor : (role?.color?.tint ?? .secondary).opacity(0.7), lineWidth: 1.5)
                 }
-                .frame(width: 10, height: 10)
+                .frame(width: portHitSize * 10 / 28, height: portHitSize * 10 / 28)
         }
         .buttonStyle(.plain)
-        .frame(width: WorkflowEditorLayout.portHitSize, height: WorkflowEditorLayout.portHitSize)
+        .frame(width: portHitSize, height: portHitSize)
         .contentShape(.rect)
         .help(output ? "Connect to another agent" : "Connect work from another agent")
         .accessibilityLabel(output ? "Connect from \(name)" : "Connect to \(name)")
@@ -269,8 +280,8 @@ extension WorkflowEditorCanvas {
                 WorkflowEditorLayout.nodeSize(for: candidate, in: model.definition).width / 2
                 * (connectingFromInput ? 1 : -1)
             let target = point(candidate)
-            return abs(target.x + portOffset - pointer.x) <= WorkflowEditorLayout.portHitSize / 2
-                && abs(target.y - pointer.y) <= WorkflowEditorLayout.portHitSize / 2
+            return abs(target.x + portOffset - pointer.x) <= portHitSize / 2
+                && abs(target.y - pointer.y) <= portHitSize / 2
         }
     }
 
@@ -310,6 +321,7 @@ extension WorkflowEditorCanvas {
     }
 
     private func closeNodeEditor() {
+        model.decisionFocus = nil
         selection = nil
         canvasFocused = true
     }
@@ -330,6 +342,13 @@ extension WorkflowEditorCanvas {
     }
 
     private func nodePresentation(_ id: String) -> Binding<Bool> {
-        Binding(get: { selection == .node(id) }, set: { if !$0 && selection == .node(id) { selection = nil } })
+        Binding(
+            get: { selection == .node(id) },
+            set: {
+                if !$0 && selection == .node(id) {
+                    model.decisionFocus = nil
+                    selection = nil
+                }
+            })
     }
 }

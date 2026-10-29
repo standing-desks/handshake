@@ -1,12 +1,14 @@
 import SwiftUI
 
-/// The question is evaluated against options named after the connected agents.
+/// The question and its destinations stay visible ahead of less common settings.
 struct WorkflowDecisionPopover: View {
     @Bindable var model: WorkflowDesignerModel
     let role: CoreWorkflowType.Role
     let close: () -> Void
     @Environment(\.appZoomMaximumPresentationSize) private var maximum
-    @State private var defaults = false
+    @Environment(\.effectiveReduceMotion) private var reduceMotion
+    @State private var advanced = false
+    @FocusState private var questionFocused: Bool
 
     private var decision: Binding<CoreWorkflowType.DecisionNode> {
         Binding(
@@ -17,21 +19,27 @@ struct WorkflowDecisionPopover: View {
             })
     }
 
-    private var routes: [CoreWorkflowType.Edge] {
-        model.decisionEdges(role.id)
+    private var routes: [CoreWorkflowType.Edge] { model.decisionEdges(role.id) }
+    private var preferredHeight: CGFloat {
+        if advanced { return 680 }
+        if routes.count == 1 { return 310 }
+        switch decision.wrappedValue.kind {
+        case .choice: return min(590, 400 + CGFloat(routes.count) * 36)
+        case .noul: return decision.wrappedValue.trueThreshold > decision.wrappedValue.falseThreshold ? 660 : 600
+        case .score: return min(650, 420 + CGFloat(routes.count) * 40)
+        }
     }
 
     var body: some View {
         VStack(spacing: 0) {
             WorkflowNodeKindPicker(model: model, id: role.id)
-            Picker("Settings", selection: $defaults) {
-                Text("Decision").tag(false)
-                Text("Launch defaults").tag(true)
-            }.pickerStyle(.segmented).labelsHidden().padding(.horizontal, 20).padding(.vertical, 8)
-            if defaults {
-                launchDefaults
-            } else {
-                settings
+            ScrollViewReader { proxy in
+                settings.task(id: model.decisionFocus?.id) {
+                    guard let issue = model.decisionFocus, issue.nodeID == role.id else { return }
+                    await Task.yield()
+                    proxy.scrollTo(issue.field, anchor: .center)
+                    questionFocused = issue.field == .question
+                }
             }
             Divider()
             HStack {
@@ -46,16 +54,16 @@ struct WorkflowDecisionPopover: View {
                 Button("Done", action: close).keyboardShortcut(.defaultAction)
             }.padding(.horizontal, 20).padding(.vertical, 12)
         }
-        .frame(width: min(420, maximum.width), height: min(defaults ? 350 : 640, maximum.height))
-        .accessibilityIdentifier("decisionSettings")
+        .frame(width: min(420, maximum.width), height: min(preferredHeight, maximum.height))
+        .animation(reduceMotion ? nil : Motion.disclosure, value: advanced)
+        .animation(reduceMotion ? nil : Motion.disclosure, value: routes.count == 1)
+        .accessibilityElement(children: .contain).accessibilityIdentifier("decisionSettings")
     }
 
     private var settings: some View {
         Form {
             Section {
-                TextField("Name", text: model.roleBinding(role).name).textFieldStyle(.plain)
-                    .accessibilityIdentifier("graphAgentName")
-                WorkflowAgentColorPicker(color: model.roleBinding(role).color)
+                WorkflowNodeIdentityFields(role: model.roleBinding(role))
                 Picker(
                     "Answer type",
                     selection: Binding(
@@ -72,50 +80,53 @@ struct WorkflowDecisionPopover: View {
                 }
             } else {
                 Section("Question") {
-                    TextEditor(text: decision.question).font(.body).frame(height: 80)
+                    TextEditor(text: decision.question).font(.body).frame(height: 64).focused($questionFocused)
                         .scrollContentBackground(.hidden).accessibilityLabel("Decision question")
                         .accessibilityIdentifier("decisionQuestion")
-                    Text(questionHelp).font(.caption).foregroundStyle(
-                        .secondary)
-                }
+                    if let issue = model.decisionValidation(role.id).first(where: { $0.field == .question }) {
+                        WorkflowDecisionIssueLabel(issue: issue)
+                    } else {
+                        Text(questionHelp).font(.caption).foregroundStyle(.secondary)
+                    }
+                }.id(WorkflowDecisionIssue.Field.question)
                 WorkflowDecisionAnswerSettings(model: model, id: role.id, decision: decision)
             }
-            Section("Inputs") {
-                Toggle("Include the workflow task", isOn: decision.includeTask)
-                    .disabled(routes.count == 1)
-                Text("Incoming work is preserved through the selected route.").font(.caption).foregroundStyle(
-                    .secondary)
-                if model.definition.graph?.agentEdges.filter({ $0.to == role.id }).count ?? 0 > 1 {
-                    Picker(
-                        "Incoming work",
-                        selection: Binding(
-                            get: { model.definition.graph?.receive[role.id] ?? .any },
-                            set: { model.definition.graph?.receive[role.id] = $0 })
-                    ) {
-                        Text("Start as work arrives").tag(CoreWorkflowType.Receive.any)
-                        Text("Wait for every incoming link").tag(CoreWorkflowType.Receive.all)
-                    }
-                }
+            Section {
+                DisclosureGroup("Advanced", isExpanded: $advanced) { advancedSettings }
+                    .accessibilityIdentifier("decisionAdvanced")
             }
         }.formStyle(.grouped).scrollContentBackground(.hidden)
     }
 
-    private var questionHelp: String {
-        switch decision.wrappedValue.kind {
-        case .choice: "Ask Nouli which connected agent should receive the work."
-        case .noul: "Ask a question that can be answered Yes or No."
-        case .score: "Ask for a rating using the ordered scale below."
+    private var advancedSettings: some View {
+        Group {
+            Toggle("Include the workflow task", isOn: decision.includeTask).toggleStyle(.checkbox)
+                .disabled(routes.count == 1)
+            if model.definition.graph?.agentEdges.filter({ $0.to == role.id }).count ?? 0 > 1 {
+                Picker(
+                    "Incoming work",
+                    selection: Binding(
+                        get: { model.definition.graph?.receive[role.id] ?? .any },
+                        set: { model.definition.graph?.receive[role.id] = $0 })
+                ) {
+                    Text("Start as work arrives").tag(CoreWorkflowType.Receive.any)
+                    Text("Wait for every incoming link").tag(CoreWorkflowType.Receive.all)
+                }
+            }
+            LabeledContent("Agent", value: "Nouli")
+            TextField("Provider profile", text: optional(decision.provider))
+            TextField("Model", text: optional(decision.model))
+            Text("Empty fields use Nouli’s configured defaults. Incoming work is preserved through the selected route.")
+                .font(.caption).foregroundStyle(.secondary)
         }
     }
 
-    private var launchDefaults: some View {
-        Form {
-            LabeledContent("Harness", value: "Nouli")
-            TextField("Provider profile", text: optional(decision.provider))
-            TextField("Model", text: optional(decision.model))
-            Text("Empty fields use Nouli’s configured defaults. Passthrough nodes do not use these settings.")
-                .font(.caption).foregroundStyle(.secondary)
-        }.formStyle(.grouped)
+    private var questionHelp: String {
+        switch decision.wrappedValue.kind {
+        case .choice: "Choose which connected agent receives the incoming work."
+        case .noul: "Ask a question that can be answered Yes or No."
+        case .score: "Ask for a rating using the ordered scale below."
+        }
     }
 
     private func optional(_ binding: Binding<String?>) -> Binding<String> {

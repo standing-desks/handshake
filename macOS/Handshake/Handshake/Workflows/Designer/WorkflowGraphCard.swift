@@ -18,6 +18,7 @@ nonisolated enum WorkflowEditorLayout {
     }
 
     static let portHitSize: CGFloat = 28
+    static func portHitSize(at zoom: Double) -> CGFloat { portHitSize / max(0.25, CGFloat(zoom)) }
     static let canvasMargin: CGFloat = 52
 
     static func defaultPosition(for id: String, roles: [CoreWorkflowType.Role]) -> CoreWorkflowType.Position {
@@ -125,6 +126,8 @@ enum WorkflowEditorStyle {
 struct WorkflowGraphCard: View {
     let title: String
     var decision: CoreWorkflowType.DecisionNode?
+    var passthrough = false
+    var validationMessage: String?
     var emphasized = false
     var tint: Color?
     var startsHere = false
@@ -140,7 +143,8 @@ struct WorkflowGraphCard: View {
             if let decision {
                 VStack(spacing: 3) {
                     Text(title).font(.subheadline.weight(.semibold)).lineLimit(2).multilineTextAlignment(.center)
-                    Text(decision.kind.shortTitle).font(.caption2).foregroundStyle(.secondary)
+                    Text(passthrough ? "Passthrough" : decision.kind.shortTitle).font(.caption2).foregroundStyle(
+                        .secondary)
                 }.frame(width: 84)
             } else {
                 agentContent.padding(14)
@@ -158,6 +162,14 @@ struct WorkflowGraphCard: View {
                     : (tint?.opacity(contrast == .increased ? 0.85 : (hovered ? 0.6 : 0.4))
                         ?? WorkflowEditorStyle.border),
                 lineWidth: emphasized ? 2 : 1)
+        }
+        .overlay(alignment: .top) {
+            if let validationMessage {
+                Label("Needs attention", systemImage: "exclamationmark.circle.fill").labelStyle(.iconOnly)
+                    .foregroundStyle(Color.statusNeedsAttention).font(.body)
+                    .padding(4).background(WorkflowEditorStyle.card, in: .circle).offset(y: -10)
+                    .help(validationMessage)
+            }
         }
         .shadow(color: .black.opacity(hovered ? 0.12 : 0.06), radius: hovered ? 6 : 3, y: 2)
         .contentShape(shape).onHover { hovered = $0 }

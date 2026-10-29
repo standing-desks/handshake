@@ -161,6 +161,42 @@ extension HandshakeUITests {
     }
 
     @MainActor
+    func testDecisionValidationReturnsToAnOffscreenNodeRepeatedly() throws {
+        let app = try launchGraphDesigner()
+        defer { app.terminate() }
+        let editor = WorkflowGraphExampleUI(app: app, testCase: self)
+        editor.item("workflowCreateOwn").click()
+        editor.replace("designerName", with: "Validation navigation")
+        let canvas = editor.item("designerContent")
+        canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.25)).doubleClick()
+        editor.replace("graphAgentName", with: "Router")
+        editor.item("graphNodeKind").radioButtons["Decision"].click()
+        app.buttons["Done"].click()
+        canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.65, dy: 0.4)).doubleClick()
+        editor.replace("graphAgentName", with: "Far agent")
+        app.buttons["Done"].click()
+        let far = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH 'graphNode-' AND label CONTAINS 'Far agent'")
+        )
+        .firstMatch
+        let start = far.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        start.click(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 650, dy: 0)))
+        let router = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH 'graphNode-' AND label CONTAINS 'Router'")
+        )
+        .firstMatch
+        for _ in 0..<2 {
+            canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.7)).scroll(byDeltaX: -2000, deltaY: 0)
+            XCTAssertFalse(router.isHittable)
+            editor.item("designerDecisionValidation").click()
+            XCTAssertTrue(editor.item("decisionSettings").waitForExistence(timeout: 5))
+            XCTAssertTrue(router.isHittable)
+            XCTAssertTrue(app.staticTexts["Connect an output. One connection passes work through."].exists)
+            app.buttons["Done"].click()
+        }
+    }
+
+    @MainActor
     private func launchGraphDesigner() throws -> XCUIApplication {
         let folder = try makeTestFolder(prefix: "HandshakeGraphEditor")
         let app = try makeApp(lastOpenFolder: folder)
@@ -182,6 +218,7 @@ private struct WorkflowGraphExampleUI {
     func replace(_ id: String, with text: String) {
         let field = item(id)
         XCTAssertTrue(field.waitForExistence(timeout: 5), app.debugDescription)
+        reveal(field)
         field.click()
         app.typeKey("a", modifierFlags: .command)
         app.typeText(text)
@@ -196,8 +233,29 @@ private struct WorkflowGraphExampleUI {
         XCTAssertTrue(option.waitForExistence(timeout: 5), app.debugDescription)
         option.click()
     }
+    private func reveal(_ control: XCUIElement) {
+        let popover = app.popovers.firstMatch
+        guard popover.exists else { return }
+        let content = popover.scrollViews.firstMatch
+        guard content.exists else { return }
+        for _ in 0..<8 {
+            let visible = content.frame.intersection(popover.frame).insetBy(dx: 4, dy: 4)
+            let center = CGPoint(x: control.frame.midX, y: control.frame.midY)
+            if visible.contains(center), control.isHittable { return }
+            content.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+                .scroll(byDeltaX: 0, deltaY: center.y < visible.minY ? 80 : -80)
+        }
+        XCTAssertTrue(control.isHittable, app.debugDescription)
+    }
+
+    private func click(_ id: String) {
+        let control = item(id)
+        reveal(control)
+        control.click()
+    }
+
     func chooseAnswerType(_ title: String) {
-        item("decisionAnswerType").click()
+        click("decisionAnswerType")
         app.menuItems[title].click()
     }
 
@@ -210,14 +268,29 @@ private struct WorkflowGraphExampleUI {
         router.click()
         chooseAnswerType("Yes/No")
         XCTAssertTrue(item("decisionAnswer-yes").waitForExistence(timeout: 5))
+        XCTAssertFalse(app.popovers.firstMatch.frame.contains(CGPoint(x: router.frame.midX, y: router.frame.midY)))
+        XCTAssertFalse(app.radioButtons["Launch defaults"].exists)
+        replace("decisionYesThreshold", with: "63.5")
+        app.buttons["Done"].click()
+        router.click()
+        XCTAssertEqual(item("decisionYesThreshold").value as? String, "63.5")
         item("decisionSwapAnswers").click()
         app.buttons["Done"].click()
         XCTAssertTrue(app.buttons["Router to Builder: No"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["Router to Planner: Yes"].exists)
         router.click()
-        item("decisionUncertain").click()
+        click("decisionUncertain")
+        replace("decisionYesThreshold", with: "87.5")
+        replace("decisionNoThreshold", with: "12.5")
+        click("decisionUncertain")
+        XCTAssertEqual(item("decisionYesThreshold").value as? String, "63.5")
+        click("decisionUncertain")
+        XCTAssertEqual(item("decisionYesThreshold").value as? String, "87.5")
         app.buttons["Done"].click()
         XCTAssertFalse(item("designerSave").isEnabled)
+        item("designerDecisionValidation").click()
+        XCTAssertTrue(app.staticTexts["Connect one agent for Uncertain."].waitForExistence(timeout: 5))
+        app.buttons["Done"].click()
         let canvas = item("designerContent")
         canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.5)).doubleClick()
         replace("graphAgentName", with: "Escalator")
@@ -230,9 +303,18 @@ private struct WorkflowGraphExampleUI {
     func verifyScore() {
         router.click()
         chooseAnswerType("Score")
+        let question = item("decisionQuestion")
+        question.click()
+        app.typeKey("a", modifierFlags: .command)
+        app.typeKey(.delete, modifierFlags: [])
+        app.buttons["Done"].click()
+        item("designerDecisionValidation").click()
+        XCTAssertTrue(app.staticTexts["Enter a question for this decision."].waitForExistence(timeout: 5))
         replace("decisionQuestion", with: "How much attention does this work need?")
-        app.buttons["Move Escalator up"].click()
-        app.buttons["Move Escalator up"].click()
+        let move = app.buttons["Move Escalator up"]
+        reveal(move)
+        move.click()
+        move.click()
         let image = XCTAttachment(screenshot: app.screenshot())
         image.name = "Ordered score levels and square diamond"
         image.lifetime = .keepAlways
@@ -242,6 +324,9 @@ private struct WorkflowGraphExampleUI {
         XCTAssertTrue(app.buttons["Router to Escalator: 0 · Escalator"].exists)
         XCTAssertTrue(app.buttons["Router to Builder: 1 · Builder"].exists)
         XCTAssertTrue(app.buttons["Router to Planner: 2 · Planner"].exists)
+        for _ in 0..<4 { app.buttons["Zoom out"].click() }
+        XCTAssertGreaterThanOrEqual(app.buttons["Connect from Router"].frame.width, 27)
+        XCTAssertGreaterThanOrEqual(app.buttons["Connect to Planner"].frame.height, 27)
     }
 
     func saveAndReopen() {

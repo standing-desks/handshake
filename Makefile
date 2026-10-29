@@ -103,6 +103,7 @@ UI_DEFAULT_TESTS := testFirstLaunchShowsStartPage \
 	testAdversarialHarnessSelectionUserCompletionReviewLoopAndTraces \
 	testWorkflowDesignerKeyboardEntryValidationAndBuiltinCopy \
 	testDecisionNodesSwitchFromAgentsAndRouteThroughSharedDragConnectors \
+	testDecisionValidationReturnsToAnOffscreenNodeRepeatedly \
 	testSavedWorkflowHoverDeleteRequiresConfirmation \
 	testBentoPanesKeepEachShellAndMoveTheKeyboardBetweenThem \
 	testTerminalSplitsResizeKeepTheirNeighborAndRestoreOutput \

@@ -33,6 +33,12 @@ struct WorkflowCanvasPresentationTests {
         #expect(image.height < 130)
     }
 
+    @Test func connectorTargetsStayAtTheDefaultSizeOnScreenAtEveryCanvasZoom() {
+        for zoom in [0.25, 0.5, 0.8, 1, 1.5, 2.0] {
+            #expect(WorkflowEditorLayout.portHitSize(at: zoom) * zoom == 28)
+        }
+    }
+
     @Test func decisionCardsUseDiamondGeometryWithSharedSideConnectors() throws {
         let rect = CGRect(origin: .zero, size: WorkflowEditorLayout.decisionSize)
         let path = WorkflowNodeShape(isDecision: true).path(in: rect)

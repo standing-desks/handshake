@@ -95,7 +95,10 @@ struct WorkflowGraphOverview: View {
                 }.accessibilityHidden(true)
                 ForEach(definition.roles) { role in
                     WorkflowGraphCard(
-                        title: role.name, decision: definition.graph?.decisions[role.id], tint: role.color?.tint,
+                        title: role.name, decision: definition.graph?.decisions[role.id],
+                        passthrough: definition.graph?.decisions[role.id] != nil
+                            && definition.graph?.agentEdges.filter { $0.from == role.id }.count == 1,
+                        tint: role.color?.tint,
                         startsHere: definition.graph?.startsAgent(role.id) == true,
                         returnsResult: definition.graph?.returnsResult(role.id) == true,
                         reviewsWork: definition.graph?.reviewsWork(role.id) == true

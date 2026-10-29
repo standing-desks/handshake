@@ -110,6 +110,15 @@ struct WorkflowDesigner: View {
             Text("Double-click to add an agent. Right-click for canvas tools.").foregroundStyle(.secondary).lineLimit(2)
         } else if model.definition.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             Text("Save without a name to use Untitled.").foregroundStyle(.secondary).lineLimit(2)
+        } else if let issue = model.decisionValidationIssues.first {
+            Button {
+                model.decisionFocus = issue
+                selection = .node(issue.nodeID)
+            } label: {
+                Label("\(model.nodeName(issue.nodeID)): \(issue.message)", systemImage: "exclamationmark.circle")
+                    .foregroundStyle(Color.statusNeedsAttention).lineLimit(2)
+            }.buttonStyle(.plain).help("Show the field that needs attention")
+                .accessibilityIdentifier("designerDecisionValidation")
         } else if let issue = model.issues.first, !model.isValidating {
             Text(issue.message).foregroundStyle(Color.statusNeedsAttention).lineLimit(2)
                 .accessibilityIdentifier("designerValidation")

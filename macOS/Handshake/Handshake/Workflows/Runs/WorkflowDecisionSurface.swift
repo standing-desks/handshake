@@ -23,12 +23,12 @@ struct WorkflowDecisionSurface: View {
         return run.workflowType?.definition.roles.first { $0.id == edges[0].to }?.name ?? edges[0].to
     }
 
-    private func selectedName(_ output: String) -> String {
-        let fallback = node?.outputs.first { $0.id == output }?.name ?? output
-        guard let definition = run.workflowType?.definition,
-            let edge = definition.graph?.edges.first(where: { $0.from == role && $0.output == output })
-        else { return fallback }
-        return WorkflowDecisionLabels.outputTitle(edge, definition: definition)
+    private func selectedResult(_ output: String) -> WorkflowDecisionResultPresentation {
+        let definition = run.workflowType?.definition
+        let edge = definition?.graph?.edges.first { $0.from == role && $0.output == output }
+        let destination = definition?.roles.first { $0.id == edge?.to }?.name ?? edge?.to ?? output
+        return WorkflowDecisionResultPresentation.make(
+            report: run.decisionResults[key], node: node, output: output, destination: destination)
     }
 
     private var isCompleted: Bool { run.agents.first { $0.id == agent.id }?.status == .completed }
@@ -63,8 +63,10 @@ struct WorkflowDecisionSurface: View {
                         "Inputs passed through to \(destination).",
                         systemImage: "arrow.right")
                 } else if let output = run.decisionOutputs[key] {
-                    let name = selectedName(output)
-                    Label("Selected output: \(name)", systemImage: "arrow.right.circle")
+                    let result = selectedResult(output)
+                    Label(result.title, systemImage: "arrow.right.circle").font(.headline).textSelection(.enabled)
+                        .accessibilityIdentifier("decisionResultSummary")
+                    if let detail = result.detail { Text(detail).foregroundStyle(.secondary).textSelection(.enabled) }
                 } else {
                     Text(
                         run.agents.first { $0.id == agent.id }?.status == .running

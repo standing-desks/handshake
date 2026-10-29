@@ -7,29 +7,12 @@ struct WorkflowGraphAgentPopover: View {
     let close: () -> Void
     @FocusState private var panelFocused: Bool
     @Environment(\.appZoomMaximumPresentationSize) private var maximumSize
-    @State private var page = Page.agent
-
-    private enum Page: String, CaseIterable {
-        case agent = "Agent"
-        case defaults = "Launch defaults"
-    }
+    @State private var advanced = false
 
     var body: some View {
-        let binding = model.roleBinding(role)
         VStack(spacing: 0) {
             WorkflowNodeKindPicker(model: model, id: role.id)
-            Picker("Settings", selection: $page) {
-                ForEach(Page.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-            }.pickerStyle(.segmented).labelsHidden()
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 8)
-            if page == .agent {
-                agentSettings
-            } else {
-                ScrollView {
-                    WorkflowAgentDefaultsEditor(role: binding).padding(20)
-                }
-            }
+            agentSettings
             Divider()
             HStack {
                 Menu("Actions") {
@@ -41,14 +24,8 @@ struct WorkflowGraphAgentPopover: View {
                 Button("Done", action: close).keyboardShortcut(.defaultAction)
             }.padding(.horizontal, 20).padding(.vertical, 12)
         }
-        .frame(
-            width: min(420, maximumSize.width),
-            height: min(
-                page == .agent ? (inputCount > 1 ? 680 : 590) : (binding.wrappedValue.agentDefaults == nil ? 180 : 340),
-                maximumSize.height)
-        )
-        .animation(reduceMotion ? nil : Motion.disclosure, value: page)
-        .animation(reduceMotion ? nil : Motion.disclosure, value: binding.wrappedValue.agentDefaults != nil)
+        .frame(width: min(420, maximumSize.width), height: min(advanced ? 700 : 550, maximumSize.height))
+        .animation(reduceMotion ? nil : Motion.disclosure, value: advanced)
         .focusable(interactions: .edit)
         .focused($panelFocused)
         .focusEffectDisabled()
@@ -65,9 +42,7 @@ struct WorkflowGraphAgentPopover: View {
         let binding = model.roleBinding(role)
         return Form {
             Section {
-                TextField("Name", text: binding.name)
-                    .textFieldStyle(.plain).accessibilityIdentifier("graphAgentName")
-                WorkflowAgentColorPicker(color: binding.color)
+                WorkflowNodeIdentityFields(role: binding)
             }
             Section {
                 VStack(alignment: .leading, spacing: 10) {
@@ -82,6 +57,11 @@ struct WorkflowGraphAgentPopover: View {
             }
             if inputCount > 1 { incomingWorkSettings }
             completionSettings
+            Section {
+                DisclosureGroup("Advanced", isExpanded: $advanced) {
+                    WorkflowAgentDefaultsEditor(role: binding)
+                }.accessibilityIdentifier("agentAdvanced")
+            }
         }.formStyle(.grouped).scrollContentBackground(.hidden)
     }
 

@@ -15,18 +15,13 @@ struct WorkflowDecisionAnswerSettings: View {
         case .noul: binarySettings
         case .score: scoreSettings
         }
-        if !model.decisionIssues(id).isEmpty {
-            Section {
-                ForEach(model.decisionIssues(id), id: \.self) { issue in
-                    Label(issue, systemImage: "exclamationmark.circle")
-                        .font(.caption).foregroundStyle(Color.statusNeedsAttention)
-                }
-            }
+        if let issue = model.decisionValidation(id).first(where: { $0.field == .connections }) {
+            Section { WorkflowDecisionIssueLabel(issue: issue) }.id(WorkflowDecisionIssue.Field.connections)
         }
     }
 
     private var choiceSettings: some View {
-        Section("Options") {
+        Section("Destinations") {
             ForEach(edges.filter { $0.output != "fallback" || decision.minConfidence == nil }) { edge in
                 Label(model.nodeName(edge.to), systemImage: "arrow.right")
                     .accessibilityIdentifier("decisionOption-\(edge.id)")
@@ -42,7 +37,7 @@ struct WorkflowDecisionAnswerSettings: View {
 
     private var binarySettings: some View {
         Group {
-            Section("Answers") {
+            Section("Destinations") {
                 ForEach(decision.outputs) { output in
                     Picker(
                         output.name,
@@ -53,6 +48,10 @@ struct WorkflowDecisionAnswerSettings: View {
                         Text("Choose connected agent").tag("").disabled(true)
                         ForEach(edges) { edge in Text(model.nodeName(edge.to)).tag(edge.id) }
                     }.accessibilityIdentifier("decisionAnswer-\(output.id)")
+                        .id(WorkflowDecisionIssue.Field.answer(output.id))
+                    if let issue = model.decisionValidation(id).first(where: { $0.field == .answer(output.id) }) {
+                        WorkflowDecisionIssueLabel(issue: issue)
+                    }
                 }
                 Button("Swap Yes / No") { model.swapDecisionAnswers(id) }
                     .disabled(!edges.contains { $0.output == "yes" } || !edges.contains { $0.output == "no" })
@@ -67,39 +66,34 @@ struct WorkflowDecisionAnswerSettings: View {
             Toggle(
                 "Use an Uncertain answer",
                 isOn: Binding(get: { uncertain }, set: { model.setDecisionUncertain(id, enabled: $0) })
-            ).accessibilityIdentifier("decisionUncertain")
+            ).toggleStyle(.checkbox).accessibilityIdentifier("decisionUncertain")
             if uncertain {
-                Stepper(
-                    "Yes at or above: \(percent(decision.trueThreshold))%", value: $decision.trueThreshold,
-                    in: (decision.falseThreshold + 1)...10_000, step: 100
-                )
-                .accessibilityIdentifier("decisionYesThreshold")
-                Stepper(
-                    "No at or below: \(percent(decision.falseThreshold))%", value: $decision.falseThreshold,
-                    in: 0...(decision.trueThreshold - 1), step: 100
-                )
-                .accessibilityIdentifier("decisionNoThreshold")
-                Text("Values between the thresholds go to Uncertain. Connect a third agent for that answer.")
+                WorkflowDecisionThresholdField(
+                    title: "Yes at or above", value: $decision.trueThreshold,
+                    range: (decision.falseThreshold + 1)...10_000, identifier: "decisionYesThreshold")
+                WorkflowDecisionThresholdField(
+                    title: "No at or below", value: $decision.falseThreshold,
+                    range: 0...(decision.trueThreshold - 1), identifier: "decisionNoThreshold")
+                Text("Between these thresholds, work goes to Uncertain.")
                     .font(.caption).foregroundStyle(.secondary)
             } else {
-                Stepper(
-                    "Yes at or above: \(percent(decision.trueThreshold))%",
+                WorkflowDecisionThresholdField(
+                    title: "Yes at or above",
                     value: Binding(
                         get: { decision.trueThreshold },
                         set: {
                             decision.trueThreshold = $0
                             decision.falseThreshold = $0
                         }),
-                    in: 0...10_000, step: 100
-                ).accessibilityIdentifier("decisionYesThreshold")
-                Text("No is below this threshold. The original probability is retained in the result.")
+                    range: 0...10_000, identifier: "decisionYesThreshold")
+                Text("Below this threshold, work goes to No.")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
     }
 
     private var scoreSettings: some View {
-        Section("Scale — lowest to highest") {
+        Section("Destinations — lowest to highest") {
             ForEach(Array(decision.options.enumerated()), id: \.element.id) { index, option in
                 scoreRow(option, index: index)
             }
@@ -119,13 +113,13 @@ struct WorkflowDecisionAnswerSettings: View {
             Button {
                 model.moveDecisionLevel(id, option: option.id, to: index - 1)
             } label: {
-                Image(systemName: "chevron.up")
+                Image(systemName: "chevron.up").frame(width: 28, height: 28).contentShape(.rect)
             }.disabled(index == 0).accessibilityLabel("Move \(name) up")
                 .accessibilityIdentifier("decisionLevelUp-\(option.id)")
             Button {
                 model.moveDecisionLevel(id, option: option.id, to: index + 1)
             } label: {
-                Image(systemName: "chevron.down")
+                Image(systemName: "chevron.down").frame(width: 28, height: 28).contentShape(.rect)
             }.disabled(index == decision.options.count - 1).accessibilityLabel("Move \(name) down")
                 .accessibilityIdentifier("decisionLevelDown-\(option.id)")
         }

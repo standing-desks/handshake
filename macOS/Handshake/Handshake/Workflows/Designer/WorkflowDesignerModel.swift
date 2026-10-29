@@ -13,6 +13,8 @@ final class WorkflowDesignerModel {
     private(set) var isSaving = false
     private(set) var failure: String?
     private var skipNextUndo = false
+    var decisionDrafts = WorkflowDecisionDrafts()
+    var decisionFocus: WorkflowDecisionIssue?
 
     init(type: CoreWorkflowType? = nil) {
         source = type?.reference
@@ -155,14 +157,24 @@ extension WorkflowDesignerModel {
         registerUndo(to: previous, using: manager)
     }
 
-    private func registerUndo(to previous: CoreWorkflowType.Definition, using manager: UndoManager) {
+    private func undoAction(from before: CoreWorkflowType.Definition, to after: CoreWorkflowType.Definition) -> String {
+        for (id, node) in after.graph?.decisions ?? [:] {
+            if let original = before.graph?.decisions[id], original.kind != node.kind { return "Change Answer Type" }
+        }
+        return "Edit Workflow"
+    }
+
+    private func registerUndo(
+        to previous: CoreWorkflowType.Definition, using manager: UndoManager, actionName: String? = nil
+    ) {
+        let name = actionName ?? undoAction(from: previous, to: definition)
         manager.registerUndo(withTarget: self) { target in
             MainActor.assumeIsolated {
-                target.registerUndo(to: target.definition, using: manager)
+                target.registerUndo(to: target.definition, using: manager, actionName: name)
                 target.skipNextUndo = true
                 target.definition = previous
             }
         }
-        manager.setActionName("Edit workflow")
+        manager.setActionName(name)
     }
 }
