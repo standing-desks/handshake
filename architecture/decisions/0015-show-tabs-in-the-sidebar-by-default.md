@@ -21,13 +21,13 @@ switch layouts from the context menus of tabs, sessions, and the tab bar
 upgrading from the tab bar get the sidebar layout, with a one-time hint in the
 toolbar subtitle.
 
-In the sidebar layout:
+In both layouts, the Sessions section comes before Files and Memories, and sessions
+use a letter monogram. In the sidebar layout:
 
-- The Sessions section comes first. Each session discloses its tabs as rows: its
-  workflows (one row per terminal split), files, and browser pages. Rows show the
-  kind symbol or pin, activity (running, done, or needs attention), pane count,
-  and the edited dot. A collapsed session shows its tab count and most urgent
-  activity. Sessions use a letter monogram in both layouts.
+- Each session discloses its tabs as rows: its workflows (one row per terminal
+  split), files, and browser pages. Rows show the kind symbol or pin, activity
+  (running, done, or needs attention), pane count, and the edited dot. A collapsed
+  session shows its tab count and most urgent activity.
 - There is no tab bar. The terminal panel takes its height and draws its full
   hairline. Split Right, Split Down, New Workflow, New Browser Tab, and Find Open Tab
   move into the window toolbar, immediately before Keep Awake, which keeps its
@@ -54,8 +54,8 @@ layouts.
 
 The change stays in Swift presentation code except for moving workflows between
 sessions ([ADR 0017](0017-move-workflows-between-sessions.md)). Existing UI tests
-seed the `top` layout so they keep covering the tab bar; the sidebar layout needs
-its own UI coverage.
+seed the `top` layout so they keep covering the tab bar, and separate UI tests cover
+the sidebar layout.
 
 The implementation differs from the design proposal in four places, each of which
 would need a single sidebar view instead of the split view column plus an overlay:

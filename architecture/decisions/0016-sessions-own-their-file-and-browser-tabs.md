@@ -15,11 +15,16 @@ one session, and a session is the body of work those files and pages are open fo
 
 Each session holds its own file and browser tabs, in both layouts. This remains
 Swift presentation state: each session's arrangement in `WorkspaceTabsModel` lists
-the pages it holds, next to its existing order, pins, and selection. Core is
-unchanged.
+the pages it holds, next to its existing order, pins, and selection. Core keeps no
+page state.
 
 - Opening a file from the Files section or a memory, or opening a browser tab,
   puts it in the selected session.
+- A page an agent opens through browser control
+  ([ADR 0012](0012-control-the-embedded-browser-through-core.md)) joins the session
+  of the agent's terminal. Core includes that terminal with each browser job. When
+  an agent brings its page to the front while another session is selected, the page
+  stays with its own session.
 - A file can be open in several sessions. Their tabs share one editor and buffer,
   so unsaved edits can't diverge. Closing it in one session removes only that tab;
   the editor closes, and asks about unsaved changes, when no session holds it.
@@ -49,3 +54,4 @@ and tab arrangement kept in Swift.
 - [Tab preparation](../../macOS/Handshake/Handshake/Workflows/Workspace/WorkspaceTabBar.swift)
 - [Closing tabs](../../macOS/Handshake/Handshake/Workflows/Workspace/WorkspaceTabClosing.swift)
 - [Session dialogs](../../macOS/Handshake/Handshake/Windows/Sidebar/SidebarDialogs.swift)
+- [Agent browser pages](../../macOS/Handshake/Handshake/Browser/BrowserControlHost.swift)
