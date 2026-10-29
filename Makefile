@@ -16,7 +16,6 @@ XCODEBUILD_RELEASE := $(XCODEBUILD) -configuration Release -destination 'generic
 RELEASE_SETTINGS := ARCHS=arm64 GCC_GENERATE_DEBUGGING_SYMBOLS=NO DEBUG_INFORMATION_FORMAT= \
 	ENABLE_CODE_COVERAGE=NO CLANG_ENABLE_CODE_COVERAGE=NO SWIFT_OPTIMIZATION_LEVEL=-O SWIFT_COMPILATION_MODE=wholemodule
 XCODE_BUILD_ARGS ?=
-APP_TEST_ARGS ?= -only-testing:HandshakeTests
 FRAMEWORK_BUILD := sh macOS/HandshakeCorePackage/build.sh
 FRAMEWORK_SELECT := sh macOS/HandshakeCorePackage/select.sh
 TESTS_DIR := $(OUT)/tests/build
@@ -206,7 +205,7 @@ lint-app: $(call needs,deps-debug) ## Lint the app
 	macOS/Handshake/Scripts/swiftlint.sh
 
 .PHONY: test-app
-test-app: $(call needs,build-tests) ## Run app unit tests (APP_TEST_ARGS='-only-testing:HandshakeTests/Suite')
+test-app: $(call needs,build-tests) ## Run the app's unit tests
 	@set -eu; \
 	handshake_test_data=$$(mktemp -d "$${TMPDIR:-/tmp}/handshake-unit-tests.XXXXXX"); \
 	trap 'rm -rf "$$handshake_test_data"' EXIT; \
@@ -216,7 +215,7 @@ test-app: $(call needs,build-tests) ## Run app unit tests (APP_TEST_ARGS='-only-
 	TEST_RUNNER_CLAUDE_CONFIG_DIR="$$handshake_test_data/native/claude" \
 	TEST_RUNNER_HANDSHAKE_DATA_DIRECTORY="$$handshake_test_data" \
 	TEST_RUNNER_XDG_CONFIG_HOME="$$handshake_test_data/config" $(TEST_ENV) \
-		$(TEST_RUN) $(APP_TEST_ARGS)
+		$(TEST_RUN) -only-testing:HandshakeTests
 
 .PHONY: check-app
 check-app: lint-app test-app ## Lint and unit-test the app
