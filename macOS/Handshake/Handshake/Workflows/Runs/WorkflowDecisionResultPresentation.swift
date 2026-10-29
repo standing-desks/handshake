@@ -34,11 +34,12 @@ struct WorkflowDecisionResultPresentation {
                 title: "Score \(score) / \(node.options.count - 1) → \(destination)",
                 detail: "Scale starts at 0; routed to level \(index).")
         case "choice":
+            let title = node?.outputs.first { $0.id == output }.map { "\($0.name) → \(destination)" } ?? fallback.title
             guard let probability = answer.distribution?.first(where: { $0.optionId == output })?.probability,
                 probability.isFinite, (0...1).contains(probability)
-            else { return fallback }
+            else { return .init(title: title, detail: nil) }
             let percent = probability.formatted(.percent.precision(.fractionLength(0...2)).locale(locale))
-            return .init(title: fallback.title, detail: "Option probability: \(percent)")
+            return .init(title: title, detail: "Option probability: \(percent)")
         default: return fallback
         }
     }

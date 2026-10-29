@@ -136,7 +136,7 @@ extension WorkflowDesignerModel {
         let reviews = definition.graph?.reviewsWork(id) == true
         let receive = definition.graph?.receive[id]
         var decision = definition.graph?.decisions[id]
-        if decision != nil { decision?.options = [] }
+        if decision?.kind != .choice { decision?.options = [] }
         definition.roles.append(agent)
         definition.graph?.decisions[agent.id] = decision
         definition.graph?.positions[agent.id] = position

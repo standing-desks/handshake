@@ -7,10 +7,10 @@ extension WorkflowDesignerModel {
         else { return }
         if enabled {
             var node = CoreWorkflowType.DecisionNode()
-            for index in graph.edges.indices where graph.edges[index].from == id {
-                let edge = graph.edges[index]
-                node.options.append(.init(id: edge.id, name: nodeName(edge.to), description: nodeName(edge.to)))
-                graph.edges[index].output = edge.id
+            let outgoing = graph.edges.indices.filter { graph.edges[$0].from == id }
+            for _ in 0..<max(2, outgoing.count) { node.options.append(Self.newChoiceOption(in: node.options)) }
+            for (rank, index) in outgoing.enumerated() {
+                graph.edges[index].output = node.options[rank].id
                 graph.edges[index].event = .done
             }
             graph.decisions[id] = node
@@ -31,17 +31,26 @@ extension WorkflowDesignerModel {
         let link = UUID().uuidString
         guard let node = definition.graph?.decisions[id] else { return }
         let used = Set(definition.graph?.edges.filter { $0.from == id }.compactMap(\.output) ?? [])
-        let output = node.kind == .noul ? node.outputs.first { !used.contains($0.id) }?.id : link
-        let option = CoreWorkflowType.DecisionOption(
-            id: link, name: nodeName(destination), description: nodeName(destination))
-        definition.graph?.decisions[id]?.options.append(option)
+        let output: String?
+        switch node.kind {
+        case .choice: output = node.outputs.first { !used.contains($0.id) }?.id
+        case .noul: output = node.outputs.first { !used.contains($0.id) }?.id
+        case .score:
+            let name = nodeName(destination)
+            definition.graph?.decisions[id]?.options.append(.init(id: link, name: name, description: name))
+            output = link
+        }
         definition.graph?.edges.append(.init(id: link, from: id, to: destination, event: .done, output: output))
     }
 
     func removeGraphEdge(_ id: String) {
         guard let edge = definition.graph?.edges.first(where: { $0.id == id }) else { return }
         definition.graph?.edges.removeAll { $0.id == id }
-        definition.graph?.decisions[edge.from]?.options.removeAll { $0.id == edge.output || $0.id == edge.id }
+        if let kind = definition.graph?.decisions[edge.from]?.kind, kind != .choice {
+            definition.graph?.decisions[edge.from]?.options.removeAll {
+                kind == .score ? $0.id == edge.output : $0.id == edge.id
+            }
+        }
     }
 
     func nodeName(_ id: String) -> String { definition.roles.first { $0.id == id }?.name ?? id }

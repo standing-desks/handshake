@@ -176,35 +176,8 @@ struct WorkflowLinkPopover: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("\(name(edge.from)) → \(name(edge.to))").font(.headline)
-            if let decision = model.definition.graph?.decisions[edge.from] {
-                if model.usesAlwaysOutputs(edge.from) {
-                    Toggle(
-                        "Always send work here",
-                        isOn: Binding(
-                            get: { model.decisionEdges(edge.from).first { $0.id == edge.id }?.always ?? false },
-                            set: { model.setDecisionAlways(edge.from, edge: edge.id, enabled: $0) })
-                    ).toggleStyle(.checkbox).accessibilityIdentifier("linkAlways")
-                }
-                let always = model.decisionEdges(edge.from).first { $0.id == edge.id }?.always == true
-                if always {
-                    Text("Receives work after every successful decision.").font(.caption).foregroundStyle(.secondary)
-                } else if model.definition.graph?.agentEdges.filter({ $0.from == edge.from }).count == 1 {
-                    Text("Passthrough: forward inputs directly.").font(.caption).foregroundStyle(.secondary)
-                } else if decision.kind == .choice && decision.minConfidence == nil {
-                    Text("Nouli option: \(name(edge.to))").font(.caption).foregroundStyle(.secondary)
-                } else if decision.kind == .noul {
-                    Picker(
-                        "Answer",
-                        selection: Binding(
-                            get: { model.definition.graph?.edges.first { $0.id == edge.id }?.output ?? "" },
-                            set: { model.assignDecisionOutput(edge.from, edge: edge.id, output: $0) })
-                    ) {
-                        Text("Unassigned").tag("").disabled(true)
-                        ForEach(decision.outputs) { Text($0.name).tag($0.id) }
-                    }
-                } else {
-                    Text(model.outputTitle(edge)).font(.caption).foregroundStyle(.secondary)
-                }
+            if model.definition.graph?.decisions[edge.from] != nil {
+                WorkflowDecisionEdgeOutputPicker(model: model, edge: edge)
             } else {
                 Picker(
                     "Send work when",

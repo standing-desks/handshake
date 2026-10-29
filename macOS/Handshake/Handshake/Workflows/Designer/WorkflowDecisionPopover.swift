@@ -22,9 +22,9 @@ struct WorkflowDecisionPopover: View {
     private var routes: [CoreWorkflowType.Edge] { model.decisionEdges(role.id) }
     private var preferredHeight: CGFloat {
         if advanced || model.usesAlwaysOutputs(role.id) { return 680 }
-        if routes.count == 1 { return 310 }
+        if routes.count == 1 { return decision.wrappedValue.kind == .choice ? 540 : 310 }
         switch decision.wrappedValue.kind {
-        case .choice: return min(630, 440 + CGFloat(routes.count) * 36)
+        case .choice: return min(680, 440 + CGFloat(decision.wrappedValue.options.count) * 54)
         case .noul: return decision.wrappedValue.trueThreshold > decision.wrappedValue.falseThreshold ? 660 : 600
         case .score: return min(680, 460 + CGFloat(routes.count) * 40)
         }
@@ -89,6 +89,8 @@ struct WorkflowDecisionPopover: View {
                         Text(questionHelp).font(.caption).foregroundStyle(.secondary)
                     }
                 }.id(WorkflowDecisionIssue.Field.question)
+            }
+            if routes.count != 1 || decision.wrappedValue.kind == .choice {
                 WorkflowDecisionAnswerSettings(model: model, id: role.id, decision: decision)
             }
             WorkflowDecisionAlwaysSettings(model: model, id: role.id)
@@ -124,7 +126,7 @@ struct WorkflowDecisionPopover: View {
 
     private var questionHelp: String {
         switch decision.wrappedValue.kind {
-        case .choice: "Choose which connected agent receives the incoming work."
+        case .choice: "Ask Nouli which option matches the incoming work."
         case .noul: "Ask a question that can be answered Yes or No."
         case .score: "Ask for a rating using the ordered scale below."
         }

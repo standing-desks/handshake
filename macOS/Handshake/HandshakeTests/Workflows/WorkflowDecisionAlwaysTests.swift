@@ -39,15 +39,18 @@ struct WorkflowDecisionAlwaysTests {
         #expect(decoded.graph?.edges.filter(\.always).count == 2)
     }
 
-    @Test func disablingAlwaysRetainsWiresAndRestoresNormalChoiceOptions() {
+    @Test func disablingAlwaysRetainsWiresAndRequiresAssignmentsForExtraChoiceConnections() {
         let (model, node) = makeDecision()
         let edges = model.decisionEdges(node)
         model.setDecisionAlways(node, edge: edges[2].id, enabled: true)
         model.setDecisionAlways(node, edge: edges[3].id, enabled: true)
         model.setAlwaysOutputs(node, enabled: false)
         #expect(!model.usesAlwaysOutputs(node))
-        #expect(model.definition.graph?.decisions[node]?.options.count == 4)
+        #expect(model.definition.graph?.decisions[node]?.options.count == 2)
         #expect(Set(model.decisionEdges(node).map(\.id)) == Set(edges.map(\.id)))
+        #expect(!model.decisionIssues(node).isEmpty)
+        model.addDecisionOption(node)
+        model.addDecisionOption(node)
         #expect(model.decisionIssues(node).isEmpty)
         model.setDecisionAlways(node, edge: edges[2].id, enabled: true)
         model.setDecisionAlways(node, edge: edges[3].id, enabled: true)

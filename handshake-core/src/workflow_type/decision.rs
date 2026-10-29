@@ -66,14 +66,14 @@ pub enum DecisionResultError {
 }
 
 impl DecisionNode {
-    /// Connected labels stay current; imported Score rubrics retain their original meaning.
+    /// Choice text is authored independently; only generated Score levels follow connected names.
     pub(crate) fn with_connected_names(
         &self,
         definition: &super::WorkflowTypeDefinition,
         role: &str,
     ) -> Self {
         let mut node = self.clone();
-        if node.kind == DecisionKind::Noul {
+        if node.kind != DecisionKind::Score {
             return node;
         }
         if let Some(graph) = &definition.graph {
@@ -81,7 +81,7 @@ impl DecisionNode {
                 if let Some(edge) = graph.edges.iter().find(|edge| {
                     edge.from == role
                         && edge.output.as_ref() == Some(&option.id)
-                        && (node.kind == DecisionKind::Choice || edge.id == option.id)
+                        && edge.id == option.id
                 }) && let Some(target) = definition
                     .roles
                     .iter()
@@ -399,14 +399,14 @@ mod tests {
         assert_eq!(node.route(&report), Err(DecisionResultError::Invalid));
     }
     #[test]
-    fn choice_request_uses_connected_agent_names_without_routing_criteria() {
+    fn choice_request_preserves_authored_options_when_receiving_agents_are_renamed() {
         let file: toml::Value = toml::from_str(include_str!(
             "../../../examples/workflows/decision-triage.toml"
         ))
         .unwrap();
         let mut definition: crate::WorkflowTypeDefinition =
             file["definition"].clone().try_into().unwrap();
-        for option in &mut definition
+        for (option, text) in definition
             .graph
             .as_mut()
             .unwrap()
@@ -414,16 +414,22 @@ mod tests {
             .get_mut("classify")
             .unwrap()
             .options
+            .iter_mut()
+            .zip([
+                "New capability",
+                "Repair existing behavior",
+                "Needs investigation",
+            ])
         {
-            option.name = "Stale option".into();
-            option.description.clear();
+            option.name = text.into();
+            option.description = text.into();
         }
         definition
             .roles
             .iter_mut()
             .find(|role| role.id.0 == "scope")
             .unwrap()
-            .name = "Plan the work".into();
+            .name = "Renamed planner".into();
         crate::validate(&definition).unwrap();
         let node = definition.graph.as_ref().unwrap().decisions["classify"]
             .with_connected_names(&definition, "classify");
@@ -432,9 +438,9 @@ mod tests {
         assert_eq!(
             request["questions"][0]["answer_space"]["options"],
             json!([
-                {"id":"feature", "description":"Plan the work"},
-                {"id":"fix", "description":"Debugger"},
-                {"id":"other", "description":"Coordinator"}
+                {"id":"feature", "description":"New capability"},
+                {"id":"fix", "description":"Repair existing behavior"},
+                {"id":"other", "description":"Needs investigation"}
             ])
         );
         assert_eq!(
@@ -442,6 +448,11 @@ mod tests {
             "Incoming task"
         );
         assert_eq!(request["state"][1]["text"], "Prepared evidence");
+        let answer = result(&json!({"type":"choice","selected":"fix","distribution":[
+            {"option_id":"feature","probability":0.1}, {"option_id":"fix","probability":0.8},
+            {"option_id":"other","probability":0.1}
+        ]}));
+        assert_eq!(node.route(&answer).unwrap(), "fix");
     }
 
     #[test]

@@ -105,6 +105,7 @@ UI_DEFAULT_TESTS := testFirstLaunchShowsStartPage \
 	testDecisionNodesSwitchFromAgentsAndRouteThroughSharedDragConnectors \
 	testDecisionValidationReturnsToAnOffscreenNodeRepeatedly \
 	testAlwaysDecisionOutputsAndZoomButtonHitAreas \
+	testChoiceOptionsMapToAgentsAndEdgeMenuIncludesAlways \
 	testSavedWorkflowHoverDeleteRequiresConfirmation \
 	testBentoPanesKeepEachShellAndMoveTheKeyboardBetweenThem \
 	testTerminalSplitsResizeKeepTheirNeighborAndRestoreOutput \

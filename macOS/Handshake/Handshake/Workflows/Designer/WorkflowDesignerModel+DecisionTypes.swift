@@ -4,11 +4,15 @@ import SwiftUI
 extension WorkflowDesignerModel {
     func decisionEdges(_ id: String) -> [CoreWorkflowType.Edge] {
         let edges = definition.graph?.agentEdges.filter { $0.from == id } ?? []
-        let ordered = (definition.graph?.decisions[id]?.options ?? []).compactMap { option in
-            edges.first { $0.output == option.id } ?? edges.first { $0.id == option.id }
+        let node = definition.graph?.decisions[id]
+        var ordered: [CoreWorkflowType.Edge] = []
+        var seen = Set<String>()
+        for option in node?.options ?? [] {
+            let assigned = edges.first { !$0.always && $0.output == option.id }
+            let metadata = node?.kind == .noul ? edges.first { $0.id == option.id } : nil
+            if let edge = assigned ?? metadata, seen.insert(edge.id).inserted { ordered.append(edge) }
         }
-        let orderedIDs = Set(ordered.map(\.id))
-        return ordered + edges.filter { !orderedIDs.contains($0.id) }
+        return ordered + edges.filter { !seen.contains($0.id) }
     }
 
     func setDecisionKind(_ id: String, kind: CoreWorkflowType.DecisionKind) {
@@ -26,7 +30,8 @@ extension WorkflowDesignerModel {
     }
 
     func assignDecisionOutput(_ id: String, edge edgeID: String, output: String) {
-        guard var graph = definition.graph, graph.decisions[id]?.kind == .noul,
+        guard var graph = definition.graph, let node = graph.decisions[id],
+            node.outputs.contains(where: { $0.id == output }),
             let index = graph.edges.firstIndex(where: { $0.id == edgeID && $0.from == id })
         else { return }
         let previous = graph.edges[index].output

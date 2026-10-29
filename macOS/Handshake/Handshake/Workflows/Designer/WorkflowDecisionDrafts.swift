@@ -26,19 +26,26 @@ struct WorkflowDecisionDrafts {
         node.minConfidence = draft?.node.minConfidence
         node.trueThreshold = draft?.node.trueThreshold ?? 5_000
         node.falseThreshold = draft?.node.falseThreshold ?? 5_000
-        node.options = options(from: draft, edges: edges, names: names)
-        if kind == .noul {
-            assignBinary(id, node: node, previous: draft?.outputs ?? [:], graph: &graph)
+        if kind == .choice {
+            node.options = draft?.node.options ?? []
+            if draft == nil {
+                for _ in 0..<max(2, edges.count) {
+                    node.options.append(WorkflowDesignerModel.newChoiceOption(in: node.options))
+                }
+            }
+            assignChoice(node: node, edges: edges, previous: draft?.outputs ?? [:], graph: &graph)
         } else {
-            for index in graph.edges.indices where graph.edges[index].from == id && !graph.edges[index].always {
-                let edge = graph.edges[index]
-                let saved = draft?.outputs[edge.id]
-                graph.edges[index].output =
-                    saved == "fallback" && node.minConfidence != nil
-                    ? "fallback"
-                    : node.options.first { option in
-                        option.id == saved || option.id == edge.id
-                    }?.id
+            node.options = options(from: draft, edges: edges, names: names)
+            if kind == .noul {
+                assignBinary(id, node: node, previous: draft?.outputs ?? [:], graph: &graph)
+            } else {
+                for index in graph.edges.indices where graph.edges[index].from == id && !graph.edges[index].always {
+                    let edge = graph.edges[index]
+                    let saved = draft?.outputs[edge.id]
+                    graph.edges[index].output =
+                        node.options.first { $0.id == saved }?.id
+                        ?? node.options.first { $0.id == edge.id }?.id
+                }
             }
         }
         graph.decisions[id] = node
@@ -72,6 +79,25 @@ struct WorkflowDecisionDrafts {
                 let name = names[edge.to] ?? edge.to
                 return .init(id: edge.id, name: name, description: name)
             }
+    }
+
+    private func assignChoice(
+        node: CoreWorkflowType.DecisionNode, edges: [CoreWorkflowType.Edge],
+        previous: [String: String], graph: inout CoreWorkflowType.Graph
+    ) {
+        let outputs = node.outputs.map(\.id)
+        let indices = edges.compactMap { edge in graph.edges.firstIndex { $0.id == edge.id } }
+        var used = Set<String>()
+        for index in indices {
+            let saved = previous[graph.edges[index].id]
+            graph.edges[index].output = saved.flatMap { outputs.contains($0) && used.insert($0).inserted ? $0 : nil }
+        }
+        for index in indices where graph.edges[index].output == nil {
+            if let output = outputs.first(where: { !used.contains($0) }) {
+                graph.edges[index].output = output
+                used.insert(output)
+            }
+        }
     }
 
     private func assignBinary(

@@ -20,16 +20,21 @@ extension WorkflowDesignerModel {
             graph.edges[index].always != enabled
         else { return }
         let edge = graph.edges[index]
-        node.options.removeAll { $0.id == edge.id || $0.id == edge.output }
+        let score = node.kind == .score
+        if node.kind != .choice {
+            node.options.removeAll { score ? $0.id == edge.output : $0.id == edge.id }
+        }
         graph.edges[index].always = enabled
         if enabled {
             graph.edges[index].output = nil
             alwaysOutputSettings.insert(id)
         } else {
             let name = nodeName(edge.to)
-            node.options.append(.init(id: edge.id, name: name, description: name))
+            var levelID = edge.id
+            if node.options.contains(where: { $0.id == levelID }) { levelID = UUID().uuidString }
+            if node.kind != .choice { node.options.append(.init(id: levelID, name: name, description: name)) }
             let used = Set(graph.edges.filter { $0.from == id && !$0.always && $0.id != edgeID }.compactMap(\.output))
-            graph.edges[index].output = node.kind == .noul ? node.outputs.first { !used.contains($0.id) }?.id : edge.id
+            graph.edges[index].output = node.kind == .score ? levelID : node.outputs.first { !used.contains($0.id) }?.id
         }
         graph.decisions[id] = node
         definition.graph = graph

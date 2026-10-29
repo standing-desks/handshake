@@ -21,18 +21,7 @@ struct WorkflowDecisionAnswerSettings: View {
     }
 
     private var choiceSettings: some View {
-        Section("Destinations") {
-            ForEach(edges.filter { $0.output != "fallback" || decision.minConfidence == nil }) { edge in
-                Label(model.nodeName(edge.to), systemImage: "arrow.right")
-                    .accessibilityIdentifier("decisionOption-\(edge.id)")
-            }
-            Text("The connected agents’ names are the options. Add or remove a connection to change this list.")
-                .font(.caption).foregroundStyle(.secondary)
-            if let confidence = decision.minConfidence {
-                Text("Imported native-confidence fallback: below \(percent(confidence))%.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-        }
+        WorkflowDecisionChoiceSettings(model: model, id: id, decision: $decision)
     }
 
     private var binarySettings: some View {
@@ -135,7 +124,4 @@ struct WorkflowDecisionAnswerSettings: View {
         }
     }
 
-    private func percent(_ value: Int) -> String {
-        (Double(value) / 100).formatted(.number.precision(.fractionLength(0...2)))
-    }
 }

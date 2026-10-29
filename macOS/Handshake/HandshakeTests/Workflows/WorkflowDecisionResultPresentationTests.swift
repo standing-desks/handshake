@@ -23,10 +23,12 @@ struct WorkflowDecisionResultPresentationTests {
     }
 
     @Test func optionProbabilityIsPresentedWithoutCallingItConfidence() {
+        var node = CoreWorkflowType.DecisionNode()
+        node.options = [.init(id: "route-1", name: "Needs planning", description: "Needs planning")]
         let result = presentation(
             #"{"type":"choice","distribution":[{"option_id":"route-1","probability":0.83}]}"#,
-            node: .init(), output: "route-1")
-        #expect(result.title == "Routed to Receiver")
+            node: node, output: "route-1")
+        #expect(result.title == "Needs planning → Receiver")
         #expect(result.detail == "Option probability: 83%")
     }
 

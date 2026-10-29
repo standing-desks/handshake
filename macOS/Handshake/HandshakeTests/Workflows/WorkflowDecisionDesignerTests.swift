@@ -6,34 +6,31 @@ import Testing
 @Suite(.serialized)
 @MainActor
 struct WorkflowDecisionDesignerTests {
-    @Test func decisionOptionsFollowConnectedAgentNames() throws {
+    @Test func choiceTextSurvivesAgentRenamesAndConnectionRemoval() throws {
         let model = WorkflowDesignerModel()
         model.enableGraph()
         let node = model.addGraphRole(at: .init(x: 200, y: 200))
         let instructions = model.definition.roles[0].instructions
-        let receivers = (0..<4).map { _ in model.addGraphRole() }
         model.setDecision(node, enabled: true)
+        let receivers = (0..<4).map { _ in model.addGraphRole() }
         for receiver in receivers { model.connect(from: node, to: receiver) }
+        #expect(!model.decisionIssues(node).isEmpty)
+        model.addDecisionOption(node)
+        model.addDecisionOption(node)
         let edges = try #require(model.definition.graph?.edges)
         let options = try #require(model.definition.graph?.decisions[node]?.options)
         #expect(edges.count == 4 && options.count == 4)
-        #expect(Set(edges.map(\.id)) == Set(options.map(\.id)))
-        #expect(edges.allSatisfy { $0.output == $0.id })
-        for edge in edges {
-            let option = try #require(options.first { $0.id == edge.id })
-            #expect(option.name == model.nodeName(edge.to))
-            #expect(option.description == model.nodeName(edge.to))
-        }
-        model.definition.graph?.decisions[node]?.minConfidence = 6_000
+        #expect(Set(edges.compactMap(\.output)) == Set(options.map(\.id)))
+        #expect(Set(edges.map(\.id)).isDisjoint(with: Set(options.map(\.id))))
+        model.setDecisionOptionText(node, option: options[0].id, text: "Needs planning")
         model.definition.roles[1].name = "Renamed agent"
-        #expect(model.outputTitle(edges[0]) == "Renamed agent")
-        model.definition.graph?.decisions[node]?.minConfidence = nil
+        #expect(model.outputTitle(edges[0]) == "Needs planning")
         model.removeGraphEdge(edges[3].id)
-        #expect(model.definition.graph?.decisions[node]?.options.count == 3)
         model.removeGraphRole(receivers[2])
-        #expect(model.definition.graph?.decisions[node]?.options.count == 2)
+        #expect(model.definition.graph?.decisions[node]?.options.count == 4)
+        #expect(!model.decisionIssues(node).isEmpty)
         let copy = try #require(model.duplicateGraphAgent(node))
-        #expect(model.definition.graph?.decisions[copy]?.options.isEmpty == true)
+        #expect(model.definition.graph?.decisions[copy]?.options.first?.name == "Needs planning")
         model.setDecision(node, enabled: false)
         #expect(model.definition.graph?.decisions[node] == nil)
         #expect(model.definition.graph?.edges.allSatisfy { $0.output == nil } == true)
@@ -72,6 +69,8 @@ struct WorkflowDecisionDesignerTests {
         #expect(!model.decisionIssues(node).isEmpty)
         model.setDecisionKind(node, kind: .choice)
         #expect(model.decisionEdges(node).count == 3)
+        #expect(!model.decisionIssues(node).isEmpty)
+        model.addDecisionOption(node)
         #expect(model.decisionIssues(node).isEmpty)
         #expect(model.definition.graph?.decisions[node]?.question == "Is it ready?")
     }

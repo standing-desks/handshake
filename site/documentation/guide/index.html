@@ -282,8 +282,10 @@ work directly, makes no decision, and does not require Nouli. With two or more c
 <strong>Nouli</strong> chooses one route. Install the <code>nouli</code> executable on your PATH and
 configure its provider before running a workflow that needs a model decision.</p>
 <p>Pick an <strong>Answer type</strong> and enter the <strong>Question</strong> Nouli should answer.
-With <strong>Multiple choice</strong>, the connected agents’ names are the options. Add or remove a
-wire to change that list. Use descriptive names so Nouli can choose between agents.</p>
+With <strong>Multiple choice</strong>, enter option text on the left and choose its receiving agent on the right.
+Use <strong>Add option</strong> to create more choices. Option text stays the same when agents are renamed or wires
+are removed. Each option needs one destination, and each connection needs an option or <strong>Always</strong>.
+You can also click a connection and choose its option from the <strong>Output</strong> menu.</p>
 <p><strong>Yes/No</strong> assigns Yes to the first connection and No to the second. Use the answer
 pickers or <strong>Swap Yes / No</strong> to change their destinations. The default cutoff sends a
 probability of yes at or above 50% to Yes, and lower values to No. Enable <strong>Use an Uncertain
@@ -291,6 +293,7 @@ answer</strong> to use two thresholds and connect a third agent for values betwe
 or use the steppers for small adjustments.</p>
 <p>All three answer types offer <strong>Use Always outputs</strong>. Enable it to reveal a list of connected agents,
 then select any that should receive every successful decision’s evidence alongside its selected destination.
+You can also choose <strong>Always</strong> directly from any connection’s <strong>Output</strong> menu.
 These connections are labelled <strong>Always</strong>. They do not become Choice options or Score levels, and they
 do not replace the required Yes, No, or optional Uncertain destinations. Turn the setting off to make those connections
 ordinary decision destinations again. Existing wires are kept.</p>

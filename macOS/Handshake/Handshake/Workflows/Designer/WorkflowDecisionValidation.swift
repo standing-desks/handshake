@@ -46,11 +46,8 @@ extension WorkflowDesignerModel {
                             "Yes/No needs \(node.outputs.count) connections. Remove the extra connections."
                     ))
             }
-        } else if node.kind == .choice && edges.count < 2 {
-            issues.append(
-                .init(
-                    nodeID: id, field: .connections,
-                    message: "Connect at least two decision destinations. Always outputs are not choices."))
+        } else if node.kind == .choice {
+            issues += choiceValidation(id, node: node, edges: edges)
         } else if node.kind == .score && !(2...10).contains(edges.count) {
             issues.append(
                 .init(
@@ -59,6 +56,40 @@ extension WorkflowDesignerModel {
         }
         return issues
     }
+    private func choiceValidation(
+        _ id: String, node: CoreWorkflowType.DecisionNode, edges: [CoreWorkflowType.Edge]
+    ) -> [WorkflowDecisionIssue] {
+        var issues: [WorkflowDecisionIssue] = []
+        if node.options.count < 2 {
+            issues.append(.init(nodeID: id, field: .connections, message: "Add at least two choices."))
+        }
+        for option in node.options {
+            let text = option.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            let message: String?
+            if text.isEmpty {
+                message = "Enter text for this option."
+            } else if option.name.utf8.count > 8_192 {
+                message = "This option is too long. Shorten its text."
+            } else if edges.filter({ $0.output == option.id }).count != 1 {
+                message = "Choose one connected agent for \(option.name)."
+            } else {
+                message = nil
+            }
+            if let message { issues.append(.init(nodeID: id, field: .answer(option.id), message: message)) }
+        }
+        if node.minConfidence != nil, edges.filter({ $0.output == "fallback" }).count != 1 {
+            issues.append(
+                .init(nodeID: id, field: .answer("fallback"), message: "Choose one connected agent for Fallback."))
+        }
+        if edges.contains(where: { edge in !node.outputs.contains { $0.id == edge.output } }) {
+            issues.append(
+                .init(
+                    nodeID: id, field: .connections,
+                    message: "Choose an option or Always for every connection."))
+        }
+        return issues
+    }
+
 }
 
 struct WorkflowDecisionIssueLabel: View {
