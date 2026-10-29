@@ -273,6 +273,9 @@ impl Inner {
         if self.terminals.get(&terminal_id) != Some(&TerminalStatus::Running) {
             return;
         }
+        if let Err(error) = self.update_shell_harness(terminal_id, None) {
+            warn!(%error, "could not publish shell harness exit");
+        }
         let (status, event) = match result {
             Ok(exit) => (
                 TerminalStatus::Exited(exit.clone()),

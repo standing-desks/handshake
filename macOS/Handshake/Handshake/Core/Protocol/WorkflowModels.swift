@@ -144,10 +144,16 @@ nonisolated struct CoreAgent: Decodable, Equatable, Identifiable, Sendable {
 }
 
 extension CoreWorkflow {
+    var automaticTitle: String {
+        kind == .terminal ? harness?.displayName ?? name : name
+    }
+
+    var presentsAgent: Bool { kind == .singleAgent || (kind == .terminal && harness != nil) }
+
     var tabSymbol: String {
         switch kind {
         case .draft: "square.dashed"
-        case .terminal: "terminal"
+        case .terminal: harness == nil ? "terminal" : "person"
         case .singleAgent: "person"
         case .agents: "person.2"
         }

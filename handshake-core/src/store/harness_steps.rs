@@ -7,6 +7,86 @@ use super::{NewTraceSpan, Store, StoreError, TraceEnding, sql_integer};
 use crate::harness::steps::{HarnessStep, StepKind};
 use crate::{TerminalId, TraceAnchor, TraceEventKind, TraceSpanId, TraceSpanStatus, WorkflowId};
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn assignment_titles_keep_the_first_prompt_across_retries_and_reopen() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("traces.db");
+        let mut store = Store::open(&path).unwrap();
+        let session = store
+            .create_session(std::path::Path::new("/folder"), "Work", 100)
+            .unwrap();
+        let workflow = store
+            .create_workflow(session, "Graph", crate::WorkflowKind::Terminal, &[])
+            .unwrap()
+            .0;
+        let anchor = TraceAnchor {
+            terminal_id: TerminalId::from_value(1),
+            byte_offset: 0,
+            boundary_sizes: None,
+        };
+        let mut spans = Vec::new();
+        // The same terminal can receive multiple assignments without native turn IDs.
+        for title in ["Explain the parser", "Add Unicode support"] {
+            let span = store
+                .start_trace_span(&NewTraceSpan {
+                    workflow_id: workflow,
+                    lane_key: "agent:1",
+                    lane_name: "Implementer",
+                    is_agent: true,
+                    role: Some("implementer"),
+                    harness: Some("Codex"),
+                    title: "Graph",
+                    started_at: 100,
+                    anchor: Some(anchor.clone()),
+                })
+                .unwrap();
+            let context = HarnessStepContext {
+                workflow_id: workflow,
+                single_agent: false,
+                activate: false,
+                span: Some(span),
+            };
+            let mut step = HarnessStep {
+                activity: None,
+                session_id: None,
+                kind: StepKind::Prompt,
+                turn_id: None,
+                tool_call_id: None,
+                title: title.into(),
+                detail: title.into(),
+            };
+            store
+                .record_harness_step(context, &step, 101, &anchor)
+                .unwrap();
+            store
+                .record_harness_step(context, &step, 101, &anchor)
+                .unwrap();
+            step.title = "Follow up".into();
+            store
+                .record_harness_step(context, &step, 102, &anchor)
+                .unwrap();
+            step.kind = StepKind::ToolStarted;
+            step.title = "Read source file".into();
+            store
+                .record_harness_step(context, &step, 103, &anchor)
+                .unwrap();
+            spans.push((span, title));
+        }
+        drop(store);
+        let store = Store::open(&path).unwrap();
+        let page = store.workflow_trace(workflow, None, 10).unwrap();
+        for (id, title) in spans {
+            let span = page.spans.iter().find(|span| span.span_id == id).unwrap();
+            assert_eq!(span.title, title);
+            assert_eq!(span.status, TraceSpanStatus::Running);
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 pub(crate) struct HarnessStepContext {
     pub workflow_id: WorkflowId,
@@ -98,6 +178,15 @@ impl Store {
             // Recording can recover at the next explicit prompt.
             return Ok(None);
         };
+        if !single_agent && step.kind == StepKind::Prompt && !step.title.trim().is_empty() {
+            // An assignment retains its first native prompt as its title. Replayed hooks
+            // and follow-up prompts must not rename the work already shown in history.
+            transaction.execute(
+                "UPDATE trace_spans SET title = ?2, title_from_prompt = 1
+                 WHERE id = ?1 AND title_from_prompt = 0",
+                params![sql_integer(span.0)?, step.title],
+            )?;
+        }
         if single_agent && step.kind == StepKind::Prompt {
             transaction.execute(
                 "UPDATE trace_events SET span_id = ?1 WHERE workflow_id = ?2 AND terminal_id = ?3 AND span_id IS NULL",

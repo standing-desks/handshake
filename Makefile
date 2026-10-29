@@ -85,6 +85,8 @@ UI_DEFAULT_TESTS := testFirstLaunchShowsStartPage \
 	testSessionsOwnTabsAndRestoreFreshShellsAfterRelaunch \
 	testQuitStopsShellAndDescendant \
 	testTerminalRunsLibraryInjectionAndDebugger \
+	testShellAgentPresentationPreservesShellAndReturnsAfterExit \
+	testWorkflowTraceUsesPromptInsteadOfGraphAndSurvivesRelaunch \
 	testSingleAgentStartsInteractivelyTakesInputAndCancels \
 	testSingleAgentUsesHarnessDefaultsAndRemembersYoloMode \
 	testKiroLaunchesRecordsTracesAndResumesEachConversation \

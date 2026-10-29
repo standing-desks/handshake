@@ -45,10 +45,10 @@ struct WorkspaceTabItem: Identifiable {
     }
 
     static func workflowTitles(_ workflows: [CoreWorkflow]) -> [UInt64: String] {
-        let counts = Dictionary(grouping: workflows, by: { $0.customName ?? $0.name }).mapValues(\.count)
+        let counts = Dictionary(grouping: workflows, by: { $0.customName ?? $0.automaticTitle }).mapValues(\.count)
         return Dictionary(
             uniqueKeysWithValues: workflows.map { workflow in
-                let title = workflow.customName ?? workflow.name
+                let title = workflow.customName ?? workflow.automaticTitle
                 return (workflow.id, counts[title, default: 0] > 1 ? "\(title) · \(workflow.id)" : title)
             })
     }

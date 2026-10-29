@@ -93,11 +93,8 @@ struct TraceStepPoint: View {
                 Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.orange)
                     .font(.system(size: size + 2, weight: .bold))
             } else {
-                Circle().fill(TraceLaneStyle.color(for: lane, colors: laneColors)).frame(width: size, height: size)
-                if span.isLive {
-                    Circle().strokeBorder(TraceLaneStyle.color(for: lane, colors: laneColors), lineWidth: 1)
-                        .frame(width: size + 5, height: size + 5)
-                }
+                Circle().fill(TraceLaneStyle.color(for: lane, colors: laneColors))
+                    .frame(width: size + (span.isLive ? 5 : 0), height: size + (span.isLive ? 5 : 0))
             }
             if selected {
                 Circle().strokeBorder(.primary, lineWidth: 1).frame(width: size + 9, height: size + 9)

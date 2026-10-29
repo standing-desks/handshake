@@ -53,6 +53,26 @@ struct WorkspaceTabsTests {
         #expect(titles[readme.id] == "README.md")
     }
 
+    @Test func foregroundHarnessChangesPresentationAndPreservesShellAndCustomTitle() {
+        var shell = makeWorkflow(id: 1)
+        let terminalID = shell.terminalID
+        shell.harness = .codex
+        #expect(WorkspaceTabItem.workflowTitles([shell])[1] == "Codex")
+        #expect(shell.tabSymbol == "person")
+        #expect(shell.presentsAgent)
+        #expect(shell.kind == .terminal)
+        #expect(shell.terminalID == terminalID)
+        // Shell detection must not expose the single-agent cancellation command.
+        #expect(!shell.isRunningAgent)
+        shell.customName = "Build"
+        #expect(WorkspaceTabItem.workflowTitles([shell])[1] == "Build")
+        shell.harness = nil
+        #expect(WorkspaceTabItem.workflowTitles([shell])[1] == "Build")
+        shell.customName = nil
+        #expect(WorkspaceTabItem.workflowTitles([shell])[1] == "Terminal")
+        #expect(shell.tabSymbol == "terminal")
+    }
+
     @Test func closedHistoryIsBoundedScopedAndRestoresPinAndPosition() throws {
         let defaults = try store()
         let model = WorkspaceTabsModel(folder: "/tmp/first", defaults: defaults)

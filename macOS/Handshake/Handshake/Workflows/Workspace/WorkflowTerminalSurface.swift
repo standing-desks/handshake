@@ -87,7 +87,7 @@ struct WorkflowTerminalSurface: View {
             automaticallyFocuses: workflow.kind != .draft
                 || (selectedType == nil && startingHarness == nil && !isDesigning),
             padding: isTiled ? BentoLayout.terminalPadding : Spacing.terminalContent,
-            subject: workflow.kind == .singleAgent ? "Agent" : "Shell", isCancelled: workflow.status == .cancelled,
+            subject: workflow.presentsAgent ? "Agent" : "Shell", isCancelled: workflow.status == .cancelled,
             beforeUserInput: {
                 try await draft.activate(client: coreClient, workflowID: workflow.id)
             }, didFocus: didFocus
