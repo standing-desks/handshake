@@ -53,9 +53,12 @@ extension HandshakeUITests {
     private func assertTabRowAlignment(_ controls: [XCUIElement], with tab: XCUIElement, in app: XCUIApplication) {
         let aligned = expectation(
             for: NSPredicate { _, _ in
-                controls.allSatisfy {
-                    $0.exists && abs($0.frame.height - tab.frame.height) <= 1
-                        && abs($0.frame.midY - tab.frame.midY) <= 1
+                let tabFrame = tab.frame
+                return controls.allSatisfy {
+                    guard $0.exists else { return false }
+                    let frame = $0.frame
+                    return abs(frame.height - tabFrame.height) <= 1
+                        && abs(frame.midY - tabFrame.midY) <= 1
                 }
             }, evaluatedWith: nil)
         XCTAssertEqual(XCTWaiter.wait(for: [aligned], timeout: 5), .completed, app.debugDescription)
