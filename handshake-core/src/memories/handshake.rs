@@ -14,7 +14,7 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error("Enable cross-agent memory consolidation in Settings > Feature flags first.")]
+    #[error("Enable cross-agent memory consolidation in Settings > Experimental first.")]
     Disabled,
     #[error("Choose an existing absolute project folder.")]
     InvalidFolder,
@@ -176,7 +176,7 @@ pub fn execute(request: &Request) -> Result<Snapshot, Error> {
 
 pub(crate) fn feature_enabled() -> bool {
     crate::config::Config::load_user()
-        .feature_flags
+        .experimental
         .cross_agent_memory_consolidation
 }
 

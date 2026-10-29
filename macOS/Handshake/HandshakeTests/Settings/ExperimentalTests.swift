@@ -4,50 +4,38 @@ import Testing
 @testable import Handshake
 
 @MainActor
-struct FeatureFlagsTests {
-    @Test func memoryDecodingDefaultsOffAndPreservesAnExplicitOptIn() throws {
-        for retired in [false, true] {
-            let absent = Data("{\"tab_management\":\(retired)}".utf8)
-            #expect(
-                try JSONDecoder().decode(CoreFeatureConfiguration.self, from: absent).crossAgentMemoryConsolidation
-                    == false)
-            let enabled = Data("{\"tab_management\":\(retired),\"cross_agent_memory_consolidation\":true}".utf8)
-            #expect(
-                try JSONDecoder().decode(CoreFeatureConfiguration.self, from: enabled).crossAgentMemoryConsolidation)
-        }
-    }
-
+struct ExperimentalTests {
     @Test func settingAppliesTheSavedFileAndPreservesVersionProtection() async throws {
-        let transport = FeatureFlagTestTransport()
+        let transport = ExperimentalTestTransport()
         let client = CoreClient(transport: transport)
-        let model = FeatureFlagsModel()
+        let model = ExperimentalModel()
         await model.load(client: client)
-        #expect(model.snapshot?.flags.first?.enabled == false)
+        #expect(model.snapshot?.features.first?.enabled == false)
         var applied: FilePreview?
         await model.set(.crossAgentMemoryConsolidation, enabled: true, client: client) { applied = $0 }
         #expect(applied?.text?.contains("true") == true)
-        #expect(model.snapshot?.flags.first?.enabled == true)
+        #expect(model.snapshot?.features.first?.enabled == true)
         #expect(await transport.lastExpectedVersion?.fingerprint == "one")
         #expect(!model.needsApply && !model.isSaving && model.failure == nil)
     }
 
     @Test func conflictRefreshesCurrentValuesWithoutApplyingTheRejectedChange() async {
-        let transport = FeatureFlagTestTransport(conflicts: true)
+        let transport = ExperimentalTestTransport(conflicts: true)
         let client = CoreClient(transport: transport)
-        let model = FeatureFlagsModel()
+        let model = ExperimentalModel()
         await model.load(client: client)
         var applied = false
         await model.set(.crossAgentMemoryConsolidation, enabled: true, client: client) { _ in applied = true }
         #expect(!applied)
         #expect(model.failure?.contains("changed elsewhere") == true)
         #expect(model.snapshot?.file.version?.fingerprint == "two")
-        #expect(model.snapshot?.flags.first?.enabled == false)
+        #expect(model.snapshot?.features.first?.enabled == false)
     }
 
     @Test func failedApplyStaysRetryableAcrossReopenAndRetryRefreshesTheFile() async {
-        let transport = FeatureFlagTestTransport()
+        let transport = ExperimentalTestTransport()
         let client = CoreClient(transport: transport)
-        let model = FeatureFlagsModel()
+        let model = ExperimentalModel()
         await model.load(client: client)
         await model.set(.crossAgentMemoryConsolidation, enabled: true, client: client) { _ in
             throw CoreFailure.failed("Folder was unavailable")
@@ -61,14 +49,14 @@ struct FeatureFlagsTests {
         await model.applyAgain(client: client) { applied = $0 }
         #expect(applied?.text?.contains("true") == true)
         #expect(!model.needsApply && model.failure == nil)
-        #expect(model.snapshot?.flags.first?.enabled == true)
+        #expect(model.snapshot?.features.first?.enabled == true)
         #expect(await transport.saves == 1)
     }
 
     @Test func readFailureAfterDurableSaveDoesNotSkipApplication() async {
-        let transport = FeatureFlagTestTransport(failReadAfterSave: true)
+        let transport = ExperimentalTestTransport(failReadAfterSave: true)
         let client = CoreClient(transport: transport)
-        let model = FeatureFlagsModel()
+        let model = ExperimentalModel()
         await model.load(client: client)
         var applied = false
         await model.set(.crossAgentMemoryConsolidation, enabled: true, client: client) { _ in applied = true }
@@ -78,13 +66,13 @@ struct FeatureFlagsTests {
         #expect(model.failure != nil)
         await transport.allowReads()
         await model.load(client: client)
-        #expect(model.snapshot?.flags.first?.enabled == true)
+        #expect(model.snapshot?.features.first?.enabled == true)
         #expect(model.failure == nil)
     }
 
     @Test func loadingDuringAnApplyDoesNotLeaveAStaleRetryWarning() async {
-        let client = CoreClient(transport: FeatureFlagTestTransport())
-        let model = FeatureFlagsModel()
+        let client = CoreClient(transport: ExperimentalTestTransport())
+        let model = ExperimentalModel()
         await model.load(client: client)
         var resume: CheckedContinuation<Void, Never>?
         let setting = Task {
@@ -97,13 +85,13 @@ struct FeatureFlagsTests {
         resume?.resume()
         await setting.value
         #expect(!model.needsApply && model.failure == nil)
-        #expect(model.snapshot?.flags.first?.enabled == true)
+        #expect(model.snapshot?.features.first?.enabled == true)
     }
 
     @Test func readStartedBeforeASaveCannotReplaceTheSavedReceipt() async {
-        let transport = FeatureFlagTestTransport()
+        let transport = ExperimentalTestTransport()
         let client = CoreClient(transport: transport)
-        let model = FeatureFlagsModel()
+        let model = ExperimentalModel()
         await model.load(client: client)
         await transport.deferNextRead()
         let oldRead = Task { await model.load(client: client) }
@@ -111,27 +99,27 @@ struct FeatureFlagsTests {
         await model.set(.crossAgentMemoryConsolidation, enabled: true, client: client) { _ in }
         await transport.finishDeferredRead()
         await oldRead.value
-        #expect(model.snapshot?.flags.first?.enabled == true)
+        #expect(model.snapshot?.features.first?.enabled == true)
         #expect(model.snapshot?.file.version?.fingerprint == "two")
         #expect(model.failure == nil)
     }
 
-    @Test func rawConfigurationSaveRefreshesTheFlagSnapshot() async {
-        let transport = FeatureFlagTestTransport()
+    @Test func rawConfigurationSaveRefreshesTheExperimentalSnapshot() async {
+        let transport = ExperimentalTestTransport()
         let client = CoreClient(transport: transport)
-        let model = FeatureFlagsModel()
+        let model = ExperimentalModel()
         await model.load(client: client)
         await transport.externalChange(true)
         await model.configurationApplied(client: client)
-        #expect(model.snapshot?.flags.first?.enabled == true)
+        #expect(model.snapshot?.features.first?.enabled == true)
     }
 }
 
-private actor FeatureFlagTestTransport: CoreTransport {
+private actor ExperimentalTestTransport: CoreTransport {
     private var enabled = false
     private var shouldDeferRead = false
-    private var deferredRead: CheckedContinuation<FeatureFlagSnapshot, Never>?
-    private var deferredSnapshot: FeatureFlagSnapshot?
+    private var deferredRead: CheckedContinuation<ExperimentalSnapshot, Never>?
+    private var deferredSnapshot: ExperimentalSnapshot?
     private var version = "one"
     private let conflicts: Bool
     private var failReadAfterSave: Bool
@@ -155,11 +143,11 @@ private actor FeatureFlagTestTransport: CoreTransport {
         deferredRead = nil
         deferredSnapshot = nil
     }
-    func featureFlags() async throws -> FeatureFlagSnapshot {
+    func experimental() async throws -> ExperimentalSnapshot {
         if saves > 0 && failReadAfterSave { throw CoreFailure.failed("Read unavailable") }
-        let current = FeatureFlagSnapshot(
-            flags: [
-                FeatureFlagState(
+        let current = ExperimentalSnapshot(
+            features: [
+                ExperimentalFeatureState(
                     id: .crossAgentMemoryConsolidation, title: "Cross-agent memory consolidation",
                     description: "Share project memories.", enabled: enabled)
             ], file: file())
@@ -171,7 +159,9 @@ private actor FeatureFlagTestTransport: CoreTransport {
         return current
 
     }
-    func setFeatureFlag(_ id: FeatureFlagID, enabled: Bool, expectedVersion: FileVersion) -> FileSaveResult {
+    func setExperimentalFeature(
+        _ id: ExperimentalFeatureID, enabled: Bool, expectedVersion: FileVersion
+    ) -> FileSaveResult {
         lastExpectedVersion = expectedVersion
         saves += 1
         version = "two"
@@ -181,7 +171,7 @@ private actor FeatureFlagTestTransport: CoreTransport {
     private func file() -> FilePreview {
         FilePreview(
             path: "/config/handshake/config.toml", status: .text,
-            text: "[feature_flags]\ncross_agent_memory_consolidation = \(enabled)\n", message: nil,
+            text: "[experimental]\ncross_agent_memory_consolidation = \(enabled)\n", message: nil,
             version: FileVersion(fingerprint: version, utf8BOM: false))
     }
     func open() -> CoreSnapshot { .testReady() }

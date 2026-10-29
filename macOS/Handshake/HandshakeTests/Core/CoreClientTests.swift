@@ -5,6 +5,38 @@ import Testing
 @testable import Handshake
 
 struct CoreClientTests {
+    @Test func configurationDecodesExperimentalSettingsAndDefaultsOff() throws {
+        for enabled in [false, true] {
+            let data = Data(
+                """
+                {"appearance":{"color_scheme":"system"},
+                "terminal":{"font_family":"","font_size":13,"cursor_style":"block","cursor_blink":true},
+                 "experimental":{"cross_agent_memory_consolidation":\(enabled)}}
+                """.utf8)
+            let config = try JSONDecoder().decode(CoreConfig.self, from: data)
+            #expect(config.experimental.crossAgentMemoryConsolidation == enabled)
+        }
+        let absent = Data(
+            """
+            {"appearance":{"color_scheme":"system"},
+                "terminal":{"font_family":"","font_size":13,"cursor_style":"block","cursor_blink":true}}
+            """.utf8)
+        #expect(try !JSONDecoder().decode(CoreConfig.self, from: absent).experimental.crossAgentMemoryConsolidation)
+    }
+
+    @Test func memoryDecodingDefaultsOffAndPreservesAnExplicitOptIn() throws {
+        for retired in [false, true] {
+            let absent = Data("{\"tab_management\":\(retired)}".utf8)
+            #expect(
+                try JSONDecoder().decode(CoreExperimentalConfiguration.self, from: absent).crossAgentMemoryConsolidation
+                    == false)
+            let enabled = Data("{\"tab_management\":\(retired),\"cross_agent_memory_consolidation\":true}".utf8)
+            #expect(
+                try JSONDecoder().decode(CoreExperimentalConfiguration.self, from: enabled)
+                    .crossAgentMemoryConsolidation)
+        }
+    }
+
     @Test(arguments: [CoreConfig.ColorScheme.system, .light, .dark])
     func configSnapshotDecodes(colorScheme: CoreConfig.ColorScheme) throws {
         let json = """

@@ -8,8 +8,8 @@ use toml::de::{DeTable, DeValue};
 
 use super::{Config, ConfigDiagnostic, ConfigProblem, LoadedConfig, diagnostics, file_diagnostic};
 
-const MAX_DEPTH: usize = 64;
-const MAX_DOCUMENTS: usize = 256;
+pub(super) const MAX_DEPTH: usize = 64;
+pub(super) const MAX_DOCUMENTS: usize = 256;
 
 pub(super) fn load(path: &Path, source: &str) -> LoadedConfig {
     let mut loader = Loader::default();
@@ -239,7 +239,7 @@ fn merge(target: &mut toml::Table, source: toml::Table) {
     }
 }
 
-fn import_path(directory: &Path, import: &Path, home: Option<&Path>) -> Option<PathBuf> {
+pub(super) fn import_path(directory: &Path, import: &Path, home: Option<&Path>) -> Option<PathBuf> {
     if import.as_os_str().is_empty() {
         return None;
     }

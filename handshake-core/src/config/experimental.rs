@@ -1,4 +1,4 @@
-//! Receiver-owned feature flags, persisted through the versioned settings-file editor.
+//! Receiver-owned experimental features, persisted through the versioned settings-file editor.
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
@@ -8,30 +8,30 @@ use crate::{FileContent, FilePreview, FileSaveOutcome, FileSaveRequest, FileVers
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(default)]
-pub struct FeatureFlags {
+pub struct ExperimentalConfig {
     pub cross_agent_memory_consolidation: bool,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub enum FeatureFlag {
+pub enum ExperimentalFeature {
     CrossAgentMemoryConsolidation,
 }
 
 #[derive(Debug, Serialize)]
-pub struct FeatureFlagState {
-    pub id: FeatureFlag,
+pub struct ExperimentalFeatureState {
+    pub id: ExperimentalFeature,
     pub title: &'static str,
     pub description: &'static str,
     pub enabled: bool,
 }
 
-pub struct FeatureFlagSnapshot {
-    pub flags: Vec<FeatureFlagState>,
+pub struct ExperimentalSnapshot {
+    pub features: Vec<ExperimentalFeatureState>,
     pub file: FilePreview,
 }
 
-impl FeatureFlag {
+impl ExperimentalFeature {
     const ALL: [Self; 1] = [Self::CrossAgentMemoryConsolidation];
 
     fn key(self) -> &'static str {
@@ -40,28 +40,28 @@ impl FeatureFlag {
         }
     }
 
-    fn state(self, flags: &FeatureFlags) -> FeatureFlagState {
+    fn state(self, features: &ExperimentalConfig) -> ExperimentalFeatureState {
         match self {
-            Self::CrossAgentMemoryConsolidation => FeatureFlagState {
+            Self::CrossAgentMemoryConsolidation => ExperimentalFeatureState {
                 id: self,
                 title: "Cross-agent memory consolidation",
                 description: "Automatically share and consolidate project memories between supported agents.",
-                enabled: flags.cross_agent_memory_consolidation,
+                enabled: features.cross_agent_memory_consolidation,
             },
         }
     }
 }
 
-/// Reads the flag catalog and effective values, including imported configuration.
+/// Reads the experimental feature catalog and effective values, including imported configuration.
 /// # Errors
 /// Rejects invalid configuration rather than displaying fallback values as saved settings.
-pub fn read_feature_flags() -> Result<FeatureFlagSnapshot, ConfigEditError> {
+pub fn read_experimental() -> Result<ExperimentalSnapshot, ConfigEditError> {
     snapshot(super::read_user_file()?)
 }
 
-fn snapshot(file: FilePreview) -> Result<FeatureFlagSnapshot, ConfigEditError> {
+fn snapshot(file: FilePreview) -> Result<ExperimentalSnapshot, ConfigEditError> {
     let FileContent::Text(source) = &file.content else {
-        return Err(ConfigEditError::FeatureFlags(
+        return Err(ConfigEditError::Experimental(
             "Open a readable text configuration first.".into(),
         ));
     };
@@ -73,10 +73,10 @@ fn snapshot(file: FilePreview) -> Result<FeatureFlagSnapshot, ConfigEditError> {
     {
         return Err(ConfigEditError::InvalidConfig(problem));
     }
-    Ok(FeatureFlagSnapshot {
-        flags: FeatureFlag::ALL
+    Ok(ExperimentalSnapshot {
+        features: ExperimentalFeature::ALL
             .into_iter()
-            .map(|flag| flag.state(&loaded.config.feature_flags))
+            .map(|feature| feature.state(&loaded.config.experimental))
             .collect(),
         file,
     })
@@ -85,19 +85,19 @@ fn snapshot(file: FilePreview) -> Result<FeatureFlagSnapshot, ConfigEditError> {
 /// Changes one root setting while preserving other settings, comments and conflict protection.
 /// # Errors
 /// Returns the settings editor's read, validation or write error. Concurrent edits return a conflict.
-pub fn set_feature_flag(
-    flag: FeatureFlag,
+pub fn set_experimental_feature(
+    feature: ExperimentalFeature,
     enabled: bool,
     expected: FileVersion,
 ) -> Result<FileSaveOutcome, ConfigEditError> {
     Config::prepare_user()?;
     let path = Config::user_path().ok_or(ConfigEditError::MissingDirectory)?;
-    set_at(&path, flag, enabled, expected)
+    set_at(&path, feature, enabled, expected)
 }
 
 fn set_at(
     path: &Path,
-    flag: FeatureFlag,
+    feature: ExperimentalFeature,
     enabled: bool,
     expected: FileVersion,
 ) -> Result<FileSaveOutcome, ConfigEditError> {
@@ -111,17 +111,17 @@ fn set_at(
     };
     let mut document = source
         .parse::<toml_edit::DocumentMut>()
-        .map_err(|error| ConfigEditError::FeatureFlags(error.to_string()))?;
-    let flags = document
-        .entry("feature_flags")
-        .or_insert(toml_edit::table());
+        .map_err(|error| ConfigEditError::Experimental(error.to_string()))?;
+    let features = document.entry("experimental").or_insert(toml_edit::table());
     let mut value = toml_edit::value(enabled);
-    if let Some(existing) = flags.get(flag.key()).and_then(toml_edit::Item::as_value)
+    if let Some(existing) = features
+        .get(feature.key())
+        .and_then(toml_edit::Item::as_value)
         && let Some(new) = value.as_value_mut()
     {
         *new.decor_mut() = existing.decor().clone();
     }
-    flags[flag.key()] = value;
+    features[feature.key()] = value;
     let request = FileSaveRequest {
         folder: snapshot
             .file
@@ -149,7 +149,7 @@ mod tests {
         for retired in [false, true] {
             for memory in [None, Some(false), Some(true)] {
                 let source = format!(
-                    "[feature_flags]\ntab_management = {retired}\n{}",
+                    "[experimental]\ntab_management = {retired}\n{}",
                     memory.map_or_else(String::new, |enabled| format!(
                         "cross_agent_memory_consolidation = {enabled}\n"
                     ))
@@ -157,13 +157,17 @@ mod tests {
                 let loaded = Config::load_source(&path, &source);
                 assert_eq!(loaded.diagnostics, []);
                 assert_eq!(
-                    loaded.config.feature_flags.cross_agent_memory_consolidation,
+                    loaded.config.experimental.cross_agent_memory_consolidation,
                     memory.unwrap_or(false)
                 );
-                let flags = FeatureFlag::ALL.map(|flag| flag.state(&loaded.config.feature_flags));
-                assert_eq!(flags.len(), 1);
-                assert_eq!(flags[0].id, FeatureFlag::CrossAgentMemoryConsolidation);
-                assert_eq!(flags[0].enabled, memory.unwrap_or(false));
+                let features = ExperimentalFeature::ALL
+                    .map(|feature| feature.state(&loaded.config.experimental));
+                assert_eq!(features.len(), 1);
+                assert_eq!(
+                    features[0].id,
+                    ExperimentalFeature::CrossAgentMemoryConsolidation
+                );
+                assert_eq!(features[0].enabled, memory.unwrap_or(false));
             }
         }
     }
@@ -172,17 +176,17 @@ mod tests {
     fn defaults_are_off_and_toggling_preserves_comments_and_other_settings() {
         assert!(
             !Config::default()
-                .feature_flags
+                .experimental
                 .cross_agent_memory_consolidation
         );
         let root = tempfile::tempdir().unwrap();
         let path = root.path().join("config.toml");
-        let original = "# Personal settings\n[terminal]\nfont_size = 17 # keep my size\n[feature_flags]\ncross_agent_memory_consolidation = false # my experiment\n";
+        let original = "# Personal settings\n[terminal]\nfont_size = 17 # keep my size\n[experimental]\ncross_agent_memory_consolidation = false # my experiment\n";
         fs::write(&path, original).unwrap();
         let file = editing::read_file(&path).unwrap();
         let result = set_at(
             &path,
-            FeatureFlag::CrossAgentMemoryConsolidation,
+            ExperimentalFeature::CrossAgentMemoryConsolidation,
             true,
             file.version.unwrap(),
         )
@@ -193,7 +197,7 @@ mod tests {
             original.replace("false #", "true #")
         );
         let saved = snapshot(editing::read_file(&path).unwrap()).unwrap();
-        assert!(saved.flags[0].enabled);
+        assert!(saved.features[0].enabled);
         assert_eq!(Config::load(&path).config.terminal.font_size.points(), 17.0);
     }
 
@@ -203,55 +207,71 @@ mod tests {
         let path = root.path().join("config.toml");
         fs::write(
             root.path().join("base.toml"),
-            "[feature_flags]\ncross_agent_memory_consolidation = true\n",
+            "[experimental]\ncross_agent_memory_consolidation = true\n",
         )
         .unwrap();
         fs::write(&path, "import = 'base.toml'\n# retained\n").unwrap();
         let read = snapshot(editing::read_file(&path).unwrap()).unwrap();
-        assert!(read.flags[0].enabled);
+        assert!(read.features[0].enabled);
         set_at(
             &path,
-            FeatureFlag::CrossAgentMemoryConsolidation,
+            ExperimentalFeature::CrossAgentMemoryConsolidation,
             false,
             read.file.version.unwrap(),
         )
         .unwrap();
-        assert!(!snapshot(editing::read_file(&path).unwrap()).unwrap().flags[0].enabled);
+        assert!(
+            !snapshot(editing::read_file(&path).unwrap())
+                .unwrap()
+                .features[0]
+                .enabled
+        );
         let old = editing::read_file(&path).unwrap().version.unwrap();
         fs::write(&path, "# external writer\n").unwrap();
         assert!(matches!(
-            set_at(&path, FeatureFlag::CrossAgentMemoryConsolidation, true, old).unwrap(),
+            set_at(
+                &path,
+                ExperimentalFeature::CrossAgentMemoryConsolidation,
+                true,
+                old
+            )
+            .unwrap(),
             FileSaveOutcome::Conflict(_)
         ));
         assert_eq!(fs::read_to_string(&path).unwrap(), "# external writer\n");
     }
 
     #[test]
-    fn inline_and_dotted_flags_stay_valid_and_invalid_settings_are_held() {
+    fn inline_and_dotted_features_stay_valid_and_invalid_settings_are_held() {
         let root = tempfile::tempdir().unwrap();
         let path = root.path().join("config.toml");
         for text in [
-            "feature_flags = { cross_agent_memory_consolidation = false } # keep\n",
-            "feature_flags.cross_agent_memory_consolidation = false\n",
+            "experimental = { cross_agent_memory_consolidation = false } # keep\n",
+            "experimental.cross_agent_memory_consolidation = false\n",
             "[terminal]\nfont_size = 16\n",
         ] {
             fs::write(&path, text).unwrap();
             let file = editing::read_file(&path).unwrap();
             set_at(
                 &path,
-                FeatureFlag::CrossAgentMemoryConsolidation,
+                ExperimentalFeature::CrossAgentMemoryConsolidation,
                 true,
                 file.version.unwrap(),
             )
             .unwrap();
-            assert!(snapshot(editing::read_file(&path).unwrap()).unwrap().flags[0].enabled);
+            assert!(
+                snapshot(editing::read_file(&path).unwrap())
+                    .unwrap()
+                    .features[0]
+                    .enabled
+            );
         }
         fs::write(&path, "[terminal]\nfont_size = 1000\n").unwrap();
         let file = editing::read_file(&path).unwrap();
         assert!(
             set_at(
                 &path,
-                FeatureFlag::CrossAgentMemoryConsolidation,
+                ExperimentalFeature::CrossAgentMemoryConsolidation,
                 true,
                 file.version.unwrap()
             )

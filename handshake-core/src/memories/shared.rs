@@ -11,7 +11,7 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum SharedMemoryError {
-    #[error("Enable cross-agent memory consolidation in Settings > Feature flags first.")]
+    #[error("Enable cross-agent memory consolidation in Settings > Experimental first.")]
     FeatureDisabled,
     #[error("Choose an existing absolute folder path.")]
     InvalidFolder,
@@ -87,7 +87,7 @@ pub struct SharedNoteDetail {
 /// Rejects invalid paths, unsupported sources, disabled writes and unavailable storage.
 pub fn execute(request: &SharedRequest) -> Result<SharedSnapshot, SharedMemoryError> {
     if !crate::config::Config::load_user()
-        .feature_flags
+        .experimental
         .cross_agent_memory_consolidation
     {
         return Err(SharedMemoryError::FeatureDisabled);

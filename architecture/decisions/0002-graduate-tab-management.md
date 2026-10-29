@@ -38,7 +38,7 @@ compatibility. Disabling the feature is no longer a user option.
 
 ## References
 
-- [Current feature catalog](../../handshake-core/src/config/features.rs)
+- [Current feature catalog](../../handshake-core/src/config/experimental.rs)
 - [Tab composition](../../macOS/Handshake/Handshake/Workflows/Workspace/WorkspaceTabBar.swift)
 - [Presentation state](../../macOS/Handshake/Handshake/Workflows/Workspace/WorkspaceTabsModel.swift)
 - [Workflow presentation](../../macOS/Handshake/Handshake/Workflows/Workspace/WorkflowWorkspace.swift)

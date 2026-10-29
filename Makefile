@@ -56,7 +56,8 @@ UI_DEFAULT_TESTS := testFirstLaunchShowsStartPage \
 	testManagedTabsRenameReorderPinNavigateAndReopenWithoutRestarting \
 	testManagedTabsKeepSplitNeighborAndRestoreFilesAfterQuit \
 	testManagedTabsConfirmBeforeStoppingARunningAgent \
-	testFeatureFlagControlsMemorySharingImmediatelyAndPersists \
+	testExperimentalFeatureControlsMemorySharingImmediatelyAndPersists \
+	testExperimentalSettingsMigrateLegacyImportsOnceAndPreserveOptIn \
 	testMemoryHeaderSharingControlsRemainIndependentAndPersist \
 	testMemoryHeaderOpensSettingsWhenPolicySaveFails \
 	testHandshakeMemoriesRemainUsableAtMaximumZoom \
@@ -202,7 +203,7 @@ test-app: $(call needs,build-tests) ## Run the app's unit tests
 	handshake_test_data=$$(mktemp -d "$${TMPDIR:-/tmp}/handshake-unit-tests.XXXXXX"); \
 	trap 'rm -rf "$$handshake_test_data"' EXIT; \
 	mkdir -p "$$handshake_test_data/config/handshake" "$$handshake_test_data/native/codex" "$$handshake_test_data/native/claude"; \
-	printf '[feature_flags]\ncross_agent_memory_consolidation = true\n' > "$$handshake_test_data/config/handshake/config.toml"; \
+	printf '[experimental]\ncross_agent_memory_consolidation = true\n' > "$$handshake_test_data/config/handshake/config.toml"; \
 	TEST_RUNNER_CODEX_HOME="$$handshake_test_data/native/codex" \
 	TEST_RUNNER_CLAUDE_CONFIG_DIR="$$handshake_test_data/native/claude" \
 	TEST_RUNNER_HANDSHAKE_DATA_DIRECTORY="$$handshake_test_data" \

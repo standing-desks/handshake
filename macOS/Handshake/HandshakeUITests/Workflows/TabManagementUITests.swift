@@ -11,11 +11,11 @@ extension HandshakeUITests {
         XCTAssertTrue(app.buttons["workflowTab-1"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["tabSwitcher"].waitForExistence(timeout: 5))
         app.typeKey(",", modifierFlags: .command)
-        let section = app.sheets.radioButtons["Feature flags"]
+        let section = app.sheets.radioButtons["Experimental"]
         XCTAssertTrue(section.waitForExistence(timeout: 10))
         section.click()
         XCTAssertFalse(
-            app.descendants(matching: .any).matching(identifier: "featureFlag-tabManagement").firstMatch.exists)
+            app.descendants(matching: .any).matching(identifier: "experimentalFeature-tabManagement").firstMatch.exists)
         app.buttons["closeSettings"].click()
         app.terminate()
         let root = URL(filePath: try XCTUnwrap(app.launchEnvironment["XDG_CONFIG_HOME"]))
@@ -24,7 +24,7 @@ extension HandshakeUITests {
         app.launch()
         XCTAssertTrue(app.buttons["workflowTab-1"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["tabSwitcher"].waitForExistence(timeout: 5))
-        XCTAssertEqual(try String(contentsOf: config, encoding: .utf8), "[feature_flags]\ntab_management = false\n")
+        XCTAssertEqual(try String(contentsOf: config, encoding: .utf8), "[experimental]\ntab_management = false\n")
     }
 
     @MainActor

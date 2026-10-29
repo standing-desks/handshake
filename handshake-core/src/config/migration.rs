@@ -5,19 +5,32 @@ use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 
+mod experimental;
+pub(super) use experimental::rename_experimental;
+
 #[derive(Debug, Error)]
-#[error(
-    "Could not adopt config from {legacy} into {destination}: {source}. The legacy source is retained; repair the paths and retry."
-)]
-pub struct ConfigMigrationError {
-    legacy: PathBuf,
-    destination: PathBuf,
-    #[source]
-    source: io::Error,
+pub enum ConfigMigrationError {
+    #[error(
+        "Could not adopt config from {legacy} into {destination}: {source}. The legacy source is retained; repair the paths and retry."
+    )]
+    Adoption {
+        legacy: PathBuf,
+        destination: PathBuf,
+        #[source]
+        source: io::Error,
+    },
+    #[error(
+        "Could not migrate experimental settings in {path}: {source}. Repair the file and retry."
+    )]
+    Experimental {
+        path: PathBuf,
+        #[source]
+        source: io::Error,
+    },
 }
 
 pub(super) fn adopt(legacy: &Path, destination: &Path) -> Result<(), ConfigMigrationError> {
-    adopt_tree(legacy, destination).map_err(|source| ConfigMigrationError {
+    adopt_tree(legacy, destination).map_err(|source| ConfigMigrationError::Adoption {
         legacy: legacy.into(),
         destination: destination.into(),
         source,

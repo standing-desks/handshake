@@ -53,7 +53,7 @@ pub struct NativeImportSnapshot {
 
 #[derive(Debug, Error)]
 pub enum NativeImportError {
-    #[error("Enable cross-agent memory consolidation in Settings > Feature flags first.")]
+    #[error("Enable cross-agent memory consolidation in Settings > Experimental first.")]
     Disabled,
     #[error("Native memory import requires an existing absolute folder path.")]
     InvalidFolder,
@@ -77,7 +77,7 @@ pub enum NativeImportError {
 /// Returns an error for invalid folders, protocol failures, or unavailable local files.
 pub fn execute(request: &NativeImportRequest) -> Result<NativeImportSnapshot, NativeImportError> {
     if !crate::config::Config::load_user()
-        .feature_flags
+        .experimental
         .cross_agent_memory_consolidation
     {
         return Err(NativeImportError::Disabled);

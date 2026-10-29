@@ -18,6 +18,12 @@ impl Application {
     }
 
     fn reload_config_from(&self, path: &Path) -> Result<CommandDisposition, ApplicationError> {
+        if let Err(error) = Config::migrate_experimental(path) {
+            return Ok(CommandDisposition::Rejected {
+                code: "invalidConfig".into(),
+                message: format!("Cannot apply settings: {error}"),
+            });
+        }
         let loaded = Config::load(path);
         for diagnostic in &loaded.diagnostics {
             if diagnostic.problem == ConfigProblem::UnknownKey {
@@ -30,8 +36,8 @@ impl Application {
             }
         }
         let mut inner = self.lock_inner()?;
-        let enabled = loaded.config.feature_flags.cross_agent_memory_consolidation;
-        let memory_changed = inner.config.feature_flags.cross_agent_memory_consolidation != enabled;
+        let enabled = loaded.config.experimental.cross_agent_memory_consolidation;
+        let memory_changed = inner.config.experimental.cross_agent_memory_consolidation != enabled;
         if inner.config != loaded.config {
             inner
                 .folders
@@ -60,6 +66,48 @@ impl Application {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reload_migrates_legacy_sections_and_newly_added_imports_before_publishing() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.toml");
+        let imported = directory.path().join("legacy.toml");
+        let app = Application::with_event_capacity(64).unwrap();
+        for source in [
+            "[feature_flags]\ncross_agent_memory_consolidation = true\n",
+            "import = 'legacy.toml'\n",
+        ] {
+            std::fs::write(&path, source).unwrap();
+            std::fs::write(
+                &imported,
+                "[feature_flags]\ncross_agent_memory_consolidation = true\n",
+            )
+            .unwrap();
+            assert_eq!(
+                app.reload_config_from(&path).unwrap(),
+                CommandDisposition::Accepted
+            );
+            assert!(
+                app.snapshot()
+                    .unwrap()
+                    .config
+                    .experimental
+                    .cross_agent_memory_consolidation
+            );
+            assert!(
+                !std::fs::read_to_string(&path)
+                    .unwrap()
+                    .contains("[feature_flags]")
+            );
+            if source.starts_with("import") {
+                assert!(
+                    std::fs::read_to_string(&imported)
+                        .unwrap()
+                        .contains("[experimental]")
+                );
+            }
+        }
+    }
 
     #[test]
     fn reload_publishes_atomic_config_changes_and_rejects_invalid_settings() {

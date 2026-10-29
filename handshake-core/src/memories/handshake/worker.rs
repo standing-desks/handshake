@@ -300,7 +300,7 @@ mod tests {
         fs::create_dir_all(config.parent().unwrap()).unwrap();
         fs::write(
             config,
-            "[feature_flags]\ncross_agent_memory_consolidation = true\n",
+            "[experimental]\ncross_agent_memory_consolidation = true\n",
         )
         .unwrap();
         let fixture = tempfile::tempdir().unwrap();

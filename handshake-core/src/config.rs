@@ -11,10 +11,10 @@ use toml::de::DeTable;
 
 mod diagnostics;
 mod editing;
-mod features;
-pub use features::{
-    FeatureFlag, FeatureFlagSnapshot, FeatureFlagState, FeatureFlags, read_feature_flags,
-    set_feature_flag,
+mod experimental;
+pub use experimental::{
+    ExperimentalConfig, ExperimentalFeature, ExperimentalFeatureState, ExperimentalSnapshot,
+    read_experimental, set_experimental_feature,
 };
 mod imports;
 mod migration;
@@ -35,7 +35,7 @@ pub struct Config {
     pub theme: ThemeConfig,
     pub editor: EditorConfig,
     pub traces: TraceConfig,
-    pub feature_flags: FeatureFlags,
+    pub experimental: ExperimentalConfig,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -193,6 +193,10 @@ pub struct LoadedConfig {
 }
 
 impl Config {
+    pub(crate) fn migrate_experimental(path: &Path) -> Result<(), ConfigMigrationError> {
+        migration::rename_experimental(path)
+    }
+
     /// The same user config path used by loading and the settings editor.
     #[must_use]
     pub fn user_path() -> Option<PathBuf> {
@@ -204,7 +208,7 @@ impl Config {
         )
     }
 
-    /// Adopts the legacy config tree only for the default root, before runtime/editor creation.
+    /// Prepares the config tree and migrates experimental keys before runtime/editor creation.
     pub(crate) fn prepare_user() -> Result<(), ConfigMigrationError> {
         prepare_user_config_path(
             std::env::var_os("HANDSHAKE_CONFIG_PATH").as_deref(),
@@ -217,7 +221,7 @@ impl Config {
 
     /// Loads `HANDSHAKE_CONFIG_PATH`, then `TWINE_CONFIG_PATH`, otherwise the default
     /// `$XDG_CONFIG_HOME/handshake/config.toml` or `~/.config/handshake/config.toml`.
-    /// Explicit overrides must be absolute file paths and never trigger default-root migration.
+    /// Explicit overrides must be absolute file paths. Section renames also apply to overrides.
     #[must_use]
     pub fn load_user() -> Self {
         if let Err(error) = Self::prepare_user() {
@@ -328,6 +332,9 @@ fn prepare_user_config_path(
     {
         migration::adopt(&destination.with_file_name("twine"), destination)?;
     }
+    if let Some(path) = &path {
+        migration::rename_experimental(path)?;
+    }
     Ok(path)
 }
 
@@ -367,7 +374,7 @@ fn parse_document<T: serde::de::DeserializeOwned + Default>(
     let result = serde_ignored::deserialize(deserializer, |key| {
         let segments = diagnostics::ignored_segments(&key);
         // Tab improvements are standard; keep older settings readable without a warning.
-        if segments == ["feature_flags", "tab_management"] {
+        if segments == ["experimental", "tab_management"] {
             return;
         }
         let offset = locations
@@ -470,6 +477,50 @@ mod tests {
     use super::*;
 
     const PATH: &str = "/test/config.toml";
+
+    #[test]
+    fn user_preparation_migrates_default_and_override_sections_after_adoption() {
+        let directory = tempfile::tempdir().unwrap();
+        let legacy = directory.path().join("twine");
+        fs::create_dir(&legacy).unwrap();
+        let source = "[feature_flags]\ncross_agent_memory_consolidation = true\n";
+        fs::write(legacy.join("config.toml"), source).unwrap();
+        let path = prepare_user_config_path(None, None, Some(directory.path().as_os_str()), None)
+            .unwrap()
+            .unwrap();
+        assert!(
+            fs::read_to_string(&path)
+                .unwrap()
+                .contains("[experimental]")
+        );
+        assert_eq!(
+            fs::read_to_string(legacy.join("config.toml")).unwrap(),
+            source
+        );
+        assert!(
+            Config::load(&path)
+                .config
+                .experimental
+                .cross_agent_memory_consolidation
+        );
+        let custom = directory.path().join("custom.toml");
+        for (handshake, twine) in [
+            (Some(custom.as_os_str()), None),
+            (None, Some(custom.as_os_str())),
+        ] {
+            fs::write(&custom, source).unwrap();
+            assert_eq!(
+                prepare_user_config_path(handshake, twine, None, None).unwrap(),
+                Some(custom.clone())
+            );
+            assert!(
+                Config::load(&custom)
+                    .config
+                    .experimental
+                    .cross_agent_memory_consolidation
+            );
+        }
+    }
 
     #[test]
     fn xdg_config_path_uses_absolute_xdg_or_home_fallback() {

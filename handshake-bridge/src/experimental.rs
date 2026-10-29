@@ -1,4 +1,4 @@
-//! Feature-flag request adaptation; settings policy and persistence remain in core.
+//! Experimental settings request adaptation; settings policy and persistence remain in core.
 use serde::Deserialize;
 use serde_json::json;
 
@@ -11,7 +11,7 @@ use crate::protocol::files::{Version, encode_preview, encode_save};
 enum Request {
     Read,
     Set {
-        id: handshake_core::config::FeatureFlag,
+        id: handshake_core::config::ExperimentalFeature,
         enabled: bool,
         #[serde(rename = "expectedVersion")]
         expected_version: Version,
@@ -19,10 +19,10 @@ enum Request {
 }
 
 #[unsafe(no_mangle)]
-/// Reads the feature catalog or updates one receiver-owned flag with version protection.
+/// Reads the experimental catalog or updates one receiver-owned feature with version protection.
 /// # Safety
 /// Input and owned output follow the bounded pointer contracts in `handshake_bridge.h`.
-pub unsafe extern "C" fn handshake_feature_flags(
+pub unsafe extern "C" fn handshake_experimental(
     bytes: *const u8,
     length: usize,
     output: *mut HandshakeBuffer,
@@ -36,9 +36,9 @@ pub unsafe extern "C" fn handshake_feature_flags(
                 let request = serde_json::from_slice::<Request>(bytes)
                     .map_err(|_| BridgeError::MalformedCommand)?;
                 let value = match request {
-                    Request::Read => match handshake_core::config::read_feature_flags() {
+                    Request::Read => match handshake_core::config::read_experimental() {
                         Ok(snapshot) => {
-                            json!({"snapshot":{"flags":snapshot.flags,"file":encode_preview(&snapshot.file)},"error":null})
+                            json!({"snapshot":{"features":snapshot.features,"file":encode_preview(&snapshot.file)},"error":null})
                         }
                         Err(error) => json!({"error":error.to_string()}),
                     },
@@ -47,7 +47,7 @@ pub unsafe extern "C" fn handshake_feature_flags(
                         enabled,
                         expected_version,
                     } => {
-                        let result = handshake_core::config::set_feature_flag(
+                        let result = handshake_core::config::set_experimental_feature(
                             id,
                             enabled,
                             expected_version.into(),
