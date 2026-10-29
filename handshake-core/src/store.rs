@@ -268,7 +268,10 @@ const MIGRATIONS: &[&str] = &[
      INSERT INTO trace_storage_preferences(id,budget_bytes,retention_days) VALUES(1,536870912,90)",
     // 20: Custom workflow titles and read-only reopened history.
     "ALTER TABLE workflows ADD COLUMN custom_name TEXT;
-     ALTER TABLE workflows ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0,1))"
+     ALTER TABLE workflows ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0,1))",
+    // 21: Assignment titles keep their first native prompt independently of turn correlation.
+    "ALTER TABLE trace_spans ADD COLUMN title_from_prompt INTEGER NOT NULL DEFAULT 0
+     CHECK(title_from_prompt IN (0,1))"
 ];
 
 /// How long a write waits for another connection, such as a second Handshake process, to release the

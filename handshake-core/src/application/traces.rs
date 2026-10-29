@@ -315,7 +315,7 @@ impl Inner {
     ) -> Result<(), ApplicationError> {
         use crate::terminal::ShellMark;
         let terminal_id = item.terminal_id;
-        let Some(workflow) = self
+        let Some(mut workflow) = self
             .workflows
             .workflows
             .iter()
@@ -337,6 +337,11 @@ impl Inner {
             }
             self.command_shells.insert(terminal_id);
         }
+        let harness = match &item.mark {
+            ShellMark::CommandStart(command) => crate::harness::shell_command::detect(command),
+            _ => None,
+        };
+        workflow.harness = harness;
         match item.mark {
             ShellMark::Prompt => {}
             ShellMark::CommandStart(title) => {
@@ -402,8 +407,31 @@ impl Inner {
             }
         }
         // A journal failure must not retry an already committed command boundary.
+        if let Err(error) = self.update_shell_harness(terminal_id, harness) {
+            tracing::warn!(%error, "couldn't publish shell harness presentation");
+        }
         if let Err(error) = self.publish_trace(workflow.workflow_id) {
             tracing::warn!(%error, "couldn't publish shell trace revision");
+        }
+        Ok(())
+    }
+
+    pub(super) fn update_shell_harness(
+        &mut self,
+        terminal: TerminalId,
+        harness: Option<crate::HarnessId>,
+    ) -> Result<(), ApplicationError> {
+        let harness = harness
+            .filter(|_| self.terminals.get(&terminal) == Some(&crate::TerminalStatus::Running));
+        if let Some(workflow) = self.workflows.workflows.iter_mut().find(|workflow| {
+            workflow.kind == crate::WorkflowKind::Terminal && workflow.terminal_id == terminal
+        }) && workflow.harness != harness
+        {
+            workflow.harness = harness;
+            self.events
+                .append(EventKind::State(StateEvent::WorkflowChanged(
+                    workflow.clone(),
+                )))?;
         }
         Ok(())
     }
@@ -675,11 +703,18 @@ impl Inner {
 }
 
 fn new_span(workflow: &Workflow) -> NewTraceSpan<'_> {
-    let is_agent = workflow.kind == crate::WorkflowKind::SingleAgent;
+    let shell_harness = workflow
+        .harness
+        .filter(|_| workflow.kind == crate::WorkflowKind::Terminal);
+    let is_agent = workflow.kind == crate::WorkflowKind::SingleAgent || shell_harness.is_some();
     NewTraceSpan {
         workflow_id: workflow.workflow_id,
-        lane_key: if is_agent { "agent" } else { "terminal" },
-        lane_name: if is_agent { "Agent" } else { "Terminal" },
+        lane_key: shell_harness.map_or(if is_agent { "agent" } else { "terminal" }, |id| {
+            id.definition().binary
+        }),
+        lane_name: shell_harness.map_or(if is_agent { "Agent" } else { "Terminal" }, |id| {
+            id.definition().name
+        }),
         is_agent,
         role: is_agent.then_some("agent"),
         harness: workflow.harness.map(|harness| harness.definition().name),
@@ -978,6 +1013,81 @@ mod tests {
                 boundary_sizes: Some(Vec::new()),
             },
         }
+    }
+
+    #[test]
+    fn shell_harness_presentation_returns_to_terminal_without_replacing_the_shell() {
+        use crate::terminal::ShellMark;
+        let folder = tempfile::tempdir().unwrap();
+        let mut application = Application::with_event_capacity(4096).unwrap();
+        application.terminals.set_test_shell("/bin/sh".into());
+        let workflow = create(&application, folder.path());
+        for (command, harness) in [
+            ("codex", crate::HarnessId::Codex),
+            ("claude", crate::HarnessId::ClaudeCode),
+        ] {
+            let mut inner = application.lock_inner().unwrap();
+            inner
+                .record_shell_mark(command_observation(
+                    &workflow,
+                    ShellMark::CommandStart(command.into()),
+                ))
+                .unwrap();
+            let live = &inner.workflows.workflows[0];
+            assert_eq!(live.harness, Some(harness));
+            assert_eq!(live.kind, WorkflowKind::Terminal);
+            assert_eq!(live.terminal_id, workflow.terminal_id);
+            let page = inner
+                .folders
+                .store()
+                .workflow_trace(workflow.workflow_id, None, 10)
+                .unwrap();
+            let span = &page.spans[0];
+            let lane = page
+                .lanes
+                .iter()
+                .find(|lane| lane.lane_id == span.lane_id)
+                .unwrap();
+            assert!(lane.is_agent);
+            assert_eq!(lane.harness.as_deref(), Some(harness.definition().name));
+            inner
+                .record_shell_mark(command_observation(&workflow, ShellMark::CommandEnd(0)))
+                .unwrap();
+            assert_eq!(inner.workflows.workflows[0].harness, None);
+            assert_eq!(
+                inner.workflows.workflows[0].terminal_id,
+                workflow.terminal_id
+            );
+        }
+    }
+
+    #[test]
+    fn delayed_agent_command_after_shell_exit_only_updates_history() {
+        use crate::terminal::ShellMark;
+        let folder = tempfile::tempdir().unwrap();
+        let mut application = Application::with_event_capacity(4096).unwrap();
+        application.terminals.set_test_shell("/bin/sh".into());
+        let workflow = create(&application, folder.path());
+        let mut inner = application.lock_inner().unwrap();
+        let command = command_observation(&workflow, ShellMark::CommandStart("codex".into()));
+        inner.record_terminal_exit_at(
+            workflow.terminal_id,
+            Err("Shell stopped".into()),
+            command.observation.clone(),
+        );
+        inner.record_shell_mark(command).unwrap();
+        assert_eq!(inner.workflows.workflows[0].harness, None);
+        let page = inner
+            .folders
+            .store()
+            .workflow_trace(workflow.workflow_id, None, 10)
+            .unwrap();
+        let lane = page
+            .lanes
+            .iter()
+            .find(|lane| lane.lane_id == page.spans[0].lane_id)
+            .unwrap();
+        assert_eq!(lane.harness.as_deref(), Some("Codex"));
     }
 
     #[test]

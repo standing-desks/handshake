@@ -69,7 +69,7 @@ pub struct Workflow {
     /// Reopened history never starts processes implicitly, including after relaunch.
     pub archived: bool,
     pub kind: WorkflowKind,
-    /// The harness filling a single-agent workflow's role.
+    /// The single-agent harness, or a transient foreground harness hint in a Terminal workflow.
     pub harness: Option<HarnessId>,
     /// The workflow's own shell, or a single agent's harness. Zero when it couldn't restart, and for
     /// agents workflows, whose agents have the terminals instead.

@@ -184,8 +184,8 @@ fn work_span(
         },
     )?;
     transaction.execute(
-        "UPDATE trace_spans SET run_generation = ?2, work_span = 1 WHERE id = ?1",
-        params![sql_integer(span.0)?, sql_integer(generation)?],
+        "UPDATE trace_spans SET run_generation = ?2, work_span = 1, title_from_prompt = ?3 WHERE id = ?1",
+        params![sql_integer(span.0)?, sql_integer(generation)?, run.assignments.contains_key(&agent_id)],
     )?;
     Ok(span)
 }

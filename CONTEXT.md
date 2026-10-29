@@ -39,7 +39,7 @@ A responsibility within a workflow type, such as implementer, reviewer, coordina
 An external agent tool that Handshake can launch, such as Codex, Claude Code, or pi. A harness can fill different roles in different workflows.
 
 **Agent**:
-One harness process filling one role in a workflow. Each agent is a subtab of its workflow. A Terminal workflow runs a plain shell and has no agents.
+One harness process filling one role in a workflow. Each agent is a subtab of its workflow. A Terminal workflow owns a shell rather than coordinated agents. A recognized foreground harness command can temporarily give its tab and command trace an agent label, while retaining the shell and command-level trace semantics.
 _Avoid_: Agent session
 
 **Trace span**:

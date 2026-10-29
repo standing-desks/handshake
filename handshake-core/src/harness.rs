@@ -28,6 +28,7 @@ pub(crate) mod opencode;
 pub(crate) mod pi;
 mod prompt_context;
 pub(crate) mod resume;
+pub(crate) mod shell_command;
 pub(crate) mod steps;
 
 /// How long to wait for the login shell to report its `PATH`.

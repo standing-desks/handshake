@@ -3678,12 +3678,8 @@ os.execvp('pi', ['pi', '--append-system-prompt', instructions, '--', prompt])
                 assert_eq!(span.started_at, start.timestamp);
             }
         }
-        for stage in ["Implement", "Review"] {
-            assert_eq!(
-                page.spans.iter().filter(|span| span.title == stage).count(),
-                usize::try_from(invocations / 2).unwrap()
-            );
-        }
+        // Native prompts replace fallback stage labels without changing assignment boundaries.
+        assert!(page.spans.iter().all(|span| span.title == "Assignment"));
         // Saving the same accepted state again never duplicates events or invocation spans.
         // Hold the store lock so late harness hooks cannot change the revision between reads.
         let mut inner = app.lock_inner().unwrap();
@@ -3795,10 +3791,15 @@ os.execvp('pi', ['pi', '--append-system-prompt', instructions, '--', prompt])
     }
 
     fn assert_gather_anchors(app: &Application, page: &crate::WorkflowTracePage) {
+        let lane = page
+            .lanes
+            .iter()
+            .find(|lane| lane.name == "Coordinator")
+            .unwrap();
         let gather = page
             .spans
             .iter()
-            .find(|span| span.title == "Gather")
+            .find(|span| span.lane_id == lane.lane_id)
             .unwrap();
         let gathered = app.trace_events(gather.span_id, None, 200).unwrap().events;
         for worker in ["Worker 1", "Worker 2"] {
