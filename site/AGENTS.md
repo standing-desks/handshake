@@ -28,7 +28,7 @@ Keep dependency changes in both `package.json` and `package-lock.json`.
   - Harnesses come from `handshake-core/src/harness.rs`. The home page names them in the harness section, counts them in the stats row, and cycles them in `HARNESSES` in `src/home.js`.
   - Built-in workflow types and their role counts come from `handshake-core/workflows/`.
   - Browser facts come from [the browser-control decision](../docs/adr/0012-control-the-embedded-browser-through-core.md) and `handshake-core/src/config/experimental.rs`. Label agent browser control as a beta while it stays under Experimental.
-  - The release number comes from the workspace version in `Cargo.toml`. Write `%HANDSHAKE_VERSION%` in HTML and the build fills it in.
+  - Release labels use `data-release-version`. `src/release.js` fills them from the latest published GitHub release's `tag_name` on each visit; keep the HTML fallback version-neutral and omit `data-decode` so its animation cannot overwrite the fetched tag.
 - Each workflow-type row shows a real app screenshot named by its `data-shot`, in `public/screens/`. Capture them all at 2744 × 1822, as window captures with their shadow, from the same disposable demo folder, with no personal names, paths, or accounts in view, and describe each one in the row's `data-alt`. `make check-site` fails while any is missing. `screens/coordinator.png` is also the social preview image.
 - The header and footer markup is repeated on every page. Change all four pages together.
 - The guides are hand-edited HTML. Keep heading IDs stable: the legacy redirects and external links point at them.

@@ -10,9 +10,14 @@ export function decode(el, ms = 520, text = el.textContent) {
     return;
   }
   const t0 = performance.now();
+  let lastGlyphFrame = -1;
   const step = (now) => {
     const k = (now - t0) / ms;
-    el.textContent = k >= 1 ? text : [...text].map((c, i) => (c === " " || i / text.length < k ? c : glyph())).join("");
+    const glyphFrame = Math.floor((now - t0) / (1000 / 60) + 1e-7);
+    if (k >= 1 || glyphFrame !== lastGlyphFrame) {
+      lastGlyphFrame = glyphFrame;
+      el.textContent = k >= 1 ? text : [...text].map((c, i) => (c === " " || i / text.length < k ? c : glyph())).join("");
+    }
     if (k < 1) requestAnimationFrame(step);
   };
   requestAnimationFrame(step);

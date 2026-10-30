@@ -1,5 +1,6 @@
 // Home page: the slogan the agents repair, the workflow-type screenshots, and the harness cycler.
 import "./download.js";
+import "./release.js";
 import { decode, decodeOnView, glyph, reduceMotion } from "./decode.js";
 
 decodeOnView();
@@ -33,7 +34,8 @@ if (!reduceMotion) {
     el.setAttribute("aria-hidden", "true");
     el.innerHTML = `<svg width="22" height="24" viewBox="0 0 22 24"><path d="M2 1v19l5-5 3.4 7.2 3.1-1.4L10.2 14H17z" style="fill:${color}"/></svg><i style="background:${color}">${name}</i>`;
     hero.append(el);
-    return { el, x: 120 + i * 200, y: hero.clientHeight + 40, target: null, home: { x: 0, y: 0 } };
+    const x = 120 + i * 200, y = hero.clientHeight + 40;
+    return { el, x, y, previousX: x, previousY: y, target: null, home: { x: 0, y: 0 } };
   });
 
   const placeHomes = () => {
@@ -79,9 +81,15 @@ if (!reduceMotion) {
   setInterval(() => letters.forEach((l) => l.broken && (l.el.textContent = glyph())), 60);
 
   // STRONG thickens as the headline resolves.
-  let weight = 120;
-  const tick = (now) => {
+  const STEP_MS = 1000 / 60;
+  const MAX_ELAPSED_MS = 100;
+  let weight = 120, previousWeight = weight;
+  let lastTime = null, pending = 0, time = 0;
+  const simulate = (now) => {
+    previousWeight = weight;
     for (const a of agents) {
+      a.previousX = a.x;
+      a.previousY = a.y;
       a.target ??= nearest(a);
       const t = a.target
         ? center(a.target.el)
@@ -93,11 +101,33 @@ if (!reduceMotion) {
         fix(a.target);
         a.target = null;
       }
-      a.el.style.transform = `translate(${a.x}px, ${a.y}px)`;
     }
     const fixed = letters.filter((l) => !l.broken).length / letters.length;
     weight += (120 + 680 * fixed ** 3 - weight) * 0.08;
-    strong.style.fontWeight = Math.round(weight);
+  };
+  document.addEventListener("visibilitychange", () => { lastTime = null; });
+  const tick = (now) => {
+    if (!document.hidden) {
+      if (lastTime === null) lastTime = now;
+      pending += Math.max(0, Math.min(now - lastTime, MAX_ELAPSED_MS));
+      lastTime = now;
+      // Preserve the 60 Hz tuning; tolerate rounding at exact tick boundaries.
+      while (pending + 1e-7 >= STEP_MS) {
+        pending = Math.max(0, pending - STEP_MS);
+        time += STEP_MS;
+        simulate(time);
+      }
+      // Draw between fixed ticks so high-refresh displays still get smooth motion.
+      const blend = pending / STEP_MS;
+      for (const a of agents) {
+        const x = a.previousX + (a.x - a.previousX) * blend;
+        const y = a.previousY + (a.y - a.previousY) * blend;
+        a.el.style.transform = `translate(${x}px, ${y}px)`;
+      }
+      strong.style.fontWeight = Math.round(previousWeight + (weight - previousWeight) * blend);
+    } else {
+      lastTime = null;
+    }
     requestAnimationFrame(tick);
   };
   requestAnimationFrame(tick);
