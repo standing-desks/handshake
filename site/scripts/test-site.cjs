@@ -3,11 +3,16 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+require('./test-animation.cjs');
 const site = path.join(__dirname, '..');
 const read = name => fs.readFileSync(path.join(site, name), 'utf8');
 const source = read('src/download.js');
 const html = read('index.html');
 const command = 'brew install --cask standing-desks/tap/handshake';
+const releaseSource = read('src/release.js');
+const releaseLabels = [...html.matchAll(/<(b|strong) data-release-version>([^<]+)<\/\1>/g)].map(match => match[2]);
+assert.deepEqual(releaseLabels, ['latest release', 'Latest']);
+assert.ok(!html.includes('%HANDSHAKE_VERSION%'));
 const copyValues = [...html.matchAll(/data-copy="([^"]+)"/g)].map(match => match[1]);
 assert.deepEqual(copyValues, [command, command]);
 
@@ -74,6 +79,49 @@ async function click(button, overrides = {}) {
   return event;
 }
 (async () => {
+  // Both labels follow the published tag, independently of the source version.
+  for (const options of [
+    { release: { tag_name: 'v9.8.7' } },
+    { release: { tag_name: '9.8.7' } },
+    { release: {} }, { release: { tag_name: null } },
+    { release: { tag_name: '  ' } }, { release: { tag_name: 123 } },
+    { httpError: true }, { networkError: true }, { invalidJson: true }, { timeout: true },
+  ]) {
+    const labels = releaseLabels.map(textContent => ({ textContent }));
+    const requests = [];
+    let timer;
+    let cleared = false;
+    const pending = vm.runInNewContext(releaseSource, {
+      document: { querySelectorAll: selector => {
+        assert.equal(selector, '[data-release-version]');
+        return labels;
+      } },
+      fetch: async (url, init) => {
+        requests.push({ url, init });
+        if (options.networkError) throw Error('Offline');
+        if (options.timeout) return new Promise((resolve, reject) => {
+          init.signal.addEventListener('abort', () => reject(Error('Aborted')));
+        });
+        return { ok: !options.httpError, json: async () => {
+          if (options.invalidJson) throw Error('Invalid JSON');
+          return options.release;
+        } };
+      },
+      AbortController,
+      setTimeout: (callback, delay) => { assert.equal(delay, 10000); timer = callback; return 1; },
+      clearTimeout: id => { assert.equal(id, 1); cleared = true; },
+    });
+    if (options.timeout) timer();
+    await pending;
+    const tag = options.release?.tag_name;
+    assert.deepEqual(labels.map(label => label.textContent),
+      typeof tag === 'string' && tag.trim() ? [tag, tag] : releaseLabels);
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].url, 'https://api.github.com/repos/standing-desks/handshake/releases/latest');
+    assert.equal(requests[0].init.cache, 'no-store');
+    assert.equal(cleared, true);
+    assert.equal(requests[0].init.signal.aborted, !!options.timeout);
+  }
   for (const assets of [[asset('Twine')], [asset('Handshake')], [asset('Twine'), asset('Handshake')],
     [asset('Handshake', 'uploaded', 'universal')]]) {
     const page = fixture(assets);
@@ -131,5 +179,5 @@ async function click(button, overrides = {}) {
       assert.equal(destination, target + search + hash);
     }
   }
-  console.log('Website downloads, copy controls, workflow screenshots, and nine legacy redirect entry points passed');
+  console.log('Website release labels, downloads, copy controls, workflow screenshots, and nine legacy redirect entry points passed');
 })().catch(error => { console.error(error); process.exitCode = 1; });
