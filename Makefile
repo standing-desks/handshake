@@ -22,6 +22,7 @@ TESTS_DIR := $(OUT)/tests/build
 # Tests run from these build products without the project, so CI can build once and test on other machines.
 TEST_PRODUCTS := $(TESTS_DIR)/Build/Products
 TEST_ARCHIVE := $(OUT)/tests/products.tar.gz
+APP_TEST_ARGS ?= -only-testing:HandshakeTests
 TEST_RUN = xcodebuild test-without-building -xctestrun "$(TEST_PRODUCTS)"/*.xctestrun \
 	-destination 'platform=macOS,arch=arm64' -derivedDataPath "$(TESTS_DIR)"
 SITE_DIR := $(OUT)/docs/site
@@ -49,6 +50,8 @@ UI_DEFAULT_TESTS := testFirstLaunchShowsStartPage \
 	testBrowserControlFlagGatesClaudeMCPAndRevokesLiveCommands \
 	testKeepAwakeSharesWindowsStopsOnQuitAndRelaunchesOff \
 	testKeepAwakeRecoversChildFailureAndReleasesAfterForceQuit \
+	testKeepAwakeMenuWorksOnOpeningScreenAndSharesToolbarState \
+	testWorkspaceToolbarGroupsStayReachableInCompactWindows \
 	testBrowserTabsShareRenamePinMoveReopenAndRestore \
 	testBrowserZoomRetainsPageAndKeepsCornerLinksInteractive \
 	testBrowserNavigationValidationPopupAndContextualClose \
@@ -87,7 +90,7 @@ UI_DEFAULT_TESTS := testFirstLaunchShowsStartPage \
 	testClosingAnUnavailableRestoredFolderKeepsItClosedOnRelaunch \
 	testSessionsOwnTabsAndRestoreFreshShellsAfterRelaunch \
 	testSidebarTabsNestUnderSessionsMoveWithUndoAndSwitchLayouts \
-	testMinimizedSidebarRailPeeksAndDocks \
+	testCollapsedSidebarExpandsOnHoverAndPreservesTabs \
 	testQuitStopsShellAndDescendant \
 	testTerminalRunsLibraryInjectionAndDebugger \
 	testTerminalRenderingRemainsUsableAcrossZoomAndResize \
@@ -97,6 +100,7 @@ UI_DEFAULT_TESTS := testFirstLaunchShowsStartPage \
 	testSingleAgentUsesHarnessDefaultsAndRemembersYoloMode \
 	testKiroLaunchesRecordsTracesAndResumesEachConversation \
 	testClaudeMinimapDotsSelectTheirTraceAndScrollToThePrompt \
+	testHistoryHeavyAgentTabsPreserveScrollAndAcceptInputAfterSwitching \
 	testTimelineInspectorShowsNestedCallsFiltersAndSurvivesRelaunch \
 	testNativeHistoryShowsModelSummaryFullDetailsAndStoragePinAfterRelaunch \
 	testTraceViewModesPreserveSelectionAndCollapsedState \
@@ -225,7 +229,7 @@ test-app: $(call needs,build-tests) ## Run the app's unit tests
 	TEST_RUNNER_CLAUDE_CONFIG_DIR="$$handshake_test_data/native/claude" \
 	TEST_RUNNER_HANDSHAKE_DATA_DIRECTORY="$$handshake_test_data" \
 	TEST_RUNNER_XDG_CONFIG_HOME="$$handshake_test_data/config" $(TEST_ENV) \
-		$(TEST_RUN) -only-testing:HandshakeTests
+		$(TEST_RUN) $(APP_TEST_ARGS)
 
 .PHONY: check-app
 check-app: lint-app test-app ## Lint and unit-test the app

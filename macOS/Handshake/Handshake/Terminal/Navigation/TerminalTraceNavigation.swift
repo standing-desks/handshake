@@ -19,13 +19,17 @@ struct TerminalTraceNavigation: ViewModifier {
 
     private var readKey: String {
         let ready = request.map { $0.scrollAnchor.byteOffset <= minimap.receivedOffset } ?? false
-        return "\(request?.id.uuidString ?? ""):\(isVisible):\(ready):\(minimap.geometryRevision)"
+        return "\(request?.id.uuidString ?? ""):\(isVisible):\(ready):\(minimap.geometryRevision):"
+            + "\(minimap.historyRevision)"
     }
 
     func body(content: Content) -> some View {
         content
             .task(id: readKey) {
-                guard isVisible, let request, handledID != request.id, minimap.geometryRevision > 0 else { return }
+                guard isVisible, let request, handledID != request.id,
+                    minimap.geometryRevision > 0,
+                    !minimap.loadingHistorySources.contains(request.scrollAnchor.terminalID)
+                else { return }
                 let anchor = request.scrollAnchor
                 if anchor.terminalID == terminalID && anchor.byteOffset > minimap.receivedOffset { return }
                 do {

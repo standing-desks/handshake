@@ -240,7 +240,7 @@ actor CoreWorker: CoreTransport {
         return try decoder.decode(CoreSnapshot.self, from: consume(&response))
     }
 
-    private func withClient<T>(_ operation: (OpaquePointer) -> T) throws -> T {
+    func withClient<T>(_ operation: (OpaquePointer) -> T) throws -> T {
         guard let client else { throw CoreFailure.nullPointer }
         return operation(client)
     }

@@ -39,7 +39,7 @@ nonisolated struct TerminalMinimapGeometry: Equatable {
             width: max(0.7, stroke.width * width), height: max(0.7, stroke.height * size.height))
     }
 
-    @MainActor static func lineCount(in terminal: Terminal) -> Int {
+    static func lineCount(in terminal: Terminal) -> Int {
         var lower = 0
         var upper = max(1, terminal.rows)
         while terminal.bufferLine(atRow: upper) != nil { upper *= 2 }
@@ -51,7 +51,7 @@ nonisolated struct TerminalMinimapGeometry: Equatable {
     }
 
     /// A command boundary follows its echoed input. Include the entire input when it wrapped.
-    @MainActor static func inputRow(before row: Int, in terminal: Terminal) -> Int {
+    static func inputRow(before row: Int, in terminal: Terminal) -> Int {
         var input = max(0, row - 1)
         while input > 0, terminal.bufferLine(atRow: input)?.isWrapped == true { input -= 1 }
         return input
@@ -59,13 +59,15 @@ nonisolated struct TerminalMinimapGeometry: Equatable {
 
     /// Agent TUIs can leave the cursor below their prompt box. Locate the recorded
     /// prompt in logical lines rather than treating a border or status row as input.
-    @MainActor static func inputRow(before row: Int, matching text: String, in terminal: Terminal) -> Int? {
+    static func inputRow(
+        before row: Int, matching text: String, in terminal: Terminal, minimumRow: Int? = nil
+    ) -> Int? {
         let prompt = text.replacingOccurrences(of: "… [truncated]", with: "")
             .split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
         guard !prompt.isEmpty else { return nil }
         var part = prompt.count - 1
         var current = row
-        let first = terminal.getTopVisibleRow()
+        let first = minimumRow ?? terminal.getTopVisibleRow()
         while current >= first {
             while current > 0, terminal.bufferLine(atRow: current)?.isWrapped == true { current -= 1 }
             guard let line = logicalLine(at: current, in: terminal) else { return nil }
@@ -95,14 +97,16 @@ nonisolated struct TerminalMinimapGeometry: Equatable {
     }
 
     /// Compare input independently of the padding and physical rows introduced by reflow.
-    @MainActor static func logicalLine(at row: Int, in terminal: Terminal) -> String? {
+    static func logicalLine(at row: Int, in terminal: Terminal) -> String? {
         guard terminal.bufferLine(atRow: row) != nil else { return nil }
         var current = row
         while current > 0, terminal.bufferLine(atRow: current)?.isWrapped == true { current -= 1 }
         var text = ""
         while let line = terminal.bufferLine(atRow: current) {
             let continued = terminal.bufferLine(atRow: current + 1)?.isWrapped == true
-            text += line.translateToString(trimRight: !continued, endCol: terminal.cols)
+            text += line.translateToString(
+                trimRight: !continued, endCol: terminal.cols, skipNullCellsFollowingWide: true,
+                characterProvider: { terminal.getCharacter(for: $0) })
             if !continued { break }
             current += 1
         }
@@ -112,23 +116,49 @@ nonisolated struct TerminalMinimapGeometry: Equatable {
 
 /// A line identity survives ordinary output and reflow; trimming must invalidate it before SwiftTerm
 /// recycles the object into a different row. Never infer a terminal row from a byte percentage.
-@MainActor
-struct TerminalMinimapAnchor {
+nonisolated struct TerminalMinimapAnchor {
     let line: BufferLine
     let buffer: Buffer
     private(set) var row: Int
     private var trimmed: Int
+    private let recycleGeneration: UInt64
 
-    init?(terminal: Terminal, row: Int) {
-        guard let line = terminal.bufferLine(atRow: row) else { return nil }
+    init?(terminal: Terminal, row: Int, normalHistory: Bool = false) {
+        let candidate = normalHistory ? terminal.displayHistoryLine(at: row) : terminal.bufferLine(atRow: row)
+        guard let line = candidate else { return nil }
         self.line = line
-        buffer = terminal.buffer
+        recycleGeneration = line.recycleGeneration
+        buffer = normalHistory ? terminal.displayHistoryBuffer : terminal.buffer
         self.row = row
         trimmed = buffer.totalLinesTrimmed
     }
 
+    mutating func historyWasPrepended(_ count: Int) { row += count }
+
+    mutating func resolve(terminal: Terminal) -> Int? {
+        guard buffer === terminal.buffer, line.recycleGeneration == recycleGeneration,
+            buffer.totalLinesTrimmed >= trimmed, buffer.totalLinesTrimmed - trimmed <= row
+        else { return nil }
+        let expected = row - (buffer.totalLinesTrimmed - trimmed)
+        if terminal.bufferLine(atRow: expected) === line {
+            row = expected
+            trimmed = buffer.totalLinesTrimmed
+            return row
+        }
+        // Reflow can move an identity. This path is used only after a grid/content change,
+        // never to build a complete identity dictionary on ordinary refresh or activation.
+        for candidate in 0..<TerminalMinimapGeometry.lineCount(in: terminal)
+        where terminal.bufferLine(atRow: candidate) === line {
+            row = candidate
+            trimmed = buffer.totalLinesTrimmed
+            return row
+        }
+        return nil
+    }
+
     mutating func resolve(terminal: Terminal, rows: [ObjectIdentifier: Int]) -> Int? {
-        guard buffer === terminal.buffer, buffer.totalLinesTrimmed >= trimmed,
+        guard buffer === terminal.buffer, line.recycleGeneration == recycleGeneration,
+            buffer.totalLinesTrimmed >= trimmed,
             buffer.totalLinesTrimmed - trimmed <= row,
             let current = rows[ObjectIdentifier(line)]
         else { return nil }

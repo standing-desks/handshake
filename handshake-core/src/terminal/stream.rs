@@ -478,6 +478,14 @@ impl TerminalStream {
         self.transcripts.read(terminal_id, offset, limit)
     }
 
+    pub(crate) fn request_display(
+        &self,
+        terminal_id: TerminalId,
+        operation: super::DisplayCacheOperation,
+    ) -> Result<Option<super::DisplayCacheRequest>, TranscriptError> {
+        self.transcripts.request_display(terminal_id, operation)
+    }
+
     pub(crate) fn request_transcript(
         &self,
         terminal_id: TerminalId,

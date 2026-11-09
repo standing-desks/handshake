@@ -11,7 +11,7 @@ let terminalLogger = Logger(subsystem: "com.twineproject.Twine", category: "term
 /// by handshake-core; standalone terminals retain the start/close behavior.
 @MainActor
 final class TerminalController: NSObject, TerminalViewDelegate {
-    private let coreClient: CoreClient
+    private unowned let coreClient: CoreClient
     private let workingDirectory: URL?
     private var terminalID: UInt64?
     private var expectedOffset: UInt64 = 0
@@ -24,11 +24,16 @@ final class TerminalController: NSObject, TerminalViewDelegate {
     private var resizeTask: Task<Void, Never>?
     private var isStopping = false
     private var isTerminalStopped = false
-    private var isRestoring = false
+    private var isReadOnlyTerminal = false
+    private var historyTask: Task<Void, Never>?
+    private var cacheTask: Task<Void, Never>?
+    private let cacheWorker = TerminalHistoryWorker(retainsPages: false)
+    private var cacheOffset: UInt64 = 0
+    private var liveSizes: [CoreTranscriptSize] = []
     var historyTerminalIDs: [UInt64] = []
     var restoresOutput = false
     private let terminalIDBinding: Binding<UInt64?>
-    private let failureMessage: Binding<String?>
+    var failureMessage: Binding<String?>
     var beforeUserInput: (() async throws -> Void)?
     var prepareUserInput: (() -> TerminalInputPreparation)?
 
@@ -77,7 +82,10 @@ final class TerminalController: NSObject, TerminalViewDelegate {
                 }
                 self.terminalID = terminalID
                 terminalIDBinding.wrappedValue = terminalID
-                try await restoreOutput(terminalID: terminalID, view: view)
+                isReadOnlyTerminal = restoresOutput && coreClient.terminalStatus(for: terminalID) != .running
+                if restoresOutput || coreClient.terminalChunkRouter.hasConsumedOutput(for: terminalID) {
+                    startHistory(terminalID: terminalID, view: view)
+                }
                 lastSize = workingDirectory == nil ? nil : size
                 let latestSize = pendingSize ?? terminalSize(for: view)
                 pendingSize = nil
@@ -95,29 +103,32 @@ final class TerminalController: NSObject, TerminalViewDelegate {
         }
     }
 
-    private func restoreOutput(terminalID: UInt64, view: MetalTerminalView) async throws {
-        let consumed = coreClient.terminalChunkRouter.hasConsumedOutput(for: terminalID)
-        guard restoresOutput || consumed else { return }
-        isRestoring = true
-        defer {
-            isRestoring = false
-            view.setFrameSize(view.frame.size)
-        }
-        do {
-            expectedOffset = try await TerminalRestoration.restore(
-                history: historyTerminalIDs.filter { $0 != terminalID },
-                current: coreClient.terminalStatus(for: terminalID) == .running && !consumed ? nil : terminalID,
-                client: coreClient, view: view)
-        } catch is CancellationError {
-            throw CancellationError()
-        } catch {
-            report(error)
+    private func startHistory(terminalID: UInt64, view: MetalTerminalView) {
+        guard historyTask == nil else { return }
+        historyTask = Task { [weak self, weak view] in
+            guard let self, let view else { return }
+            defer { historyTask = nil }
+            do {
+                repeat {
+                    let restored = try await TerminalRestoration.restore(
+                        history: historyTerminalIDs.filter { $0 != terminalID },
+                        current: isReadOnlyTerminal ? terminalID : nil, client: coreClient, view: view)
+                    if !isReadOnlyTerminal { break }
+                    let observed = expectedOffset
+                    expectedOffset = max(expectedOffset, restored)
+                    if restored >= observed { break }
+                } while !Task.isCancelled
+            } catch is CancellationError { return } catch { report(error) }
         }
     }
 
     func stop() {
         guard !isStopping else { return }
         isStopping = true
+        historyTask?.cancel()
+        historyTask = nil
+        cacheTask?.cancel()
+        cacheTask = nil
         task?.cancel()
         task = nil
         inputTask?.cancel()
@@ -145,10 +156,6 @@ final class TerminalController: NSObject, TerminalViewDelegate {
     func send(source: TerminalView, data: ArraySlice<UInt8>) {
         guard !data.isEmpty, !isStopping, !isTerminalStopped else { return }
         let isUserInput = (source as? MetalTerminalView)?.isSendingTerminalResponse != true
-        if isRestoring {
-            if isUserInput { pendingInput.append(contentsOf: data) }
-            return
-        }
         if !isUserInput, feedResponses != nil {
             feedResponses?.append(contentsOf: data)
             return
@@ -201,7 +208,7 @@ final class TerminalController: NSObject, TerminalViewDelegate {
 
     func sizeChanged(source: TerminalView, newCols: Int, newRows: Int) {
         (source as? MetalTerminalView)?.minimapState?.recordSize(columns: newCols, rows: newRows)
-        guard !isStopping, !isTerminalStopped, !isRestoring else { return }
+        guard !isStopping, !isTerminalStopped else { return }
         let size = terminalSize(for: source, columns: newCols, rows: newRows)
         pendingSize = size
         guard let terminalID else { return }
@@ -268,11 +275,22 @@ extension TerminalController {
             if let chunk = try await coreClient.nextTerminalChunk(for: terminalID) {
                 let end = chunk.offset + UInt64(chunk.bytes.count)
                 if end <= expectedOffset { continue }
+                if isReadOnlyTerminal, let metal = view as? MetalTerminalView {
+                    // Exit and PTY drain are independent. Drain queued bytes while the read-only
+                    // snapshot catches up, without racing replacement against live ANSI feeds.
+                    expectedOffset = end
+                    startHistory(terminalID: terminalID, view: metal)
+                    continue
+                }
                 guard chunk.offset <= expectedOffset else {
                     throw TerminalControllerError.offset(
                         expected: expectedOffset,
                         received: chunk.offset
                     )
+                }
+                let terminal = view.getTerminal()
+                if liveSizes.last?.columns != terminal.cols || liveSizes.last?.rows != terminal.rows {
+                    liveSizes.append(.init(offset: expectedOffset, rows: terminal.rows, columns: terminal.cols))
                 }
                 (view as? MetalTerminalView)?.minimapState?.beginFeed()
                 let bytes = chunk.bytes.dropFirst(Int(expectedOffset - chunk.offset))
@@ -280,12 +298,17 @@ extension TerminalController {
                 // Startup probes send several queries together and wait only 250 ms.
                 // Deliver their replies together instead of taking an actor hop for each.
                 feedResponses = Data()
-                view.feed(byteArray: Array(bytes)[...])
+                if let metal = view as? MetalTerminalView, let minimap = metal.minimapState {
+                    minimap.feed(Array(bytes)[...], offset: end - UInt64(bytes.count), into: metal)
+                } else {
+                    view.feed(byteArray: Array(bytes)[...])
+                }
                 if let responses = feedResponses, !responses.isEmpty {
                     enqueueInput(responses, terminalID: terminalID)
                 }
                 feedResponses = nil
                 (view as? MetalTerminalView)?.minimapState?.received(through: expectedOffset)
+                scheduleCache(terminalID: terminalID)
                 await Task.yield()
                 continue
             }
@@ -293,6 +316,26 @@ extension TerminalController {
             // The process-exit event and the PTY reader are supervised independently. Keep
             // polling after exit so bytes already in the PTY cannot be mistaken for EOF.
             try await Task.sleep(for: .milliseconds(10))
+        }
+    }
+
+    private func scheduleCache(terminalID: UInt64) {
+        guard cacheTask == nil else { return }
+        cacheTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .milliseconds(500))
+                guard let self else { return }
+                repeat {
+                    let end = expectedOffset
+                    try await cacheWorker.update(
+                        terminalID: terminalID, through: end, sizes: liveSizes, client: coreClient)
+                    cacheOffset = end
+                } while !Task.isCancelled && cacheOffset < expectedOffset
+                cacheTask = nil
+            } catch is CancellationError { return } catch {
+                self?.cacheTask = nil
+                terminalLogger.error("Terminal display cache failed: \(error.localizedDescription, privacy: .public)")
+            }
         }
     }
 

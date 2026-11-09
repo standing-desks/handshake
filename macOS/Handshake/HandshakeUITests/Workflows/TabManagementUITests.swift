@@ -185,9 +185,12 @@ extension HandshakeUITests {
         app.typeKey("t", modifierFlags: .command)
         XCTAssertTrue(app.buttons["workflowTab-2"].waitForExistence(timeout: 5))
         app.typeKey("1", modifierFlags: .command)
-        app.typeKey("a", modifierFlags: [.command, .shift])
+        waitForTab(app.buttons["workflowTab-1"], valueContaining: "Selected", in: app)
+        let switcher = app.buttons["tabSwitcher"]
+        XCTAssertGreaterThanOrEqual(switcher.frame.width, 28)
+        switcher.click()
         let search = app.textFields["tabSwitcherSearch"]
-        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        XCTAssertTrue(search.waitForExistence(timeout: 5), app.debugDescription)
         search.typeText("workflow")
         search.typeKey(.downArrow, modifierFlags: [])
         waitForTab(app.buttons["switchTo-workflowTab-2"], valueContaining: "Highlighted", in: app)

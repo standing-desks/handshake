@@ -7,6 +7,42 @@ import Testing
 
 @MainActor
 struct TerminalRestorationTests {
+    @Test func restoringOldHistoryDoesNotBlockTheLiveScreenOrInput() async throws {
+        let old = Data(String(repeating: "earlier output\r\n", count: 8_000).utf8)
+        var snapshot = CoreSnapshot.testReady()
+        snapshot.terminals = [.init(terminalID: 41, status: .running)]
+        let transport = TranscriptFixtureTransport(
+            bytes: nil, delayed: true, transcripts: [10: old], snapshot: snapshot,
+            chunks: [.init(terminalID: 41, offset: 0, bytes: Data("LIVE_PROMPT".utf8))])
+        let client = CoreClient(transport: transport)
+        client.start()
+        try await client.waitUntilRunning()
+        defer { Task { await client.stop() } }
+        let controller = TerminalController(coreClient: client, terminalID: 41, failureMessage: .constant(nil))
+        controller.restoresOutput = true
+        controller.historyTerminalIDs = [10]
+        let view = MetalTerminalView(frame: NSRect(x: 0, y: 0, width: 640, height: 480))
+        view.automaticallyFocuses = false
+        view.terminalDelegate = controller
+        view.setVisible(true)
+        controller.start(view: view)
+        defer { controller.stop() }
+        try await waitUntil {
+            await transport.hasPendingRead && view.getTerminal().getBufferAsData().contains(Data("LIVE_PROMPT".utf8))
+        }
+        #expect(!view.isHidden)
+        controller.send(source: view, data: Array("hello".utf8)[...])
+        try await waitUntil { await transport.writes.contains(Data("hello".utf8)) }
+        view.setVisible(false)
+        view.setVisible(true)
+        await Task.yield()
+        #expect(!view.isHidden)
+        await transport.setDelayed(false)
+        await transport.release()
+        try await waitUntil { view.getTerminal().normalHistoryCount > 8_000 }
+        #expect(view.getTerminal().getBufferAsData().contains(Data("LIVE_PROMPT".utf8)))
+    }
+
     @Test func resumedAgentOwnsItsNewTerminalWhileArchivedTerminalsStayReadOnly() {
         let workflow = CoreWorkflow(
             workflowID: 1, sessionID: 1, name: "Codex", kind: .singleAgent, terminalID: 20,

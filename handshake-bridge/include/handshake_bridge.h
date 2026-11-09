@@ -175,6 +175,15 @@ HandshakeStatus handshake_client_next_terminal_chunk(
     HandshakeTerminalChunk *out_chunk
 );
 
+// Disposable parsed display pages, limited to 1 MiB each. Operation 0 reads; 1 replaces.
+// Poll result starts with 0 (absent/write complete) or 1 followed by the page bytes.
+typedef struct HandshakeDisplayCacheRequest HandshakeDisplayCacheRequest;
+HandshakeStatus handshake_client_request_display_cache(
+    HandshakeClient *client, uint64_t terminal_id, uint32_t operation, uint64_t key,
+    uint64_t source_offset, const uint8_t *bytes, size_t length, HandshakeDisplayCacheRequest **out_request);
+HandshakeStatus handshake_display_cache_request_poll(HandshakeDisplayCacheRequest *request, HandshakeBuffer *out_page);
+HandshakeStatus handshake_display_cache_request_destroy(HandshakeDisplayCacheRequest *request);
+
 // Nonblocking transcript requests. Empty from start means the bounded queue is full; Empty from
 // poll means the read is pending. Continue servicing live I/O between attempts. Destroy each request
 // once, even when canceled. Poll returns a binary buffer released with handshake_buffer_release.

@@ -36,7 +36,7 @@ struct FolderView: View {
     private var showsRail: Bool { tabLayout == .sidebar && sidebarVisibility == .detailOnly }
     private var contentLeading: CGFloat {
         showsRail
-            ? SidebarLayout.railInset + SidebarLayout.railWidth + Spacing.windowSections : Spacing.windowMargins.leading
+            ? SidebarLayout.railWidth + Spacing.windowMargins.leading : Spacing.windowMargins.leading
     }
 
     init(path: String, window: NSWindow?) {
@@ -55,18 +55,21 @@ struct FolderView: View {
 
     var body: some View {
         NavigationSplitView(columnVisibility: $sidebarVisibility) {
-            sidebar(compact: false)
-                .appZoom()
-                .frame(
-                    minWidth: SidebarLayout.minimumWidth * scale,
-                    idealWidth: SidebarLayout.idealWidth * scale,
-                    maxWidth: SidebarLayout.maximumWidth * scale
-                )
-                .navigationSplitViewColumnWidth(
-                    min: SidebarLayout.minimumWidth * scale,
-                    ideal: SidebarLayout.idealWidth * scale,
-                    max: SidebarLayout.maximumWidth * scale
-                )
+            Group {
+                // A collapsed native column must not retain another focusable copy of the tab list.
+                if sidebarVisibility != .detailOnly { sidebar(compact: false) }
+            }
+            .appZoom()
+            .frame(
+                minWidth: SidebarLayout.minimumWidth * scale,
+                idealWidth: SidebarLayout.idealWidth * scale,
+                maxWidth: SidebarLayout.maximumWidth * scale
+            )
+            .navigationSplitViewColumnWidth(
+                min: SidebarLayout.minimumWidth * scale,
+                ideal: SidebarLayout.idealWidth * scale,
+                max: SidebarLayout.maximumWidth * scale
+            )
         } detail: {
             GeometryReader { geometry in
                 let availableHeight = max(0, geometry.size.height / scale - collapsedChromeHeight)
@@ -120,15 +123,9 @@ struct FolderView: View {
                 )
                 .overlay(alignment: .topLeading) {
                     if showsRail {
-                        SidebarOverlay(presentation: sidebarPresentation) {
-                            sidebar(compact: true).appZoom()
-                        } peek: {
-                            sidebar(compact: false).appZoom()
-                        }
-                        .padding(
-                            EdgeInsets(
-                                top: Spacing.windowMargins.top * scale, leading: SidebarLayout.railInset * scale,
-                                bottom: Spacing.windowMargins.bottom * scale, trailing: 0))
+                        SidebarRail(
+                            hover: sidebarPresentation.railHover, maximumWidth: geometry.size.width,
+                            content: { expanded in sidebar(compact: true, showsTitles: expanded) })
                     }
                 }
             }
@@ -145,16 +142,14 @@ struct FolderView: View {
                 if tabLayout == .sidebar {
                     WorkspaceToolbar(model: tabManagement, tabCount: toolbarTabs.count)
                 }
-                KeepAwakeToolbar(window: window, followsWorkspaceButtons: tabLayout == .sidebar)
+                KeepAwakeToolbar(followsWorkspaceButtons: tabLayout == .sidebar)
             }
         }
         .modifier(MemoryLoading(folder: path, model: memories))
         .modifier(SidebarDialogs(presentation: sidebarPresentation, tabManagement: tabManagement))
         .onChange(of: sidebarVisibility) { _, visibility in
             sidebarPreferences.remember(isOpen: visibility != .detailOnly, in: path)
-            sidebarPresentation.collapse()
         }
-        .onChange(of: tabLayout) { sidebarPresentation.collapse() }
         .task { TabLayout.prepareHint(in: WorkflowLaunchPreferences.defaultStore()) }
         .environment(traceNavigation)
         .environment(\.traceLaneColors, traceNavigation.laneColors)
@@ -276,9 +271,10 @@ extension FolderView {
             layouts.splitRoot(for: id, in: path, workflows: coreClient.snapshot?.workflows.workflows ?? []))
     }
 
-    private func sidebar(compact: Bool) -> some View {
+    private func sidebar(compact: Bool, showsTitles: Bool = false) -> some View {
         FolderSidebar(
             path: path, files: files, memories: memories, tabManagement: tabManagement, selection: $selection,
-            presentation: sidebarPresentation, compact: compact)
+            presentation: sidebarPresentation, compact: compact, showsTitles: showsTitles,
+            isPresented: compact || sidebarVisibility != .detailOnly)
     }
 }

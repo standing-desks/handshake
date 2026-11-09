@@ -6,7 +6,10 @@ struct TerminalSurface: View {
     @Environment(CoreClient.self) private var coreClient
     @Environment(TraceTerminalNavigation.self) private var navigation
     @State private var failureMessage: String?
-    @State private var minimap = TerminalMinimapState()
+    @State private var fallbackMinimap = TerminalMinimapState()
+    private var minimap: TerminalMinimapState {
+        coreClient.terminalPresentations.minimap(terminalID: terminalID, fallback: fallbackMinimap)
+    }
 
     @TerminalTheme private var palette
 
@@ -15,7 +18,7 @@ struct TerminalSurface: View {
     }
 
     private var markerKey: String {
-        return "\(terminalID):\(minimap.geometryRevision):\(isVisible):"
+        return "\(terminalID):\(minimap.geometryRevision):"
             + "\(minimap.receivedOffset > 0):\(minimap.indexRevision):"
             + markers.map {
                 "\($0.id):\($0.event.id):\(minimap.receivedOffset >= ($0.anchor?.byteOffset ?? 0))"
@@ -104,7 +107,7 @@ struct TerminalSurface: View {
             Color(nsColor: palette.background).onTapGesture { didFocus?() }
         }
         .task(id: markerKey) {
-            if isVisible { await minimap.loadMarkers(markers, terminalID: terminalID, client: coreClient) }
+            await minimap.loadMarkers(markers, terminalID: terminalID, client: coreClient)
         }
         .modifier(
             TerminalTraceNavigation(
@@ -162,9 +165,10 @@ struct TerminalViewRepresentable: NSViewRepresentable {
     @Binding var failureMessage: String?
 
     func makeCoordinator() -> TerminalController {
-        let controller = TerminalController(
-            coreClient: coreClient, terminalID: terminalID, failureMessage: $failureMessage
-        )
+        let controller = coreClient.terminalPresentations.presentation(
+            terminalID: terminalID, client: coreClient, minimap: minimap ?? TerminalMinimapState(),
+            failureMessage: $failureMessage
+        ).controller
         controller.beforeUserInput = beforeUserInput
         controller.prepareUserInput = prepareUserInput
         controller.historyTerminalIDs = historyTerminalIDs
@@ -172,8 +176,11 @@ struct TerminalViewRepresentable: NSViewRepresentable {
         return controller
     }
 
-    func makeNSView(context: Context) -> MetalTerminalView {
-        let view = MetalTerminalView(frame: .zero)
+    func makeNSView(context: Context) -> TerminalHostingView {
+        let view = coreClient.terminalPresentations.presentation(
+            terminalID: terminalID, client: coreClient, minimap: minimap ?? TerminalMinimapState(),
+            failureMessage: $failureMessage
+        ).view
         view.zoomScale = zoom?.scale ?? 1
         view.applyHandshakeFont(font)
         view.terminalPalettes = coreClient.snapshot?.config.terminal.palettes
@@ -189,10 +196,12 @@ struct TerminalViewRepresentable: NSViewRepresentable {
         view.attachmentFailure = { failureMessage = $0 }
         view.terminalDelegate = context.coordinator
         context.coordinator.start(view: view)
-        return view
+        return TerminalHostingView(terminal: view)
     }
 
-    func updateNSView(_ nsView: MetalTerminalView, context: Context) {
+    func updateNSView(_ host: TerminalHostingView, context: Context) {
+        guard host.terminal.superview === host else { return }
+        let nsView = host.terminal
         nsView.zoomScale = zoom?.scale ?? 1
         nsView.attachmentFailure = { failureMessage = $0 }
         nsView.applyHandshakeFont(font)
@@ -209,12 +218,13 @@ struct TerminalViewRepresentable: NSViewRepresentable {
         minimap?.scheduleRefresh()
     }
 
-    static func dismantleNSView(_ nsView: MetalTerminalView, coordinator: TerminalController) {
-        nsView.terminalDelegate = nil
-        coordinator.stop()
+    static func dismantleNSView(_ host: TerminalHostingView, coordinator: TerminalController) {
+        guard host.terminal.superview === host else { return }
+        host.terminal.setVisible(false)
+        host.terminal.removeFromSuperview()
     }
 
-    func sizeThatFits(_ proposal: ProposedViewSize, nsView: MetalTerminalView, context: Context) -> CGSize? {
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: TerminalHostingView, context: Context) -> CGSize? {
         proposal.replacingUnspecifiedDimensions()
     }
 }

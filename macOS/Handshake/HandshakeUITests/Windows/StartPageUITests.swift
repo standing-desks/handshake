@@ -9,6 +9,7 @@ extension HandshakeUITests {
         XCTAssertTrue(app.staticTexts["Welcome to Handshake"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["Open Folder…"].exists)
         XCTAssertTrue(app.staticTexts["Folders you open appear here."].exists)
+        XCTAssertFalse(app.windows.descendants(matching: .any).matching(identifier: "keepAwake").firstMatch.exists)
         app.menuBars.menuBarItems["File"].click()
         XCTAssertTrue(app.menuItems["New Window"].exists)
         app.typeKey(.escape, modifierFlags: [])

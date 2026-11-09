@@ -14,6 +14,8 @@ struct FolderSidebar: View {
     @Bindable var presentation: SidebarPresentation
     /// The minimized sidebar's rail: sessions and their tabs as icons.
     var compact = false
+    var showsTitles = false
+    var isPresented = true
     private var sessions: [CoreSession] {
         coreClient.snapshot?.workflows.sessions.filter { $0.folder == path } ?? []
     }
@@ -70,13 +72,13 @@ struct FolderSidebar: View {
         sectionHeader("Sessions", isExpanded: $presentation.isSessionsExpanded) {
             Button(action: create) {
                 Image(systemName: "plus").font(.system(size: 11, weight: .semibold))
-                    .frame(width: 26, height: 26)
+                    .frame(width: 28, height: 28)
             }
             .buttonStyle(.plain).help("New Session")
             .accessibilityLabel("New Session").accessibilityIdentifier("newSession")
         }
         SectionViewport(isExpanded: presentation.isSessionsExpanded && !memories.isExpanded, height: height) {
-            ScrollView {
+            sessionScrollView {
                 sessionList.padding(.horizontal, SidebarLayout.contentInset)
             }
         }
@@ -91,25 +93,54 @@ struct FolderSidebar: View {
         Divider().frame(height: 1).padding(.horizontal, SidebarLayout.contentInset)
     }
 
-    /// The rail keeps the full sidebar's row heights, so each icon stays put when the rail widens.
+    /// Compact tab navigation stays visible while the full sidebar is collapsed.
     private var rail: some View {
         VStack(spacing: 0) {
             Button(action: create) {
-                Image(systemName: "plus").font(.system(size: 11, weight: .semibold))
-                    .frame(maxWidth: .infinity).frame(height: SidebarLayout.sectionHeaderHeight).contentShape(.rect)
+                HStack(spacing: 4) {
+                    Image(systemName: "plus").font(.system(size: 11, weight: .semibold)).frame(width: 40)
+                    if showsTitles {
+                        Text("New Session").font(.callout).frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .padding(.horizontal, 6)
+                .frame(maxWidth: .infinity).frame(height: SidebarLayout.rowHeight).contentShape(.rect)
             }
             .buttonStyle(.plain).foregroundStyle(.secondary).help("New Session")
+            .sidebarRailFocus("newSession")
             .accessibilityLabel("New Session").accessibilityIdentifier("railNewSession")
-            ScrollView {
+            sessionScrollView {
                 outline(compact: true).padding(.horizontal, 6)
             }
             .scrollIndicators(.never)
             .scrollBounceBehavior(.basedOnSize)
         }
+        .padding(.top, 6)
         .frame(maxHeight: .infinity, alignment: .top)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Sessions")
         .accessibilityIdentifier("sidebarRail")
+    }
+
+    private func sessionScrollView<Content: View>(@ViewBuilder content: @escaping () -> Content) -> some View {
+        ScrollViewReader { proxy in
+            ScrollView { content() }
+                .scrollPosition(id: scrollID, anchor: .top)
+                .onChange(of: presentation.revealID) { _, target in
+                    guard isPresented, tabLayout == .sidebar, let target else { return }
+                    proxy.scrollTo(target)
+                }
+                .onChange(of: isPresented, initial: true) { _, visible in
+                    guard visible, tabLayout == .sidebar, let target = presentation.revealID else { return }
+                    proxy.scrollTo(target)
+                }
+        }
+    }
+
+    private var scrollID: Binding<String?> {
+        Binding(
+            get: { isPresented && tabLayout == .sidebar ? presentation.scrollID : nil },
+            set: { if isPresented, tabLayout == .sidebar { presentation.scrollID = $0 } })
     }
 
     @ViewBuilder private var sessionList: some View {
@@ -140,7 +171,7 @@ struct FolderSidebar: View {
     private func outline(compact: Bool) -> some View {
         SessionOutline(
             folder: path, sessions: sessions, selectedSession: selectedSession?.id, model: tabManagement,
-            selection: $selection, presentation: presentation, compact: compact)
+            selection: $selection, presentation: presentation, compact: compact, showsTitles: showsTitles)
     }
 
     private func sectionHeader<Actions: View>(

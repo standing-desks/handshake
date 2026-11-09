@@ -4,20 +4,28 @@ import Foundation
 
 actor TranscriptFixtureTransport {
     private let bytes: Data?
+    private var extraTranscripts: [UInt64: Data] = [:]
     private let transcripts: [UInt64: Data]
+    private let fixtureSnapshot: CoreSnapshot
+    private var chunks: [CoreTerminalChunk]
+    private(set) var writes: [Data] = []
+    private var displayCache: [UInt64: [UInt64: Data]] = [:]
+    private(set) var cacheReads: [UInt64] = []
     private let replayAvailable: Bool
     private var delayed: Bool
     private var trace: CoreWorkflowTracePage?
     private var recordedEvents: [CoreTraceEvent]
-    private var pending: CheckedContinuation<Void, Never>?
+    private var pending: [CheckedContinuation<Void, Never>] = []
     private(set) var readLimits: [UInt32] = []
-    var hasPendingRead: Bool { pending != nil }
+    var hasPendingRead: Bool { !pending.isEmpty }
 
     init(
         bytes: Data?, replayAvailable: Bool = true, delayed: Bool = false,
         trace: CoreWorkflowTracePage? = nil, recordedEvents: [CoreTraceEvent] = [],
-        transcripts: [UInt64: Data] = [:]
+        transcripts: [UInt64: Data] = [:], snapshot: CoreSnapshot? = nil, chunks: [CoreTerminalChunk] = []
     ) {
+        fixtureSnapshot = snapshot ?? .testReady()
+        self.chunks = chunks
         self.bytes = bytes
         self.transcripts = transcripts
         self.replayAvailable = replayAvailable
@@ -27,8 +35,9 @@ actor TranscriptFixtureTransport {
     }
 
     func release() {
-        pending?.resume()
-        pending = nil
+        let reads = pending
+        pending = []
+        for read in reads { read.resume() }
     }
 
     func setDelayed(_ value: Bool) { delayed = value }
@@ -38,8 +47,8 @@ actor TranscriptFixtureTransport {
 
     func terminalTranscript(terminalID: UInt64, offset: UInt64, limit: UInt32) async -> CoreTranscriptPage? {
         readLimits.append(limit)
-        if delayed { await withCheckedContinuation { pending = $0 } }
-        guard let bytes = transcripts[terminalID] ?? bytes else { return nil }
+        if delayed { await withCheckedContinuation { pending.append($0) } }
+        guard let bytes = extraTranscripts[terminalID] ?? transcripts[terminalID] ?? bytes else { return nil }
         let start = min(Int(offset), bytes.count)
         let end = min(start + Int(limit), bytes.count)
         return .init(
@@ -48,17 +57,31 @@ actor TranscriptFixtureTransport {
             bytes: bytes.subdata(in: start..<end), replayAvailable: replayAvailable)
     }
 
-    func open() -> CoreSnapshot { .testReady() }
+    func terminalDisplayCache(terminalID: UInt64, operation: CoreDisplayCacheOperation) -> Data? {
+        switch operation {
+        case .read(let key):
+            cacheReads.append(key)
+            return displayCache[terminalID]?[key]
+        case .write(let key, _, let bytes):
+            displayCache[terminalID, default: [:]][key] = bytes
+            return nil
+        }
+    }
+
+    func evictDisplayPage(terminalID: UInt64, key: UInt64) { displayCache[terminalID]?[key] = nil }
+    func enqueue(_ chunk: CoreTerminalChunk) { chunks.append(chunk) }
+    func replaceTranscript(terminalID: UInt64, bytes: Data) { extraTranscripts[terminalID] = bytes }
+    func open() -> CoreSnapshot { fixtureSnapshot }
     func close() {}
-    func snapshot() -> CoreSnapshot { .testReady() }
+    func snapshot() -> CoreSnapshot { fixtureSnapshot }
     func pollFiles(_ request: FileBrowserRequest) -> FileBrowserSnapshot? { nil }
     func saveFile(_ request: FileSaveRequest) throws -> FileSaveResult { throw CoreFailure.unexpectedCommandResult }
     func send(_ command: CoreCommand) -> CoreCommandReceipt {
         CoreCommandReceipt(requestID: 1, status: .accepted, error: nil)
     }
     func events(after sequence: UInt64, limit: UInt32) -> [CoreEvent] { [] }
-    func nextTerminalChunk() -> CoreTerminalChunk? { nil }
-    func writeTerminalInput(terminalID: UInt64, bytes: Data) {}
+    func nextTerminalChunk() -> CoreTerminalChunk? { chunks.isEmpty ? nil : chunks.removeFirst() }
+    func writeTerminalInput(terminalID: UInt64, bytes: Data) { writes.append(bytes) }
     func resizeTerminal(terminalID: UInt64, size: CoreTerminalSize) {}
     func workflowTrace(workflowID: UInt64, before: UInt64?, limit: UInt32) throws -> CoreWorkflowTracePage {
         if let trace { return trace }

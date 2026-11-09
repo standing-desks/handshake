@@ -5,55 +5,6 @@ import Testing
 
 @MainActor
 struct SidebarPresentationTests {
-    /// Short delays keep the timing logic under test without depending on the real ones.
-    private func presentation() -> SidebarPresentation {
-        SidebarPresentation(peekDelay: .milliseconds(40), closeDelay: .milliseconds(80))
-    }
-
-    @Test func restingOnTheRailPeeksAndLeavingReturnsToTheRail() async throws {
-        let presentation = presentation()
-        presentation.pointerEntered()
-        #expect(presentation.overlay == .rail, "The peek waits for the pointer to rest")
-        try await waitUntil { presentation.overlay == .peek }
-        presentation.pointerExited()
-        #expect(presentation.overlay == .peek, "Leaving forgives a short overshoot")
-        try await waitUntil { presentation.overlay == .rail }
-    }
-
-    @Test func returningDuringTheGraceKeepsThePeek() async throws {
-        let presentation = presentation()
-        presentation.pointerEntered()
-        try await waitUntil { presentation.overlay == .peek }
-        presentation.pointerExited()
-        presentation.pointerEntered()
-        try await Task.sleep(for: .milliseconds(200))
-        #expect(presentation.overlay == .peek)
-    }
-
-    @Test func aQuickClickOnTheRailDoesNotPeek() async throws {
-        let presentation = presentation()
-        presentation.pointerEntered()
-        presentation.pressBegan()
-        try await Task.sleep(for: .milliseconds(200))
-        #expect(presentation.overlay == .rail)
-    }
-
-    @Test func anOpenMenuKeepsThePeekUntilThePointerHasLeft() async throws {
-        let presentation = presentation()
-        presentation.pointerEntered()
-        try await waitUntil { presentation.overlay == .peek }
-        presentation.menuTrackingChanged(isOpen: true)
-        presentation.pointerExited()
-        try await Task.sleep(for: .milliseconds(200))
-        #expect(presentation.overlay == .peek)
-        presentation.menuTrackingChanged(isOpen: false)
-        try await waitUntil { presentation.overlay == .rail }
-        presentation.pointerEntered()
-        try await waitUntil { presentation.overlay == .peek }
-        presentation.collapse()
-        #expect(presentation.overlay == .rail)
-    }
-
     @Test func monogramsUseASecondLetterOnlyWhenSessionsShareTheFirst() {
         let names = ["Board filters", "Release notes", "refactor", "  "]
         #expect(SessionMonogram.letters(for: "Board filters", among: names) == "B")

@@ -33,7 +33,8 @@ extension HandshakeUITests {
                     app.buttons["splitTerminalRight"], app.buttons["splitTerminalDown"],
                 ]
                 assertTabRowAlignment(peers, with: tab, in: app)
-                XCTAssertGreaterThanOrEqual(create.frame.minX, tab.frame.maxX)
+                // The native scroll viewport can clip up to two points of a tab at nonintegral zoom.
+                XCTAssertGreaterThanOrEqual(create.frame.minX, tab.frame.maxX - 2)
                 XCTAssertLessThan(create.frame.minX - tab.frame.maxX, 20)
                 XCTAssertGreaterThanOrEqual(browser.frame.minX, create.frame.maxX)
                 XCTAssertLessThan(browser.frame.minX - create.frame.maxX, 20)

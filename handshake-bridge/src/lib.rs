@@ -601,6 +601,111 @@ pub unsafe extern "C" fn handshake_client_next_terminal_chunk(
     })
 }
 
+/// A pending parsed-display cache operation. This adapter owns no cache state.
+pub struct HandshakeDisplayCacheRequest(handshake_core::DisplayCacheRequest);
+
+#[unsafe(no_mangle)]
+/// Requests a page read (operation 0) or atomic replacement (operation 1), without disk waits.
+/// # Safety
+/// Client must be live and exclusively owned. Input bytes must remain readable for this call.
+/// Output must be aligned writable storage; all pointers are null-checked.
+pub unsafe extern "C" fn handshake_client_request_display_cache(
+    client: *mut HandshakeClient,
+    terminal_id: u64,
+    operation: u32,
+    key: u64,
+    source_offset: u64,
+    bytes: *const u8,
+    length: usize,
+    out_request: *mut *mut HandshakeDisplayCacheRequest,
+) -> HandshakeStatus {
+    catch_status(|| {
+        // SAFETY: The caller supplies aligned output storage; null is checked.
+        let output = unsafe { out_request.as_mut() }.ok_or(BridgeError::NullPointer)?;
+        *output = std::ptr::null_mut();
+        if length > handshake_core::MAX_DISPLAY_PAGE_BYTES {
+            return Err(BridgeError::InvalidArgument);
+        }
+        let operation = match operation {
+            0 if length == 0 => handshake_core::DisplayCacheOperation::Read { key },
+            1 => {
+                if bytes.is_null() && length != 0 {
+                    return Err(BridgeError::NullPointer);
+                }
+                // SAFETY: The input is readable for length bytes; zero-length accepts null.
+                let data = if length == 0 {
+                    Vec::new()
+                } else {
+                    unsafe { std::slice::from_raw_parts(bytes, length) }.to_vec()
+                };
+                handshake_core::DisplayCacheOperation::Write {
+                    key,
+                    source_offset,
+                    bytes: data,
+                }
+            }
+            _ => return Err(BridgeError::InvalidArgument),
+        };
+        // SAFETY: The client remains exclusively owned and live for this call.
+        let request = unsafe {
+            ffi::with_client(client, |client| {
+                client.request_display_cache(terminal_id, operation)
+            })
+        }?
+        .ok_or(BridgeError::Empty)?;
+        *output = Box::into_raw(Box::new(HandshakeDisplayCacheRequest(request)));
+        Ok(())
+    })
+}
+
+#[unsafe(no_mangle)]
+/// Polls without waiting. The first result byte is 0 for absent/write, or 1 followed by a page.
+/// # Safety
+/// Request must be live and exclusively owned. Output follows `HandshakeBuffer`'s ownership contract.
+pub unsafe extern "C" fn handshake_display_cache_request_poll(
+    request: *mut HandshakeDisplayCacheRequest,
+    out_page: *mut HandshakeBuffer,
+) -> HandshakeStatus {
+    catch_status(|| {
+        // SAFETY: Output storage is aligned writable and null-checked by the helper.
+        unsafe { ffi::initialize_buffer(out_page) }?;
+        // SAFETY: Caller retains the live request through this call; null is checked.
+        let request = unsafe { request.as_ref() }.ok_or(BridgeError::NullPointer)?;
+        let page = request
+            .0
+            .poll()
+            .map_err(|error| {
+                BridgeError::Application(handshake_core::ApplicationError::Terminal(
+                    handshake_core::TerminalError::Transcript(error),
+                ))
+            })?
+            .ok_or(BridgeError::Empty)?;
+        let mut bytes = vec![u8::from(page.is_some())];
+        if let Some(page) = page {
+            bytes.extend(page);
+        }
+        // SAFETY: Output storage obeys the buffer contract.
+        unsafe { ffi::write_buffer(out_page, HandshakeBuffer::from_vec(bytes)) }
+    })
+}
+
+#[unsafe(no_mangle)]
+/// Releases a completed or canceled cache request exactly once.
+/// # Safety
+/// Non-null pointer must be the unchanged live request returned by this bridge.
+pub unsafe extern "C" fn handshake_display_cache_request_destroy(
+    request: *mut HandshakeDisplayCacheRequest,
+) -> HandshakeStatus {
+    catch_status(|| {
+        if request.is_null() {
+            return Err(BridgeError::NullPointer);
+        }
+        // SAFETY: Caller returns the bridge-owned allocation exactly once.
+        drop(unsafe { Box::from_raw(request) });
+        Ok(())
+    })
+}
+
 /// An exclusively owned pending transcript read. Destroy exactly once after completion/cancellation.
 pub struct HandshakeTranscriptRequest(handshake_core::TranscriptRequest);
 
@@ -1448,6 +1553,109 @@ mod tests {
             unsafe { handshake_client_destroy(client) },
             HandshakeStatus::Ok
         );
+    }
+
+    #[test]
+    fn display_cache_requests_round_trip_and_validate_ownership() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        let (_data, client) = create_client();
+        let terminal = start_terminal(client, 1);
+        let bytes = b"parsed display page";
+        // SAFETY: The client, input, request, and output storage are live and exclusively owned.
+        unsafe {
+            let mut request = std::ptr::null_mut();
+            assert_eq!(
+                handshake_client_request_display_cache(
+                    client,
+                    terminal,
+                    1,
+                    4,
+                    0,
+                    bytes.as_ptr(),
+                    bytes.len(),
+                    &raw mut request
+                ),
+                HandshakeStatus::Ok
+            );
+            assert_eq!(poll_display_cache(request), vec![0]);
+            assert_eq!(
+                handshake_client_request_display_cache(
+                    client,
+                    terminal,
+                    0,
+                    4,
+                    0,
+                    std::ptr::null(),
+                    0,
+                    &raw mut request
+                ),
+                HandshakeStatus::Ok
+            );
+            assert_eq!(
+                poll_display_cache(request),
+                [b"\x01".as_slice(), bytes].concat()
+            );
+            request = std::ptr::dangling_mut();
+            assert_eq!(
+                handshake_client_request_display_cache(
+                    client,
+                    terminal,
+                    1,
+                    4,
+                    0,
+                    bytes.as_ptr(),
+                    handshake_core::MAX_DISPLAY_PAGE_BYTES + 1,
+                    &raw mut request
+                ),
+                HandshakeStatus::InvalidArgument
+            );
+            assert!(request.is_null());
+            assert_eq!(
+                handshake_client_request_display_cache(
+                    client,
+                    terminal,
+                    1,
+                    4,
+                    0,
+                    std::ptr::null(),
+                    1,
+                    &raw mut request
+                ),
+                HandshakeStatus::NullPointer
+            );
+            let mut output = HandshakeBuffer::empty();
+            assert_eq!(
+                handshake_display_cache_request_poll(std::ptr::null_mut(), &raw mut output),
+                HandshakeStatus::NullPointer
+            );
+            assert_eq!(
+                handshake_display_cache_request_destroy(std::ptr::null_mut()),
+                HandshakeStatus::NullPointer
+            );
+            assert_eq!(handshake_client_destroy(client), HandshakeStatus::Ok);
+        }
+    }
+
+    unsafe fn poll_display_cache(request: *mut HandshakeDisplayCacheRequest) -> Vec<u8> {
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            let mut output = HandshakeBuffer::empty();
+            // SAFETY: The caller keeps this exclusively owned request live; output is empty.
+            let status = unsafe { handshake_display_cache_request_poll(request, &raw mut output) };
+            if status == HandshakeStatus::Empty {
+                assert!(Instant::now() < deadline);
+                std::thread::yield_now();
+                continue;
+            }
+            assert_eq!(status, HandshakeStatus::Ok);
+            let bytes = take_buffer(output);
+            // SAFETY: This releases the unchanged bridge-owned request exactly once.
+            assert_eq!(
+                unsafe { handshake_display_cache_request_destroy(request) },
+                HandshakeStatus::Ok
+            );
+            return bytes;
+        }
     }
 
     #[test]

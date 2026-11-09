@@ -115,11 +115,12 @@ struct ManagedWorkflowTabs: View {
             Button {
                 showsSwitcher.toggle()
             } label: {
-                Label("\(items.count)", systemImage: "chevron.down")
+                Label("Find Open Tab", systemImage: "square.on.square")
                     .frame(maxHeight: .infinity)
             }
-            .workspaceBarControl().help("Find an Open Tab (⌘⇧A)")
+            .labelStyle(.iconOnly).workspaceBarControl()
             .fixedSize(horizontal: true, vertical: false)
+            .help("Find an Open Tab (⇧⌘A) — \(items.count) tabs")
             .accessibilityLabel("Find an open tab, \(items.count) tabs")
             .accessibilityIdentifier("tabSwitcher")
             .popover(isPresented: $showsSwitcher) {

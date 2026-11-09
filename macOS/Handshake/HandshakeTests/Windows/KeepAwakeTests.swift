@@ -24,6 +24,28 @@ struct KeepAwakeTests {
         #expect(await transport.changes == [true, false], "Shutdown must reject new enable requests")
     }
 
+    @Test func anExplicitChangeWaitsForAnInFlightStatusPoll() async throws {
+        let transport = KeepAwakeTestTransport()
+        await transport.holdPoll()
+        let model = KeepAwakeModel(client: CoreClient(transport: transport))
+        let poll = Task { await model.update(nil) }
+        try await waitUntil { await transport.hasPendingPoll }
+        var requested = false
+        let enable = Task {
+            requested = true
+            await model.update(true)
+        }
+        try await waitUntil { requested }
+        await transport.finishPoll()
+        await poll.value
+        try await waitUntil { await transport.hasPendingEnable }
+        #expect(await transport.changes == [true])
+        await transport.finishEnable()
+        await enable.value
+        #expect(model.isEnabled)
+        await model.stop()
+    }
+
     @Test func aChildThatExitsDuringStartupShowsFailureAndStaysOff() async throws {
         let transport = KeepAwakeTestTransport()
         await transport.failLaunch()
@@ -33,6 +55,28 @@ struct KeepAwakeTests {
         #expect(model.failure != nil)
         #expect(!model.isUpdating)
     }
+
+    @Test func aSuccessfulRetryClearsAFailureThatHasNoWindowToPresentIt() async throws {
+        let transport = KeepAwakeTestTransport()
+        let model = KeepAwakeModel(client: CoreClient(transport: transport))
+        let enable = Task { await model.update(true) }
+        try await waitUntil { await transport.hasPendingEnable }
+        await transport.finishEnable()
+        await enable.value
+        await transport.stopChild()
+        await model.update(nil)
+        #expect(!model.isEnabled)
+        #expect(model.failure != nil)
+        await model.update(nil)
+        #expect(model.failure != nil, "Polling preserves a failure until it can be presented or resolved")
+        let retry = Task { await model.update(true) }
+        try await waitUntil { await transport.hasPendingEnable }
+        await transport.finishEnable()
+        await retry.value
+        #expect(model.isEnabled)
+        #expect(model.failure == nil, "Opening a window after a successful menu retry must not show an obsolete error")
+        await model.stop()
+    }
 }
 
 private actor KeepAwakeTestTransport {
@@ -40,13 +84,24 @@ private actor KeepAwakeTestTransport {
     private(set) var changes: [Bool] = []
     private var launchFails = false
     private var pending: CheckedContinuation<Void, Never>?
+    private var pendingPoll: CheckedContinuation<Void, Never>?
+    private var blocksPoll = false
+    var hasPendingPoll: Bool { pendingPoll != nil }
+    func holdPoll() { blocksPoll = true }
+    func finishPoll() {
+        blocksPoll = false
+        pendingPoll?.resume()
+        pendingPoll = nil
+    }
     var hasPendingEnable: Bool { pending != nil }
     func failLaunch() { launchFails = true }
+    func stopChild() { enabled = false }
     func finishEnable() {
         pending?.resume()
         pending = nil
     }
     func keepAwake(_ value: Bool?) async -> Bool {
+        if value == nil, blocksPoll { await withCheckedContinuation { pendingPoll = $0 } }
         if let value {
             changes.append(value)
             if value && !launchFails { await withCheckedContinuation { pending = $0 } }

@@ -13,13 +13,36 @@ final class TerminalMinimapState {
     private(set) var markerRows: [UInt64: Int] = [:]
     private(set) var geometryRevision = 0
     private(set) var indexRevision = 0
+    private(set) var historyRevision = 0
+    private(set) var loadingHistorySources: Set<UInt64> = []
+
+    func historyLoadStarted(_ ids: [UInt64]) {
+        loadingHistorySources.formUnion(ids)
+        historyRevision += 1
+    }
+    func historyLoadFinished(_ id: UInt64) {
+        loadingHistorySources.remove(id)
+        historyRevision += 1
+    }
+    @ObservationIgnored private let indexWorker = TerminalIndexWorker()
+    @ObservationIgnored private var historicalRowCount = 0
+    @ObservationIgnored private var usesRecordedGeometry = false
+    @ObservationIgnored private var historyEpoch: UInt64 = 0
+    @ObservationIgnored private var normalBuffer: Buffer?
+    @ObservationIgnored private var historySources: [UInt64: HistorySource] = [:]
+    private struct HistorySource {
+        var base: TerminalMinimapAnchor
+        let sourceRow: Int
+        let sourceOffset: UInt64
+    }
     private(set) var receivedOffset: UInt64 = 0
     private(set) var failureMessage: String?
     @ObservationIgnored weak var view: MetalTerminalView?
     @ObservationIgnored weak var historyView: TerminalHistoryScrollView?
-    @ObservationIgnored private var historyText = ""
-    @ObservationIgnored private var historyLines: [String] = []
+    @ObservationIgnored private var historyDrawing = TerminalHistoryMinimap()
     @ObservationIgnored private var anchors: [UInt64: TerminalMinimapAnchor] = [:]
+    @ObservationIgnored private var boundaries = TerminalLiveBoundaries()
+    @ObservationIgnored private var markerPrompts: [UInt64: String] = [:]
     @ObservationIgnored private var markerEvents: [UInt64: CoreTraceEvent] = [:]
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
     @ObservationIgnored private var dimensions: CGSize = .zero
@@ -42,13 +65,21 @@ final class TerminalMinimapState {
     }
 
     func beginFeed() {
-        if let terminal = view?.getTerminal() { recordSize(columns: terminal.cols, rows: terminal.rows) }
+        if let terminal = view?.getTerminal() {
+            if normalBuffer == nil {
+                normalBuffer = terminal.buffer
+                historyEpoch = terminal.displayHistoryEpoch
+            }
+            recordSize(columns: terminal.cols, rows: terminal.rows)
+        }
+        captureBoundary(at: receivedOffset)
         isFeeding = true
     }
 
     func received(through offset: UInt64) {
         isFeeding = false
         receivedOffset = offset
+        captureBoundary(at: offset)
         scheduleRefresh()
     }
 
@@ -68,6 +99,17 @@ final class TerminalMinimapState {
             return
         }
         guard let terminal = view?.getTerminal() else { return }
+        if normalBuffer !== terminal.buffer || historyEpoch != terminal.displayHistoryEpoch {
+            if !terminal.isCurrentBufferAlternate {
+                normalBuffer = terminal.buffer
+                historyEpoch = terminal.displayHistoryEpoch
+                anchors = [:]
+                boundaries = .init()
+                markerRows = [:]
+                historySources = [:]
+                historicalRowCount = 0
+            }
+        }
         recordSize(columns: terminal.cols, rows: terminal.rows)
         let size = CGSize(width: terminal.cols, height: terminal.rows)
         if size != dimensions {
@@ -85,15 +127,11 @@ final class TerminalMinimapState {
             markerRows = [:]
             return
         }
-        var identities: [ObjectIdentifier: Int] = [:]
-        for row in 0..<count {
-            if let line = terminal.bufferLine(atRow: row) { identities[ObjectIdentifier(line)] = row }
-        }
         var resolved: [UInt64: Int] = [:]
         var retained: [UInt64: TerminalMinimapAnchor] = [:]
         for (id, saved) in anchors {
             var anchor = saved
-            guard let row = anchor.resolve(terminal: terminal, rows: identities) else { continue }
+            guard let row = anchor.resolve(terminal: terminal) else { continue }
             resolved[id] = row
             retained[id] = anchor
         }
@@ -132,6 +170,9 @@ final class TerminalMinimapState {
         return (result, colors)
     }
 
+}
+
+extension TerminalMinimapState {
     func scroll(to row: Int) {
         if let scroll = historyView, let text = scroll.documentView as? NSTextView {
             let height = text.layoutManager?.defaultLineHeight(for: text.font ?? .terminal) ?? 16
@@ -144,37 +185,129 @@ final class TerminalMinimapState {
         refresh()
     }
 
-    /// Reuse the minimap's ANSI replay to locate an exact byte boundary in the mounted terminal.
+    private func captureBoundary(at offset: UInt64) {
+        if let terminal = view?.getTerminal() {
+            boundaries.capture(offset: offset, terminal: terminal, prepended: historicalRowCount)
+        }
+    }
+
+    private func resolveLiveBoundaries(_ markers: [TraceMinimapMarker], terminal: Terminal) {
+        for marker in markers where anchors[marker.id] == nil {
+            guard let row = boundaries.row(for: marker, terminal: terminal, prepended: historicalRowCount) else {
+                continue
+            }
+            anchors[marker.id] = TerminalMinimapAnchor(terminal: terminal, row: row)
+        }
+    }
+
+    private func cachedMarkerRow(_ anchor: CoreTraceAnchor, in terminal: Terminal) -> Int? {
+        guard let id = markerEvents.first(where: { $0.value.anchor == anchor })?.key,
+            var saved = anchors[id]
+        else { return nil }
+        return saved.resolve(terminal: terminal)
+    }
+
+    /// Scroll using a retained marker, or resolve a late anchor on the background index actor.
     func scroll(
         to anchor: CoreTraceAnchor, in terminalID: UInt64? = nil,
         includingInput: Bool = false, inputText: String? = nil, client: CoreClient
     ) async throws -> Bool {
-        guard let terminal = view?.getTerminal(), !terminal.isCurrentBufferAlternate,
-            liveSizes.first?.offset == 0
-        else { return false }
-        let revision = geometryRevision
-        let checkpoint = TerminalMinimapCheckpoint(terminal: terminal)
-        guard
-            let index = try await traceIndex(
-                anchor: anchor, terminalID: terminalID ?? anchor.terminalID,
-                includingInput: includingInput, inputText: inputText, client: client)
-        else { return false }
-        try Task.checkCancellation()
-        guard revision == geometryRevision, terminal.cols == checkpoint.columns, terminal.rows == checkpoint.rows
-        else { throw CancellationError() }
-        guard !terminal.isCurrentBufferAlternate,
-            var mapped = index.liveAnchors(at: checkpoint)[0]
-        else { return false }
-        var rows: [ObjectIdentifier: Int] = [:]
-        for row in 0..<TerminalMinimapGeometry.lineCount(in: terminal) {
-            if let line = terminal.bufferLine(atRow: row) { rows[ObjectIdentifier(line)] = row }
+        guard let terminal = view?.getTerminal(), !terminal.isCurrentBufferAlternate else { return false }
+        if !includingInput, inputText == nil, let row = cachedMarkerRow(anchor, in: terminal) {
+            scroll(to: row)
+            return true
         }
-        guard let row = mapped.resolve(terminal: terminal, rows: rows),
-            index.retainsInput(id: 0, row: row, terminal: terminal)
+        let revision = geometryRevision
+        let historical = anchor.terminalID != (terminalID ?? anchor.terminalID)
+        let source = historySources[anchor.terminalID]
+        let end = historical ? (source?.sourceOffset ?? 0) : receivedOffset
+        guard anchor.byteOffset <= end else { return false }
+        let result = try await indexWorker.index(
+            terminalID: anchor.terminalID, end: end,
+            points: [.init(id: 0, anchor: anchor, inputText: inputText, includesInput: includingInput)],
+            sizes: historical || usesRecordedGeometry ? nil : liveSizes, prefix: historical ? [] : replayPrefix,
+            columns: historical || usesRecordedGeometry ? terminal.cols : nil,
+            rows: historical || usesRecordedGeometry ? terminal.rows : nil, client: client)
+        try Task.checkCancellation()
+        guard revision == geometryRevision else { throw CancellationError() }
+        guard let saved = result.rows[0] else { return false }
+        let candidate: Int
+        if historical {
+            guard var source = historySources[anchor.terminalID], let base = source.base.resolve(terminal: terminal)
+            else { return false }
+            historySources[anchor.terminalID] = source
+            candidate = base + saved.row - source.sourceRow
+        } else {
+            candidate = saved.row + result.trimmed - terminal.buffer.totalLinesTrimmed + historicalRowCount
+        }
+        guard candidate >= 0, terminal.bufferLine(atRow: candidate)?.translateToString() == saved.text,
+            saved.input.map({ $0 == TerminalMinimapGeometry.logicalLine(at: candidate, in: terminal) }) ?? true
         else { return false }
-        scroll(to: row)
+        scroll(to: candidate)
         if let view { view.window?.makeFirstResponder(view) }
         return true
+    }
+
+    func historyDidLoad(terminalID: UInt64, sourceOffset: UInt64, sourceRow: Int, columns: Int, inserted: Int = 0) {
+        if normalBuffer == nil, let terminal = view?.getTerminal() {
+            normalBuffer = terminal.buffer
+            historyEpoch = terminal.displayHistoryEpoch
+        }
+        historicalRowCount += inserted
+        if inserted > 0 {
+            for id in anchors.keys { anchors[id]?.historyWasPrepended(inserted) }
+            for id in historySources.keys { historySources[id]?.base.historyWasPrepended(inserted) }
+        }
+        if let terminal = view?.getTerminal() {
+            if let base = TerminalMinimapAnchor(terminal: terminal, row: 0, normalHistory: true) {
+                historySources[terminalID] = .init(base: base, sourceRow: sourceRow, sourceOffset: sourceOffset)
+            }
+        }
+        historyRevision += 1
+        scheduleRefresh()
+    }
+
+    func currentHistoryDidReplace() {
+        boundaries = .init()
+        usesRecordedGeometry = true
+        anchors = [:]
+        markerRows = [:]
+        historySources = [:]
+        historicalRowCount = 0
+        if let terminal = view?.getTerminal() {
+            normalBuffer = terminal.buffer
+            historyEpoch = terminal.displayHistoryEpoch
+        }
+        geometryRevision += 1
+    }
+
+    /// Split only at trace boundaries already known to the presentation. Late hook events use
+    /// the historical worker; normal live events never need to replay their prefix.
+    func feed(_ bytes: ArraySlice<UInt8>, offset: UInt64, into view: MetalTerminalView) {
+        beginFeed()
+        let end = offset + UInt64(bytes.count)
+        let points = markerEvents.compactMap { id, event -> (UInt64, CoreTraceAnchor)? in
+            guard let anchor = event.anchor, anchor.byteOffset >= offset, anchor.byteOffset <= end,
+                anchors[id] == nil
+            else { return nil }
+            return (id, anchor)
+        }.sorted { $0.1.byteOffset < $1.1.byteOffset }
+        var cursor = 0
+        for (id, point) in points {
+            let next = Int(point.byteOffset - offset)
+            if next > cursor { view.feed(byteArray: bytes.dropFirst(cursor).prefix(next - cursor)) }
+            cursor = next
+            let terminal = view.getTerminal()
+            guard !terminal.isCurrentBufferAlternate, point.boundarySizes != nil else { continue }
+            let row = terminal.liveCursorRow
+            let prompt = markerEvents[id].flatMap { _ in markerPrompts[id] }.flatMap {
+                TerminalMinimapGeometry.inputRow(before: row, matching: $0, in: terminal)
+            }
+            anchors[id] = TerminalMinimapAnchor(terminal: terminal, row: prompt ?? row)
+            unresolved.remove(id)
+        }
+        if cursor < bytes.count { view.feed(byteArray: bytes.dropFirst(cursor)) }
+        received(through: end)
     }
 
     func returnToLive() {
@@ -182,60 +315,52 @@ final class TerminalMinimapState {
         if let view { view.window?.makeFirstResponder(view) }
     }
 
+}
+
+extension TerminalMinimapState {
     func showHistory(text: String, rows: [UInt64: Int]) {
-        if historyText != text {
-            historyText = text
-            historyLines = text.components(separatedBy: "\n")
+        if let drawing = historyDrawing.update(text) {
             strokeColors = []
-            let count = max(1, historyLines.count)
-            let columns = max(1, historyLines.map(\.count).max() ?? 1)
-            geometry.columns = columns
-            geometry.rows = count
-            strokes = stride(from: 0, to: count, by: max(1, count / 350)).compactMap { row in
-                let content = historyLines[row].trimmingCharacters(in: .whitespaces)
-                guard !content.isEmpty else { return nil }
-                return CGRect(
-                    x: 0.04, y: Double(row) / Double(count),
-                    width: Double(content.count) / Double(columns), height: 0.58 / Double(count))
-            }
+            geometry.columns = drawing.columns
+            geometry.rows = drawing.rows
+            strokes = drawing.strokes
         }
         markerRows = rows
         if let historyView { refreshHistory(historyView) }
     }
 
     private func refreshHistory(_ scroll: TerminalHistoryScrollView) {
-        guard let text = scroll.documentView as? NSTextView else { return }
-        let height = text.layoutManager?.defaultLineHeight(for: text.font ?? .terminal) ?? 16
-        geometry = .init(
-            rows: max(1, historyLines.count + Int(2 * text.textContainerInset.height / height)),
-            visibleRows: max(1, Int(scroll.contentView.bounds.height / height)),
-            topRow: max(0, Int(scroll.contentView.bounds.minY / height)), columns: geometry.columns,
-            cellAspectRatio: height
-                / max(1, ("M" as NSString).size(withAttributes: [.font: text.font ?? .terminal]).width))
+        if let updated = historyDrawing.geometry(in: scroll, columns: geometry.columns) { geometry = updated }
     }
 
-    func loadMarkers(_ markers: [TraceMinimapMarker], terminalID: UInt64, client: CoreClient) async {
+    private func prepareMarkers(_ markers: [TraceMinimapMarker]) -> Set<UInt64> {
         let ids = Set(markers.map(\.id))
         let events = Dictionary(uniqueKeysWithValues: markers.map { ($0.id, $0.event) })
         anchors = anchors.filter { events[$0.key] == markerEvents[$0.key] && ids.contains($0.key) }
         markerEvents = events
+        markerPrompts = Dictionary(
+            uniqueKeysWithValues: markers.compactMap { marker in marker.inputText.map { (marker.id, $0) } })
         markerRows = markerRows.filter { anchors[$0.key] != nil }
+        if let terminal = view?.getTerminal(), !terminal.isCurrentBufferAlternate {
+            resolveLiveBoundaries(markers, terminal: terminal)
+        }
         unresolved = ids.subtracting(anchors.keys)
-        guard !markers.isEmpty else {
-            anchors = [:]
-            markerRows = [:]
+        return ids
+    }
+
+    func loadMarkers(_ markers: [TraceMinimapMarker], terminalID: UInt64, client: CoreClient) async {
+        let ids = prepareMarkers(markers)
+        if unresolved.isEmpty {
+            refresh()
             return
         }
+        guard !unresolved.isEmpty, let terminal = view?.getTerminal(), !terminal.isCurrentBufferAlternate,
+            usesRecordedGeometry || liveSizes.first?.offset == 0
+        else { return }
+        let ready = markers.filter { unresolved.contains($0.id) && ($0.anchor?.byteOffset ?? 0) <= receivedOffset }
+        guard !ready.isEmpty else { return }
         let revision = geometryRevision
         let end = receivedOffset
-        guard let terminal = view?.getTerminal(), !terminal.isCurrentBufferAlternate else { return }
-        let checkpoint = TerminalMinimapCheckpoint(terminal: terminal)
-        let sizes = liveSizes
-        guard sizes.first?.offset == 0 else { return }
-        // A newly recorded hook can reach Swift before its terminal bytes. Keep earlier
-        // points usable and retry each pending point when its own boundary arrives.
-        let ready = markers.filter { ($0.anchor?.byteOffset ?? 0) <= end }
-        guard !ready.isEmpty else { return }
         indexing = true
         attemptedOffset = end
         defer {
@@ -243,68 +368,29 @@ final class TerminalMinimapState {
             scheduleRefresh()
         }
         do {
-            let index = TerminalMinimapReplay()
-            try await index.load(
-                terminalID: terminalID, endOffset: end, markers: ready, client: client,
-                liveSizes: sizes, prefix: replayPrefix)
+            let result = try await indexWorker.index(
+                terminalID: terminalID, end: end,
+                points: ready.compactMap { marker in
+                    marker.anchor.map { .init(id: marker.id, anchor: $0, inputText: marker.inputText) }
+                },
+                sizes: usesRecordedGeometry ? nil : liveSizes, prefix: replayPrefix,
+                columns: usesRecordedGeometry ? terminal.cols : nil, rows: usesRecordedGeometry ? terminal.rows : nil,
+                client: client)
             try Task.checkCancellation()
-            guard revision == geometryRevision else { return }
-            accept(index, checkpoint: checkpoint, ids: ids)
-        } catch is CancellationError {
-            return
-        } catch TerminalMinimapReplay.ReplayFailure.expired {
-            guard !Task.isCancelled, revision == geometryRevision else { return }
-            anchors = [:]
-            markerRows = [:]
-            unresolved = []
-            failureMessage = "Earlier trace output is no longer available."
-        } catch {
+            guard revision == geometryRevision, terminal.cols == result.columns, terminal.rows == result.screenRows
+            else { return }
+            for (id, saved) in result.rows where ids.contains(id) {
+                let row = saved.row + result.trimmed - terminal.buffer.totalLinesTrimmed + historicalRowCount
+                guard row >= 0, terminal.bufferLine(atRow: row)?.translateToString() == saved.text else { continue }
+                anchors[id] = TerminalMinimapAnchor(terminal: terminal, row: row)
+            }
+            unresolved = ids.subtracting(anchors.keys)
+            failureMessage = nil
+            refresh()
+        } catch is CancellationError { return } catch {
             guard !Task.isCancelled, revision == geometryRevision else { return }
             failureMessage = "Trace positions couldn't load."
-            terminalLogger.error("Minimap replay failed: \(error.localizedDescription, privacy: .public)")
+            terminalLogger.error("Minimap indexing failed: \(error.localizedDescription, privacy: .public)")
         }
-    }
-
-    private func accept(_ index: TerminalMinimapReplay, checkpoint: TerminalMinimapCheckpoint, ids: Set<UInt64>) {
-        // Preserve surviving live identities while an asynchronous index catches up.
-        let mapped = index.liveAnchors(at: checkpoint)
-        anchors = anchors.filter { ids.contains($0.key) }.merging(mapped) { _, new in new }
-        // Only rows replay can still locate may need a later live checkpoint. Trimmed rows
-        // and anchors without geometry cannot recover when more output arrives.
-        unresolved = Set(index.rows.keys).subtracting(anchors.keys)
-        failureMessage = nil
-        refresh()
-    }
-}
-
-extension TerminalMinimapState {
-    private func traceIndex(
-        anchor: CoreTraceAnchor, terminalID: UInt64, includingInput: Bool, inputText: String?, client: CoreClient
-    ) async throws -> TerminalMinimapReplay? {
-        let end = receivedOffset
-        let sizes = liveSizes
-        let prefix = replayPrefix
-        let original = TerminalMinimapReplay(includingInput: includingInput, inputText: inputText)
-        if anchor.terminalID == terminalID {
-            guard anchor.byteOffset <= end else { return nil }
-            try await original.load(
-                terminalID: terminalID, endOffset: end, points: [(0, anchor)], client: client,
-                liveSizes: sizes, prefix: prefix)
-            return original
-        }
-        guard let source = prefix.first(where: { $0.source?.terminalID == anchor.terminalID })?.source,
-            anchor.byteOffset <= source.byteOffset
-        else { return nil }
-        // Locate the old trace in its original emulator, then carry that row through the
-        // plain output restored before the current process. Match it against live row identities.
-        try await original.load(
-            terminalID: anchor.terminalID, endOffset: source.byteOffset, points: [(0, anchor)], client: client)
-        guard let row = original.rows[0], original.retainsInput(id: 0, row: row, terminal: original.replay.terminal)
-        else { return nil }
-        let restored = TerminalMinimapReplay()
-        try await restored.load(
-            terminalID: terminalID, endOffset: end, points: [], client: client, liveSizes: sizes, prefix: prefix,
-            prefixPoint: .init(id: 0, terminalID: anchor.terminalID, row: row))
-        return restored
     }
 }

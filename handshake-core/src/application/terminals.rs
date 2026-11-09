@@ -135,6 +135,19 @@ impl Application {
             .request_transcript(terminal_id, offset, limit)?)
     }
 
+    /// Requests a bounded, disposable parsed display page on the recording worker.
+    /// # Errors
+    /// Returns cancellation or invalid cache page errors.
+    pub fn request_terminal_display_cache(
+        &self,
+        terminal_id: TerminalId,
+        operation: crate::DisplayCacheOperation,
+    ) -> Result<Option<crate::DisplayCacheRequest>, ApplicationError> {
+        Ok(self
+            .terminal_output
+            .request_display(terminal_id, operation)?)
+    }
+
     /// Writes binary user input to a live terminal.
     ///
     /// # Errors

@@ -24,6 +24,7 @@ final class CoreClient {
     }
     var workflowModeChanges: [UInt64: WorkflowModeChange] = [:]
 
+    @ObservationIgnored let terminalPresentations = TerminalPresentationStore()
     let transport: any CoreTransport
     private var eventTask: Task<Void, Never>?
     private var stopTask: Task<Void, Never>?
@@ -162,6 +163,7 @@ final class CoreClient {
         for terminal in self.snapshot?.terminals ?? []
         where !snapshot.terminals.contains(where: { $0.terminalID == terminal.terminalID }) {
             terminalChunkRouter.markClosed(terminal.terminalID)
+            terminalPresentations.remove(terminalID: terminal.terminalID)
         }
         self.snapshot = snapshot
         traceSnapshotGeneration &+= 1
@@ -343,6 +345,7 @@ extension CoreClient {
     }
 
     private func performStop() async {
+        terminalPresentations.removeAll()
         let task = eventTask
         task?.cancel()
         await task?.value
@@ -390,6 +393,7 @@ extension CoreClient {
 
     private func markTerminalClosed(_ terminalID: UInt64, in snapshot: inout CoreSnapshot) {
         terminalChunkRouter.markClosed(terminalID)
+        terminalPresentations.remove(terminalID: terminalID)
         snapshot.terminals.removeAll { $0.terminalID == terminalID }
     }
 }

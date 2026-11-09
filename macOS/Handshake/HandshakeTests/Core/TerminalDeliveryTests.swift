@@ -79,7 +79,7 @@ struct TerminalDeliveryTests {
         #expect(await transport.terminalResponses.isEmpty)
     }
 
-    @Test func remountRestoresExactlyOnceAndKeepsTypingDuringReplay() async throws {
+    @Test func remountReusesParsedStateAndKeepsTypingWhileHistoryWorkWaits() async throws {
         var snapshot = CoreSnapshot.testReady()
         snapshot.terminals = [.init(terminalID: 41, status: .running)]
         let transport = DelayedStartTransport(snapshot: snapshot)
@@ -88,19 +88,23 @@ struct TerminalDeliveryTests {
         try await client.waitUntilRunning()
         defer { Task { await client.stop() } }
         let previous = Data("BEFORE_REMOUNT\r\n".utf8)
-        client.terminalChunkRouter.enqueue(.init(terminalID: 41, offset: 0, bytes: previous))
-        _ = client.terminalChunkRouter.dequeue(for: 41)
-        await transport.holdTranscript(previous)
         var failure: String?
         var activations = 0
-        let controller = TerminalController(
-            coreClient: client, terminalID: 41,
+        let presentation = client.terminalPresentations.presentation(
+            terminalID: 41, client: client, minimap: TerminalMinimapState(),
             failureMessage: Binding(get: { failure }, set: { failure = $0 }))
+        let controller = presentation.controller
         controller.beforeUserInput = { activations += 1 }
-        let view = MetalTerminalView(frame: .zero)
+        let view = presentation.view
         view.terminalDelegate = controller
         controller.start(view: view)
-        defer { controller.stop() }
+        await transport.enqueueOutput(.init(terminalID: 41, offset: 0, bytes: previous))
+        try await waitUntil { view.getTerminal().getBufferAsData().contains(Data("BEFORE_REMOUNT".utf8)) }
+        await transport.holdTranscript(previous)
+        let reattached = client.terminalPresentations.presentation(
+            terminalID: 41, client: client, minimap: TerminalMinimapState(), failureMessage: .constant(nil))
+        #expect(reattached.view === view)
+        #expect(reattached.controller === controller)
         try await waitUntil { await transport.hasTranscriptRequest }
         controller.send(source: view, data: Array("typed while restoring\r".utf8)[...])
         await transport.enqueueOutput(.init(terminalID: 41, offset: 0, bytes: previous + Data("AFTER_REMOUNT".utf8)))
