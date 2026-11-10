@@ -207,14 +207,14 @@ jobs:
         run: bash scripts/report-tests.sh out/tests/build/Logs/Test/*.xcresult
 
   ui-test-app:
-    name: UI test app (${{ matrix.shard }}/2)
+    name: UI test app (${{ matrix.shard }}/4)
     needs: build-app
     runs-on: xcode-27
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v7
       - name: Download test products
@@ -226,7 +226,7 @@ jobs:
         timeout-minutes: 12
         run: |
           make unpack-tests
-          make ui-test PREBUILT=1 SHARD=${{ matrix.shard }}/2 RETRIES=0
+          make ui-test PREBUILT=1 SHARD=${{ matrix.shard }}/4 RETRIES=0
       - name: Upload UI test results
         id: upload-results
         if: always()
