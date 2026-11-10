@@ -3,7 +3,7 @@ import SwiftUI
 
 private let keepAwakeLogger = Logger(subsystem: "com.twineproject.Twine", category: "keep-awake")
 
-/// All windows present the same core-owned power state, including when no folder is open.
+/// Shares core's app-wide power state across folder windows.
 @Observable
 final class KeepAwakeModel {
     private(set) var isEnabled = false
@@ -11,10 +11,15 @@ final class KeepAwakeModel {
     var failure: String?
     private let client: CoreClient
     private var monitor: Task<Void, Never>?
-    private var request: Task<Bool, any Error>?
+    private var updateTask: Task<Void, Never>?
+    private var updateGeneration = 0
     private var isStopping = false
 
     init(client: CoreClient) { self.client = client }
+
+    var enabledBinding: Binding<Bool> {
+        Binding(get: { self.isEnabled }, set: { enabled in Task { await self.update(enabled) } })
+    }
 
     func start() {
         guard monitor == nil, !isStopping else { return }
@@ -27,21 +32,35 @@ final class KeepAwakeModel {
     }
 
     func update(_ enabled: Bool?) async {
-        guard !isUpdating, !isStopping else { return }
-        isUpdating = true
-        let request = Task { try await client.keepAwake(enabled) }
-        self.request = request
-        defer {
-            isUpdating = false
-            self.request = nil
+        guard !isStopping, enabled != nil || updateTask == nil else { return }
+        let preceding = updateTask
+        updateGeneration += 1
+        let generation = updateGeneration
+        // Background status reads must not disable menu or toolbar interaction.
+        if enabled != nil { isUpdating = true }
+        let task = Task { [self] in
+            await preceding?.value
+            guard !isStopping else { return }
+            await performUpdate(enabled)
         }
+        updateTask = task
+        await task.value
+        if updateGeneration == generation {
+            updateTask = nil
+            isUpdating = false
+        }
+    }
+
+    private func performUpdate(_ enabled: Bool?) async {
         do {
-            let active = try await request.value
+            let active = try await client.keepAwake(enabled)
             guard !isStopping else { return }
             if enabled == true, !active {
                 failure = "Keep Awake couldn’t start. Please try again."
             } else if enabled == nil, isEnabled, !active {
                 failure = "Keep Awake stopped unexpectedly. Turn it on again to retry."
+            } else if enabled != nil {
+                failure = nil
             }
             isEnabled = active
         } catch {
@@ -56,7 +75,9 @@ final class KeepAwakeModel {
         monitor?.cancel()
         await monitor?.value
         monitor = nil
-        _ = await request?.result
+        await updateTask?.value
+        updateTask = nil
+        isUpdating = false
         do { isEnabled = try await client.keepAwake(false) } catch {
             // caffeinate also watches the app PID, so quitting still releases its assertions.
             keepAwakeLogger.error("Keep Awake shutdown failed: \(error.localizedDescription, privacy: .public)")
@@ -65,7 +86,6 @@ final class KeepAwakeModel {
 }
 
 struct KeepAwakeToolbar: ToolbarContent {
-    weak var window: NSWindow?
     /// The sidebar layout's toolbar buttons come first and bring their own spacer.
     var followsWorkspaceButtons = false
 
@@ -80,49 +100,21 @@ struct KeepAwakeToolbar: ToolbarContent {
     }
 
     private var item: some ToolbarContent {
-        ToolbarItem { KeepAwakeControl(window: window) }
+        ToolbarItem { KeepAwakeControl() }
     }
 }
 
 struct KeepAwakeControl: View {
     @Environment(KeepAwakeModel.self) private var model
-    @Environment(\.controlActiveState) private var activeState
-    @State private var failure: String?
-    weak var window: NSWindow?
 
     var body: some View {
-        Button {
-            Task { await model.update(!model.isEnabled) }
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: model.isEnabled ? "cup.and.saucer.fill" : "cup.and.saucer")
-                Text("Keep Awake")
-                Text(model.isEnabled ? "On" : "Off").foregroundStyle(.secondary)
-            }
-            .foregroundStyle(model.isEnabled ? Color.accentColor : .secondary)
+        Toggle(isOn: model.enabledBinding) {
+            Label("Keep Awake", systemImage: "cup.and.saucer")
         }
-        .tint(model.isEnabled ? Color.accentColor : nil)
+        .toggleStyle(.button)
+        .labelStyle(.iconOnly)
         .disabled(model.isUpdating)
-        .accessibilityLabel("Keep Awake")
-        .accessibilityValue(model.isEnabled ? "On" : "Off")
         .accessibilityIdentifier("keepAwake")
         .help(model.isEnabled ? "Turn off Keep Awake" : "Keep your Mac awake until you turn this off or quit Handshake")
-        .onChange(of: model.failure, initial: true) { _, _ in presentFailure() }
-        .onChange(of: activeState) { _, _ in presentFailure() }
-        .alert(
-            "Keep Awake",
-            isPresented: Binding(
-                get: { failure != nil }, set: { if !$0 { failure = nil } })
-        ) {
-            Button("OK") { failure = nil }
-        } message: {
-            Text(failure ?? "")
-        }
-    }
-
-    private func presentFailure() {
-        guard window?.isKeyWindow == true, let message = model.failure else { return }
-        failure = message
-        model.failure = nil
     }
 }

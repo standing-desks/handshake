@@ -55,9 +55,9 @@ private struct WorkspaceTabButtons: View {
         Button {
             model.showsSwitcher.toggle()
         } label: {
-            Label("\(tabCount)", systemImage: "chevron.down").labelStyle(.titleAndIcon)
+            Label("Find Open Tab", systemImage: "square.on.square")
         }
-        .help("Find an Open Tab (⇧⌘A)")
+        .help("Find an Open Tab (⇧⌘A) — \(tabCount) tabs")
         .accessibilityLabel("Find an open tab, \(tabCount) tabs")
         .accessibilityIdentifier("tabSwitcher")
         .popover(isPresented: $model.showsSwitcher) {

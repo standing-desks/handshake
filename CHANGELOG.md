@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-10
+
+### Added
+
+- Expand the collapsed tab rail on hover to show session and tab titles without
+  resizing the terminal, with keyboard dismissal and docking controls.
+
+### Changed
+
+- Retain each open terminal and its viewport when switching tabs. Restore older
+  scrollback in the background after relaunch while keeping input and traces usable.
+- Use native workspace toolbar groups and a shared Keep Awake toggle, with no
+  Keep Awake toolbar button on the opening screen.
+
+### Fixed
+
+- Keep newly selected top tabs visible as the tab strip grows and the window resizes.
+- Keep the Keep Awake controls available during background status checks.
+
 ## [0.7.0] - 2026-10-29
 
 ### Added
@@ -430,7 +449,8 @@ Initial release of Twine, a native macOS workspace for coordinating coding agent
 - The app is ad hoc signed and not notarized. Follow the included install instructions
   to approve the first launch in macOS Privacy & Security settings.
 
-[unreleased]: https://github.com/standing-desks/handshake/compare/v0.7.0...HEAD
+[unreleased]: https://github.com/standing-desks/handshake/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/standing-desks/handshake/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/standing-desks/handshake/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/standing-desks/handshake/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/standing-desks/handshake/compare/v0.5.0...v0.6.0

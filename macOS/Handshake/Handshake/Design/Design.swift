@@ -94,13 +94,10 @@ nonisolated enum Motion {
     /// The close button fading in over a tab's icon on hover.
     static let tabCloseButton = Animation.easeInOut(duration: 0.12)
     static let scrollToSelectedTab = Animation.easeInOut(duration: 0.18)
-    static let tabChange = Animation.easeInOut(duration: 0.18)
     static let paneLayout = Animation.smooth(duration: 0.22)
     static let disclosure = Animation.easeInOut(duration: 0.18)
     /// Sidebar sections and the Traces panel collapsing and expanding.
     static let sectionToggle = Animation.smooth(duration: 0.2)
-    /// The minimized sidebar widening into the peek, and narrowing back to the rail.
-    static let sidebarReveal = Animation.smooth(duration: 0.34)
     /// The trace detail panel sliding in from the trailing edge with a fade.
     static let traceDetailPanel = Animation.easeInOut(duration: 0.22)
     /// Typing in a draft tab turns it into a Terminal while the choices card fades out in place.

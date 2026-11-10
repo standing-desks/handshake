@@ -1,0 +1,188 @@
+diff --git a/Sources/SwiftTerm/Bidi.swift b/Sources/SwiftTerm/Bidi.swift
+index 53912b0b..27f91a99 100644
+--- a/Sources/SwiftTerm/Bidi.swift
++++ b/Sources/SwiftTerm/Bidi.swift
+@@ -8,7 +8,7 @@
+ import Foundation
+ 
+ /// Selects which side performs bidirectional text processing.
+-public enum BidiSupportMode: Sendable, Hashable {
++public enum BidiSupportMode: Sendable, Hashable, Codable {
+     /// SwiftTerm processes logical text for display.
+     case implicit
+     /// The application supplies text in display order.
+@@ -16,13 +16,13 @@ public enum BidiSupportMode: Sendable, Hashable {
+ }
+ 
+ /// Selects the paragraph base direction.
+-public enum BidiDirection: Sendable, Hashable {
++public enum BidiDirection: Sendable, Hashable, Codable {
+     case leftToRight
+     case rightToLeft
+ }
+ 
+ /// The six effective presentation modes in the terminal-wg specification.
+-public enum BidiPresentationMode: Sendable, Hashable {
++public enum BidiPresentationMode: Sendable, Hashable, Codable {
+     case implicitLeftToRight
+     case implicitRightToLeft
+     case implicitAutoLeftToRight
+@@ -32,7 +32,7 @@ public enum BidiPresentationMode: Sendable, Hashable {
+ }
+ 
+ /// The bidirectional presentation state stored with each terminal paragraph.
+-public struct BidiPresentationState: Sendable, Hashable {
++public struct BidiPresentationState: Sendable, Hashable, Codable {
+     public var supportMode: BidiSupportMode
+     public var autodetectDirection: Bool
+     public var fallbackDirection: BidiDirection
+@@ -70,7 +70,7 @@ public struct BidiPresentationState: Sendable, Hashable {
+ }
+ 
+ /// Selects how an Apple terminal view applies terminal BiDi state.
+-public enum BidiHostPolicy: Sendable, Hashable {
++public enum BidiHostPolicy: Sendable, Hashable, Codable {
+     /// Apply the state that the terminal protocol stores with each paragraph.
+     case respectTerminal
+     /// Draw all cells in logical left-to-right order.
+diff --git a/Sources/SwiftTerm/BufferLine.swift b/Sources/SwiftTerm/BufferLine.swift
+index b1743835..26d8877e 100644
+--- a/Sources/SwiftTerm/BufferLine.swift
++++ b/Sources/SwiftTerm/BufferLine.swift
+@@ -11,7 +11,7 @@ import Foundation
+ /// BufferLines represents a single line of text displayed on the terminal
+ 
+ public final class BufferLine: CustomDebugStringConvertible {
+-    public enum RenderLineMode {
++    public enum RenderLineMode: Int, Codable, Sendable {
+         /// Render each character using a single cell
+         case single
+         /// Render character using two cells
+@@ -52,7 +52,7 @@ public final class BufferLine: CustomDebugStringConvertible {
+     /// line identity; a mismatch at fire time means the object was recycled
+     /// into a new row and the click must be dropped — identity alone cannot
+     /// tell, because `CircularList.recycle` keeps the object in the array.
+-    private(set) var recycleGeneration: UInt64 = 0
++    public private(set) var recycleGeneration: UInt64 = 0
+     private var data: UnsafeMutableBufferPointer<CharData>
+     private var dataSize: Int
+ 
+diff --git a/Sources/SwiftTerm/CharData.swift b/Sources/SwiftTerm/CharData.swift
+index 9415ad7a..08ecbf6e 100644
+--- a/Sources/SwiftTerm/CharData.swift
++++ b/Sources/SwiftTerm/CharData.swift
+@@ -10,7 +10,7 @@ import Foundation
+ 
+ /// This option set describes the character style for a cell, this includes
+ /// information about the font to use as well as decorations on the text
+-public struct CharacterStyle : OptionSet, Hashable {
++public struct CharacterStyle : OptionSet, Hashable, Codable, Sendable {
+     public let rawValue: UInt8
+     
+     /**
+@@ -50,7 +50,7 @@ public struct CharacterStyle : OptionSet, Hashable {
+     public static let crossedOut = CharacterStyle (rawValue: 128)
+ }
+ 
+-public enum UnderlineStyle: UInt8 {
++public enum UnderlineStyle: UInt8, Codable, Sendable {
+     case none = 0
+     case single = 1
+     case double = 2
+@@ -64,9 +64,9 @@ public enum UnderlineStyle: UInt8 {
+ /// cells, as well as the character style of the cell (bold, underline, inverse) that the character
+ /// should be drawn as.
+ ///
+-public struct Attribute: Equatable, Hashable {
++public struct Attribute: Equatable, Hashable, Codable, Sendable {
+     /// The various ways in which the color was expressed
+-    public enum Color: Equatable, Hashable {
++    public enum Color: Equatable, Hashable, Codable, Sendable {
+         /// This means that the foreground color stores 8 bits of information
+         /// for the color (the original ANSI colors, plus a crop of colors
+         /// and greys - those defined in Color.setupDefaultAnsiColors and additionally
+diff --git a/Sources/SwiftTerm/CircularList.swift b/Sources/SwiftTerm/CircularList.swift
+index 96b33f7b..927fb849 100644
+--- a/Sources/SwiftTerm/CircularList.swift
++++ b/Sources/SwiftTerm/CircularList.swift
+@@ -391,6 +391,20 @@ internal class CircularBufferLineList {
+         }
+      }
+ 
++    /// Insert older rows without shifting retained rows or recycling live content.
++    func prependHistory(_ items: [BufferLine]) -> Int {
++        let amount = min(items.count, maxLength - count)
++        guard amount > 0 else { return 0 }
++        startIndex = (startIndex - amount + maxLength) % maxLength
++        _count += amount
++        for index in 0..<amount {
++            let line = items[items.count - amount + index]
++            array[getCyclicIndex(index)] = line
++            onLineAttached?(line)
++        }
++        return amount
++    }
++
+     func trimStart (count: Int)
+     {
+         let c = count > self.count ? self.count : count
+diff --git a/Sources/SwiftTerm/Terminal.swift b/Sources/SwiftTerm/Terminal.swift
+index 4851e04e..5ab960c7 100644
+--- a/Sources/SwiftTerm/Terminal.swift
++++ b/Sources/SwiftTerm/Terminal.swift
+@@ -336,10 +336,10 @@ open class Terminal {
+     // Selection services attached to this terminal.  Held weakly: the views own
+     // them.  They are notified when lines are shifted in place so they can
+     // translate their anchors (see `adjustForInPlaceScroll`).
+-    private struct WeakSelection {
++    struct WeakSelection {
+         weak var value: SelectionService?
+     }
+-    private var selections: [WeakSelection] = []
++    var selections: [WeakSelection] = []
+ 
+     func register (selection: SelectionService)
+     {
+@@ -385,6 +385,9 @@ open class Terminal {
+         buffer.semanticClickMode
+     }
+ 
++    /// Disable the UI safety timer for an emulator confined to a background actor.
++    public var displayHistoryEpoch: UInt64 = 0
++    public var usesSynchronizedOutputTimer = true
+     private let synchronizedOutputTimeoutSeconds: TimeInterval = 1.0
+     public private(set) var synchronizedOutputActive: Bool = false
+     private var synchronizedOutputTimeoutItem: DispatchWorkItem?
+@@ -3325,6 +3328,7 @@ open class Terminal {
+             clearAllKittyImages()
+             updateRange (0)
+         case 3:
++            displayHistoryEpoch &+= 1
+             // Clear scrollback (everything not in viewport)
+             let scrollBackSize = buffer.lines.count - rows
+             if scrollBackSize > 0 {
+@@ -6768,6 +6772,7 @@ open class Terminal {
+     public func clearScrollback ()
+     {
+         // Only the normal buffer has scrollback
++        displayHistoryEpoch &+= 1
+         normalBuffer.clearScrollback ()
+         refresh (startRow: 0, endRow: self.rows - 1)
+     }
+@@ -6828,6 +6833,7 @@ open class Terminal {
+     private func scheduleSynchronizedOutputTimeout ()
+     {
+         synchronizedOutputTimeoutItem?.cancel()
++        guard usesSynchronizedOutputTimer else { return }
+         let workItem = DispatchWorkItem { [weak self] in
+             guard let self, self.synchronizedOutputActive else {
+                 return
+@@ -7182,7 +7188,7 @@ open class Terminal {
+         let newLine = Data([10])
+         for row in 0..<b.lines.count {
+             let bufferLine = b.lines [row]
+-            let str = bufferLine.translateToString(trimRight: true)
++            let str = bufferLine.translateToString(trimRight: true, characterProvider: { self.getCharacter(for: $0) })
+             if let encoded = str.data(using: encoding) {
+                 result.append (encoded)
+                 result.append (newLine)

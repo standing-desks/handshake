@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-10-29
+- Amended: 2026-11-09, compact tab rail presentation
 - Partially supersedes: [ADR 0006](0006-align-and-quiet-the-folder-top-bar.md), for the sidebar layout only
 
 ## Context
@@ -38,12 +39,23 @@ Sessions use a letter monogram in both layouts. In the sidebar layout:
 - The docked sidebar remains the `NavigationSplitView` column, keeping its native
   toggle, resizing, and ⌃⌘S. A folder that hasn't chosen opens it docked. When it
   is hidden, a 52-point rail of monograms and tab icons stays beside the content.
-  Resting on the rail for 250 ms widens it into a peek over the content, which
-  closes 300 ms after the pointer leaves. The peek never takes keyboard focus; Esc
-  or typing closes it, except while a text field is being edited or a sheet is
-  open. The sidebar's sheets and alerts belong to the window so they outlive the
-  peek. The sidebar button is the only dock control. Reduce Motion turns the rail
-  and peek into a fade.
+  It uses system sidebar material, a trailing divider, and 32-point rows. The
+  selected tab has one rounded selection fill; quieter session monograms mark
+  groups, and distinct activity symbols remain visible while collapsed.
+- Hovering or focusing the rail temporarily expands the same rows into a labeled
+  tab list over the workspace. Icons and rows keep their positions, and the terminal
+  keeps its dimensions. A short dwell avoids expansion when the pointer passes
+  across the rail. The list stays open during keyboard navigation, dragging, and
+  native menu interaction. Leaving collapses it; Escape dismisses it until a new
+  hover or focus entry. The sidebar button deliberately docks the full sidebar.
+  The window continues to own sidebar dialogs. Both presentations retain the
+  outline's scroll anchor and minimally reveal the current selection.
+
+The November 2026 amendment keeps vertical tabs available as persistent compact
+navigation. Safari's vertical-tab presentation is a visual reference for its
+integrated surface and quiet selection. Chrome and Firefox inform its temporary
+hover expansion into a labeled tab list. It replaces the original floating rail
+card and timed expansion into the entire sidebar.
 
 The top layout keeps the ADR 0006 tab row, with Move to Session and the layout
 switch added to its menus. The `workflowTint` fill behind the agent subtab strip,
@@ -57,17 +69,21 @@ sessions ([ADR 0017](0017-move-workflows-between-sessions.md)). Existing UI test
 seed the `top` layout so they keep covering the tab bar, and separate UI tests cover
 the sidebar layout.
 
-The implementation differs from the design proposal in four places, each of which
-would need a single sidebar view instead of the split view column plus an overlay:
-docking uses the system sidebar animation rather than one continuous morph from
-the rail; the rail and the peek cross-fade rather than sharing rows; dragging over
-the rail doesn't open the peek; and tabs can't be dragged from the top tab bar onto
-a session, which the Move to Session menu covers.
+Docking uses the native split-view animation. Compact and expanded navigation share
+row identifiers and presentation state. The collapsed native column releases its
+focusable outline, leaving one active tab list. Tabs can move within or between
+sessions through the outline's existing drag behavior and the Move to Session menu.
 
 ## References
 
 - [Tab layout preference](../../macOS/Handshake/Handshake/Workflows/Workspace/TabLayout.swift)
 - [Folder window composition](../../macOS/Handshake/Handshake/Windows/FolderView.swift)
 - [Session outline](../../macOS/Handshake/Handshake/Windows/Sidebar/SessionOutline.swift)
-- [Rail and peek](../../macOS/Handshake/Handshake/Windows/Sidebar/SidebarPresentation.swift)
+- [Sidebar presentation](../../macOS/Handshake/Handshake/Windows/Sidebar/SidebarPresentation.swift)
+- [Rail hover state](../../macOS/Handshake/Handshake/Windows/Sidebar/SidebarRailHover.swift)
+- [Rail presentation](../../macOS/Handshake/Handshake/Windows/Sidebar/SidebarRail.swift)
 - [Toolbar buttons](../../macOS/Handshake/Handshake/Workflows/Workspace/WorkspaceToolbar.swift)
+- [Apple sidebar guidance](https://developer.apple.com/design/human-interface-guidelines/sidebars)
+- [Safari vertical-tab presentation](https://sixcolors.com/post/2026/11/safari-update-brings-vertical-tabs-adaptive-dark-mode-ai-integration/)
+- [Chrome vertical-tab hover expansion](https://support.google.com/chrome/answer/2391819?co=GENIE.Platform%3DDesktop&hl=en)
+- [Firefox hover interaction tests](https://github.com/mozilla-firefox/firefox/blob/main/browser/components/sidebar/tests/browser/browser_sidebar_expand_on_hover.js)

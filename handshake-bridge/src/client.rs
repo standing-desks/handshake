@@ -176,6 +176,16 @@ impl HandshakeClient {
         Ok(self.application.next_terminal_chunk()?)
     }
 
+    pub(crate) fn request_display_cache(
+        &self,
+        terminal_id: u64,
+        operation: handshake_core::DisplayCacheOperation,
+    ) -> Result<Option<handshake_core::DisplayCacheRequest>, BridgeError> {
+        Ok(self
+            .application
+            .request_terminal_display_cache(TerminalId::from_value(terminal_id), operation)?)
+    }
+
     pub(crate) fn request_terminal_transcript(
         &self,
         terminal_id: u64,

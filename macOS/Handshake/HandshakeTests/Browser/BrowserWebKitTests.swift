@@ -177,12 +177,15 @@ struct BrowserWebKitTests {
         return configuration
     }
 
-    private func waitUntil(_ condition: () async throws -> Bool) async throws {
+    private func waitUntil(
+        sourceLocation: SourceLocation = #_sourceLocation,
+        _ condition: () async throws -> Bool
+    ) async throws {
         for _ in 0..<400 {
             if (try? await condition()) == true { return }
             try await Task.sleep(for: .milliseconds(25))
         }
-        Issue.record("Timed out waiting for WebKit fixture")
+        Issue.record("Timed out waiting for WebKit fixture", sourceLocation: sourceLocation)
         throw FixtureTimeout.expired
     }
     private enum FixtureTimeout: Error { case expired }

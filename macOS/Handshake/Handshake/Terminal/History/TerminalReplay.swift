@@ -1,8 +1,8 @@
 import Foundation
 import SwiftTerm
 
-nonisolated struct TerminalReplayPrefix {
-    nonisolated struct Point {
+nonisolated struct TerminalReplayPrefix: Sendable {
+    nonisolated struct Point: Sendable {
         let id: UInt64
         let terminalID: UInt64
         let row: Int
@@ -16,9 +16,12 @@ nonisolated struct TerminalReplayPrefix {
 
 /// A separate emulator consumes the complete prefix. Cursor motion and alternate screens are
 /// interpreted before a frozen snapshot is shown; window layout never resizes this emulator.
-@MainActor
-final class TerminalReplay: TerminalDelegate {
-    private(set) lazy var terminal = Terminal(delegate: self, options: TerminalOptions(scrollback: 100_000))
+nonisolated final class TerminalReplay: TerminalDelegate {
+    private(set) lazy var terminal: Terminal = {
+        let terminal = Terminal(delegate: self, options: TerminalOptions(scrollback: 100_000))
+        terminal.usesSynchronizedOutputTimer = false
+        return terminal
+    }()
     private(set) var offset: UInt64 = 0
     private var outputStartLine: BufferLine?
     private var outputStartBuffer: Buffer?

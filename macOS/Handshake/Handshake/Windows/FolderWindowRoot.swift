@@ -14,16 +14,12 @@ struct FolderWindowRoot: View {
 
     var body: some View {
         ContentView(session: session, windows: windows)
-            .toolbar {
-                if needsStandaloneToolbar {
-                    KeepAwakeToolbar(window: session.window)
-                }
-            }
             .environment(session.coreClient)
             .environment(session.tabs)
             .environment(session.browsers)
             .focusedSceneValue(\.folderWindow, session)
             .preferredColorScheme(preferredColorScheme)
+            .modifier(KeepAwakeFailurePresentation(window: session.window))
             .sheet(
                 isPresented: Binding(
                     get: { settings.presentedWindowID == session.id },
@@ -42,13 +38,6 @@ struct FolderWindowRoot: View {
                 await layouts.load()
                 await windows.start(session) { openWindow(id: "folder", value: $0) }
             }
-    }
-
-    private var needsStandaloneToolbar: Bool {
-        if case .folder = WindowContent(runState: session.coreClient.runState, snapshot: session.coreClient.snapshot) {
-            return false
-        }
-        return true
     }
 
     private var preferredColorScheme: ColorScheme? {

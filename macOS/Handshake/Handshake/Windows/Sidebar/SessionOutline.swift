@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// The sidebar layout's sessions, each disclosing its tabs. Tabs drag within a session and between sessions.
-/// The compact form is the minimized rail: the same rows as icons, so they line up when the rail expands.
+/// Both presentations use the same row identifiers and scroll anchor.
 struct SessionOutline: View {
     @Environment(CoreClient.self) private var client
     @Environment(FileTabsModel.self) private var files
@@ -16,6 +16,7 @@ struct SessionOutline: View {
     @Binding var selection: WorkflowTabSelection
     let presentation: SidebarPresentation
     var compact = false
+    var showsTitles = false
     @State private var drag: Drag?
     @State private var frames: [Row: CGRect] = [:]
     @State private var springLoad: Task<Void, Never>?
@@ -61,6 +62,11 @@ struct SessionOutline: View {
         return WorkspaceTabsModel.workflow(layouts.splitRoot(for: id, in: folder, workflows: allWorkflows))
     }
 
+    private var selectedRowID: String? {
+        guard let session = selectedSession, let reference = selectedReference else { return nil }
+        return "tab-\(session)-\(reference)"
+    }
+
     private var commands: SessionOutlineCommands {
         SessionOutlineCommands(
             client: client,
@@ -78,6 +84,8 @@ struct SessionOutline: View {
                 let items = commands.items(for: session.id)
                 let expanded = presentation.expandedSessions.contains(session.id)
                 sessionRow(session, items: items, expanded: expanded, commands: commands)
+                    .padding(.top, 6)
+                    .id("session-\(session.id)")
                     .onGeometryChange(
                         for: CGRect.self, of: { $0.frame(in: .named(space)) },
                         action: { frames[.session(session.id)] = $0 }
@@ -86,6 +94,7 @@ struct SessionOutline: View {
                 if expanded {
                     ForEach(items) { item in
                         tabRow(item, session: session.id, references: items.map(\.id), commands: commands)
+                            .id("tab-\(session.id)-\(item.id)")
                             .onGeometryChange(
                                 for: CGRect.self, of: { $0.frame(in: .named(space)) },
                                 action: { frames[.tab(session: session.id, reference: item.id)] = $0 }
@@ -96,11 +105,17 @@ struct SessionOutline: View {
                 }
             }
         }
+        .scrollTargetLayout()
         .coordinateSpace(name: space)
         .overlay(alignment: .topLeading) { dragPreview }
         .onChange(of: selectedSession, initial: true) { _, session in
             if let session { presentation.expandedSessions.insert(session) }
         }
+        .onChange(of: selectedRowID, initial: true) { _, target in presentation.revealID = target }
+        .onChange(of: drag != nil) { _, dragging in
+            if compact { presentation.railHover.setDragging(dragging) }
+        }
+        .onDisappear { if compact { presentation.railHover.setDragging(false) } }
     }
 
     // MARK: - Rows
@@ -116,7 +131,15 @@ struct SessionOutline: View {
             RailSessionButton(
                 session: session, letters: letters, isSelected: session.id == selectedSession,
                 activity: expanded ? nil : activity, isDropTarget: isTarget,
-                select: { commands.selectSession(session) }
+                showsTitles: showsTitles, isExpanded: expanded,
+                select: { commands.selectSession(session) },
+                toggleExpanded: {
+                    if expanded {
+                        presentation.expandedSessions.remove(session.id)
+                    } else {
+                        presentation.expandedSessions.insert(session.id)
+                    }
+                }
             )
             .contextMenu { sessionActions(session, commands: commands) }
         } else {
@@ -146,8 +169,10 @@ struct SessionOutline: View {
         Group {
             if compact {
                 RailTabButton(
-                    item: item, isSelected: isSelected, insertion: insertion(for: item, in: session),
-                    select: { commands.select(item, in: session) }
+                    item: item, focusID: "tab-\(session)-\(item.id)",
+                    sessionName: sessions.first { $0.id == session }?.name ?? "", isSelected: isSelected,
+                    insertion: insertion(for: item, in: session), showsTitles: showsTitles,
+                    select: { commands.select(item, in: session) }, close: { commands.close(item, in: session) }
                 )
                 .contextMenu { tabActions(item, session: session, references: references, commands: commands) }
             } else {

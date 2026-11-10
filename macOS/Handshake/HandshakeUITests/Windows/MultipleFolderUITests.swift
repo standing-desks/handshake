@@ -223,7 +223,11 @@ extension HandshakeUITests {
         app.menuBars.menuBarItems["Window"].click()
         let item = app.menuItems.matching(NSPredicate(format: "title BEGINSWITH %@", name)).firstMatch
         XCTAssertTrue(item.waitForExistence(timeout: 5), app.debugDescription)
-        item.click()
+        item.hover()
+        app.typeKey(.return, modifierFlags: [])
+        let activated = expectation(
+            for: NSPredicate { _, _ in app.windows.firstMatch.title == window.title }, evaluatedWith: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [activated], timeout: 5), .completed, app.debugDescription)
     }
 
     /// Drive the real folder picker, including paths containing spaces.

@@ -29,9 +29,10 @@
       shouldUseLaunchSchemeArgsEnv = "YES"
       shouldAutocreateTestPlan = "YES">
       <Testables>
+         <!-- Async native fixtures share NSApplication, key windows, and the main run loop. -->
          <TestableReference
             skipped = "NO"
-            parallelizable = "YES">
+            parallelizable = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "F266A3F33068BD6100C1232B"

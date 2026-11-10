@@ -38,12 +38,14 @@ struct SessionTabRow<Actions: View>: View {
             .accessibilityIdentifier(item.accessibilityID)
             ZStack(alignment: .trailing) {
                 status.opacity(isHovered ? 0 : 1).accessibilityHidden(true)
-                Button("Close \(item.title)", systemImage: "xmark", action: close)
-                    .labelStyle(.iconOnly).buttonStyle(.plain)
-                    .font(.system(size: 9, weight: .semibold))
-                    .frame(width: 18, height: 18).contentShape(.rect)
-                    .opacity(isHovered ? 1 : 0).allowsHitTesting(isHovered).accessibilityHidden(!isHovered)
-                    .accessibilityIdentifier(item.closeID)
+                Button(action: close) {
+                    Label("Close \(item.title)", systemImage: "xmark")
+                        .labelStyle(.iconOnly).font(.system(size: 9, weight: .semibold))
+                        .frame(width: 28, height: 28).contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .opacity(isHovered ? 1 : 0).allowsHitTesting(isHovered).accessibilityHidden(!isHovered)
+                .accessibilityIdentifier(item.closeID)
             }
         }
         .font(.system(size: SidebarLayout.rowFontSize, weight: isSelected ? .medium : .regular))

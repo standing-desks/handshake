@@ -11,7 +11,9 @@ use tracing::warn;
 
 use super::{TerminalChunk, TerminalId, TerminalSize};
 
+mod display;
 mod storage;
+pub use display::MAX_DISPLAY_PAGE_BYTES;
 
 use storage::Storage;
 
@@ -54,6 +56,33 @@ impl TranscriptRequest {
     }
 }
 
+/// Parsed display pages are a disposable acceleration cache, separate from canonical bytes.
+#[derive(Debug)]
+pub enum DisplayCacheOperation {
+    Read {
+        key: u64,
+    },
+    Write {
+        key: u64,
+        source_offset: u64,
+        bytes: Vec<u8>,
+    },
+}
+
+pub struct DisplayCacheRequest(mpsc::Receiver<Result<Option<Vec<u8>>, TranscriptError>>);
+impl DisplayCacheRequest {
+    /// Polls without blocking terminal input or the application's command thread.
+    /// # Errors
+    /// Returns storage or cancellation failures.
+    pub fn poll(&self) -> Result<Option<Option<Vec<u8>>>, TranscriptError> {
+        match self.0.try_recv() {
+            Ok(result) => result.map(Some),
+            Err(mpsc::TryRecvError::Empty) => Ok(None),
+            Err(mpsc::TryRecvError::Disconnected) => Err(TranscriptError::Cancelled),
+        }
+    }
+}
+
 pub(crate) struct Recording {
     pub chunk: TerminalChunk,
     pub sizes: Vec<TranscriptSize>,
@@ -79,6 +108,8 @@ pub enum TranscriptError {
     Corrupt(&'static str),
     #[error("transcript read limit must be between 1 and {MAX_TRANSCRIPT_READ_BYTES} bytes")]
     InvalidLimit,
+    #[error("terminal display page exceeds its size limit")]
+    InvalidDisplayPage,
     #[error("invalid transcript storage limits")]
     InvalidStorageLimits,
     #[error("transcript identifier or offset overflowed")]
@@ -201,6 +232,7 @@ struct Shared {
 pub(crate) struct TranscriptRecorder {
     shared: Arc<Shared>,
     worker: Mutex<Option<JoinHandle<()>>>,
+    display: display::DisplayCacheWorker,
     #[cfg(test)]
     temporary_directory: Option<tempfile::TempDir>,
 }
@@ -217,6 +249,8 @@ impl TranscriptRecorder {
 
     fn with_limits(path: &Path, limits: Limits) -> Result<Self, TranscriptError> {
         let storage = Storage::open(path, limits)?;
+        let display =
+            display::DisplayCacheWorker::start(path.join("display"), storage.terminal_ids());
         let shared = Arc::new(Shared {
             queue: Mutex::new(Queue {
                 jobs: VecDeque::new(),
@@ -235,6 +269,7 @@ impl TranscriptRecorder {
         Ok(Self {
             shared,
             worker: Mutex::new(Some(worker)),
+            display,
             #[cfg(test)]
             temporary_directory: None,
         })
@@ -308,7 +343,9 @@ impl TranscriptRecorder {
     pub(crate) fn allocate(&self) -> Result<TerminalId, TranscriptError> {
         let (reply, result) = mpsc::sync_channel(1);
         self.enqueue(Job::Allocate(reply), None)?;
-        result.recv().map_err(disconnected)?
+        let terminal = result.recv().map_err(disconnected)??;
+        self.display.allow(terminal);
+        Ok(terminal)
     }
 
     pub(crate) fn terminal_ids(&self) -> Result<HashSet<TerminalId>, TranscriptError> {
@@ -330,6 +367,7 @@ impl TranscriptRecorder {
             return Ok(());
         }
         let (reply, result) = mpsc::sync_channel(1);
+        self.display.prune(ids.clone());
         self.enqueue(Job::Prune { ids, reply }, None)?;
         result.recv().map_err(disconnected)?
     }
@@ -379,6 +417,14 @@ impl TranscriptRecorder {
         )?;
         // Reads share the ordered work queue: every previously accepted append is committed first.
         result.recv().map_err(disconnected)?
+    }
+
+    pub(crate) fn request_display(
+        &self,
+        terminal_id: TerminalId,
+        operation: DisplayCacheOperation,
+    ) -> Result<Option<DisplayCacheRequest>, TranscriptError> {
+        self.display.request(terminal_id, operation)
     }
 
     pub(crate) fn request_read(
@@ -454,6 +500,7 @@ impl TranscriptRecorder {
     }
 
     pub(crate) fn shutdown(&self) {
+        self.display.shutdown();
         {
             let mut queue = self
                 .shared
@@ -577,6 +624,48 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
+
+    #[test]
+    fn stalled_display_cache_does_not_block_canonical_recording() {
+        let recorder = TranscriptRecorder::temporary().unwrap();
+        let id = recorder.allocate().unwrap();
+        let (ready, release) = recorder.display.stall();
+        ready.recv_timeout(Duration::from_secs(2)).unwrap();
+        append(&recorder, id, 0, b"live bytes");
+        let request = recorder.request_read(id, 0, 64).unwrap().unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        let result = loop {
+            if let Some(result) = request.poll().unwrap() {
+                break result;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "raw recording waited for optional cache I/O"
+            );
+            thread::yield_now();
+        };
+        assert!(matches!(result, TranscriptRead::Output(page) if page.bytes == b"live bytes"));
+        release.send(()).unwrap();
+    }
+
+    #[test]
+    fn unusable_display_directory_does_not_fail_recording_or_reopen() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(directory.path().join("display"), b"not a directory").unwrap();
+        // A new raw store deliberately rejects unknown files. Allocate first, then make the
+        // optional cache unusable while reopening the existing canonical manifest.
+        std::fs::remove_file(directory.path().join("display")).unwrap();
+        let recorder = TranscriptRecorder::open(directory.path()).unwrap();
+        let id = recorder.allocate().unwrap();
+        append(&recorder, id, 0, b"canonical");
+        recorder.shutdown();
+        drop(recorder);
+        std::fs::remove_dir_all(directory.path().join("display")).unwrap();
+        std::fs::write(directory.path().join("display"), b"not a directory").unwrap();
+        let recorder = TranscriptRecorder::open(directory.path()).unwrap();
+        append(&recorder, id, 9, b" remains");
+        assert_eq!(output(&recorder, id, 0, 64).bytes, b"canonical remains");
+    }
 
     #[test]
     fn queued_output_is_committed_before_pruning_and_does_not_reappear() {

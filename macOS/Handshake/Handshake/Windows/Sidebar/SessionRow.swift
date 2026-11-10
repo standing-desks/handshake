@@ -22,7 +22,7 @@ struct SessionRow: View {
             if let isExpanded { disclosure(isExpanded) }
             Button(action: select) {
                 HStack(spacing: 4) {
-                    if isExpanded == nil { Color.clear.frame(width: 11) }
+                    if isExpanded == nil { Color.clear.frame(width: SidebarLayout.disclosureWidth) }
                     SessionMonogram(letters: monogram, isActive: isSelected)
                         .frame(width: 16)
                     Text(session.name).lineLimit(1).truncationMode(.tail)
@@ -76,7 +76,7 @@ struct SessionRow: View {
         } label: {
             Image(systemName: "chevron.right")
                 .font(.system(size: 9, weight: .semibold)).foregroundStyle(.secondary)
-                .frame(width: 11, height: SidebarLayout.rowHeight)
+                .frame(width: SidebarLayout.disclosureWidth, height: SidebarLayout.rowHeight)
                 .rotationEffect(.degrees(isExpanded.wrappedValue ? 90 : 0))
                 .contentShape(.rect)
         }
@@ -96,12 +96,14 @@ struct SessionRow: View {
     private var hoverActions: some View {
         HStack(spacing: 0) {
             if let newWorkflow {
-                Button("New Workflow in \(session.name)", systemImage: "plus", action: newWorkflow)
-                    .labelStyle(.iconOnly).buttonStyle(.plain)
-                    .font(.system(size: 10, weight: .semibold))
-                    .frame(width: 22, height: SidebarLayout.rowHeight).contentShape(.rect)
-                    .help("New Workflow in “\(session.name)”")
-                    .accessibilityIdentifier("sessionNewWorkflow-\(session.id)")
+                Button(action: newWorkflow) {
+                    Label("New Workflow in \(session.name)", systemImage: "plus")
+                        .labelStyle(.iconOnly).font(.system(size: 10, weight: .semibold))
+                        .frame(width: 28, height: SidebarLayout.rowHeight).contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .help("New Workflow in “\(session.name)”")
+                .accessibilityIdentifier("sessionNewWorkflow-\(session.id)")
             }
             Menu {
                 actions

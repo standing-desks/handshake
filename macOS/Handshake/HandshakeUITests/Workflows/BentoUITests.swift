@@ -7,6 +7,7 @@ extension HandshakeUITests {
         let folder = try makeTestFolder(prefix: "HandshakeBentoUITests")
         let app = try makeApp(lastOpenFolder: folder)
         app.launch()
+        defer { app.terminate() }
         XCTAssertTrue(app.buttons["workflowTab-1"].waitForExistence(timeout: 10), app.debugDescription)
         resizeWindow(app.windows.firstMatch, to: CGSize(width: 1100, height: 760))
         setSidebar(open: false, in: app)
@@ -41,7 +42,6 @@ extension HandshakeUITests {
         for processID in shells.processIDs {
             XCTAssertTrue(processEnds(processID), "Closing the workflow left agent \(processID) running")
         }
-        app.terminate()
     }
 
     @MainActor

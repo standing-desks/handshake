@@ -43,9 +43,10 @@ pub use harness::models::{HarnessModel, HarnessModels, ModelListError, ModelList
 pub use harness::{HarnessError, HarnessId};
 pub use store::StoreError;
 pub use terminal::{
-    MAX_TRANSCRIPT_READ_BYTES, TerminalChunk, TerminalError, TerminalExit, TerminalId,
-    TerminalSize, TerminalState, TerminalStatus, TranscriptError, TranscriptPage, TranscriptRead,
-    TranscriptRequest, TranscriptSize,
+    DisplayCacheOperation, DisplayCacheRequest, MAX_DISPLAY_PAGE_BYTES, MAX_TRANSCRIPT_READ_BYTES,
+    TerminalChunk, TerminalError, TerminalExit, TerminalId, TerminalSize, TerminalState,
+    TerminalStatus, TranscriptError, TranscriptPage, TranscriptRead, TranscriptRequest,
+    TranscriptSize,
 };
 
 pub use workflow::{

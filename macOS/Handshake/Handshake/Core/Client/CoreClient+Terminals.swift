@@ -18,6 +18,10 @@ extension CoreClient {
         guard terminalStatus(for: terminalID) == .running else { throw CoreFailure.terminalNotRunning }
         try await transport.resizeTerminal(terminalID: terminalID, size: size)
     }
+    func terminalDisplayCache(terminalID: UInt64, operation: CoreDisplayCacheOperation) async throws -> Data? {
+        try await transport.terminalDisplayCache(terminalID: terminalID, operation: operation)
+    }
+
     func terminalTranscript(terminalID: UInt64, offset: UInt64, limit: UInt32) async throws -> CoreTranscriptPage? {
         try await transport.terminalTranscript(terminalID: terminalID, offset: offset, limit: limit)
     }

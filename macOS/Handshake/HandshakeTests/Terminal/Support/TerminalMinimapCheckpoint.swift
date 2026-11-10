@@ -1,5 +1,7 @@
 import SwiftTerm
 
+@testable import Handshake
+
 /// Freeze the live row identities and their text at the exact byte offset being replayed. Output
 /// may continue while disk reads await; matching against its later screen would lose valid anchors.
 @MainActor

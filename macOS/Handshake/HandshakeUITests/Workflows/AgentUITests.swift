@@ -42,7 +42,48 @@ extension HandshakeUITests {
         waitForFile(folder.appending(path: "agent-input"), containing: "follow-up", in: app)
     }
 
-    private func writeTraceAgent(in folder: URL) throws {
+    @MainActor
+    func testHistoryHeavyAgentTabsPreserveScrollAndAcceptInputAfterSwitching() throws {
+        let folder = try makeFolder()
+        try writeTraceAgent(in: folder, historyLines: 8_000)
+        let app = try makeApp(lastOpenFolder: folder)
+        defer { app.terminate() }
+        app.launchEnvironment["SHELL"] = "/bin/sh"
+        app.launchEnvironment["HANDSHAKE_HARNESS_PATH"] = "\(folder.path)/bin:/bin:/usr/bin"
+        app.launch()
+        XCTAssertTrue(app.buttons["workflowTab-1"].waitForExistence(timeout: 10))
+        element("workflowChoice-Terminal", in: app).click()
+        app.typeText("mkdir bin; printf '#!/bin/sh\\n' > bin/claude; cat stub.txt >> bin/claude; chmod +x bin/claude\r")
+        let installed = expectation(
+            for: NSPredicate { _, _ in
+                FileManager.default.isExecutableFile(atPath: folder.appending(path: "bin/claude").path)
+            }, evaluatedWith: nil)
+        wait(for: [installed], timeout: 10)
+        app.buttons["newWorkflow"].click()
+        chooseHarness("claudeCode", displayName: "Claude Code", in: app)
+        resizeWindow(app.windows.firstMatch, to: CGSize(width: 1000, height: 800))
+        waitForFile(folder.appending(path: "agent-ready"), containing: "1", in: app)
+        let map = element("terminalMinimap", in: app)
+        map.hover()
+        let marker = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'minimapStep-'")).firstMatch
+        XCTAssertTrue(marker.waitForExistence(timeout: 10), app.debugDescription)
+        marker.click()
+        XCTAssertTrue(app.buttons["minimapReturnToLive"].waitForExistence(timeout: 10))
+        for _ in 0..<3 {
+            app.buttons["workflowTab-1"].click()
+            app.buttons["workflowTab-2"].click()
+            XCTAssertTrue(app.buttons["minimapReturnToLive"].waitForExistence(timeout: 2))
+            XCTAssertFalse(app.textViews["terminalHistoryText"].exists)
+        }
+        app.buttons["minimapReturnToLive"].click()
+        app.typeText("after-switch\r")
+        waitForFile(folder.appending(path: "agent-input"), containing: "after-switch", in: app)
+        app.buttons["workflowTab-1"].click()
+        app.typeText("echo responsive > shell-after-switch\r")
+        waitForFile(folder.appending(path: "shell-after-switch"), containing: "responsive", in: app)
+    }
+
+    private func writeTraceAgent(in folder: URL, historyLines: Int = 120) throws {
         try #"""
         case "$1" in --list-models|--help) exit 0 ;; esac
         while [ "$#" -gt 0 ]; do
@@ -56,7 +97,7 @@ extension HandshakeUITests {
         printf '%s' '{"hook_event_name":"UserPromptSubmit","session_id":"fixture","prompt":"Check output"}' \
             | /bin/sh -c "$prompt_hook"
         i=0
-        while [ "$i" -lt 120 ]; do printf 'response-%s\n' "$i"; i=$((i+1)); done
+        while [ "$i" -lt \#(historyLines) ]; do printf 'response-%s\n' "$i"; i=$((i+1)); done
         printf '%s' '{"hook_event_name":"Stop","session_id":"fixture","last_assistant_message":"Checked."}' \
             | /bin/sh -c "$stop_hook"
         printf '%s\n' "$CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN" > agent-ready

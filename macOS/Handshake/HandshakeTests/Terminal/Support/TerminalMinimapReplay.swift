@@ -1,6 +1,8 @@
 import Foundation
 import SwiftTerm
 
+@testable import Handshake
+
 /// Resolve trace byte boundaries through the same ANSI/resize replay as Traces' output viewer.
 /// Device replies remain confined to the replay emulator and never reach the live shell.
 @MainActor

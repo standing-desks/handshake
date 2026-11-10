@@ -542,7 +542,7 @@ impl Storage {
     }
 }
 
-fn private_file() -> OpenOptions {
+pub(super) fn private_file() -> OpenOptions {
     let mut options = OpenOptions::new();
     #[cfg(unix)]
     {

@@ -22,6 +22,13 @@ TESTS_DIR := $(OUT)/tests/build
 # Tests run from these build products without the project, so CI can build once and test on other machines.
 TEST_PRODUCTS := $(TESTS_DIR)/Build/Products
 TEST_ARCHIVE := $(OUT)/tests/products.tar.gz
+APP_TEST_ARGS ?= -only-testing:HandshakeTests
+# Bound each UI test, including a blocked native automation call. Xcode records timeout diagnostics.
+# Xcode rounds allowances to whole minutes; use multiples of 60 when overriding.
+UI_TEST_TIMEOUT_SECONDS ?= 300
+UI_TIMEOUT_ARGS = -test-timeouts-enabled YES \
+	-default-test-execution-time-allowance $(UI_TEST_TIMEOUT_SECONDS) \
+	-maximum-test-execution-time-allowance $(UI_TEST_TIMEOUT_SECONDS)
 TEST_RUN = xcodebuild test-without-building -xctestrun "$(TEST_PRODUCTS)"/*.xctestrun \
 	-destination 'platform=macOS,arch=arm64' -derivedDataPath "$(TESTS_DIR)"
 SITE_DIR := $(OUT)/docs/site
@@ -37,102 +44,26 @@ TEST_ENV := TEST_RUNNER_HANDSHAKE_PREFERENCES_SUITE=com.twineproject.Twine.tests
 # PREBUILT=1 runs a target without its prerequisites. CI uses it to run tests from unpacked test products.
 needs = $(if $(PREBUILT),,$(1))
 
-# Tests outside this list are retired from default runs, but remain available with ONLY or ALL=1.
-# Add a test here to re-enable it in local and CI default runs.
-UI_DEFAULT_TESTS := testFirstLaunchShowsStartPage \
-	testWorkflowAssistantCreatesAppliesUndoesAndSavesFromLeftPanel \
-	testWorkflowAssistantFlagAndStopKeepTheCurrentCanvas \
-	testBrowserCLIOpensLocalFilesWithoutLeavingTheTerminal \
-	testBrowserCLIControlsNativePageAndUserCanTakeOver \
-	testBrowserCLINestedDocumentsAndRichInteractions \
-	testBrowserControlFlagGatesAgentInstructionsAndRevokesLiveCommands \
-	testBrowserControlFlagGatesClaudeMCPAndRevokesLiveCommands \
-	testKeepAwakeSharesWindowsStopsOnQuitAndRelaunchesOff \
-	testKeepAwakeRecoversChildFailureAndReleasesAfterForceQuit \
-	testBrowserTabsShareRenamePinMoveReopenAndRestore \
-	testBrowserZoomRetainsPageAndKeepsCornerLinksInteractive \
-	testBrowserNavigationValidationPopupAndContextualClose \
-	testPDFImageAndVideoPreviewsShareFileTabControls \
-	testManagedTabsKeepCreateButtonBesideTabsAndReachableDuringOverflow \
-	testTabCreationButtonsMatchTabsAcrossAppearancesAndZoom \
-	testManagedTabsValidateCancelAndResetNamesAndHandleEmptySearch \
-	testManagedTabsHideTopLevelRunningAndExitIndicators \
-	testManagedFileTabsDisambiguateSearchPinAndReopen \
-	testTabManagementIsStandardAndIgnoresRetiredSettings \
-	testTabSwitcherSupportsKeyboardSelection \
-	testManagedTabsRenameReorderPinNavigateAndReopenWithoutRestarting \
-	testManagedTabsKeepSplitNeighborAndRestoreFilesAfterQuit \
-	testManagedTabsConfirmBeforeStoppingARunningAgent \
-	testExperimentalFeatureControlsMemorySharingImmediatelyAndPersists \
-	testExperimentalSettingsMigrateLegacyImportsOnceAndPreserveOptIn \
-	testMemoryHeaderSharingControlsRemainIndependentAndPersist \
-	testMemoryHeaderOpensSettingsWhenPolicySaveFails \
-	testHandshakeMemoriesRemainUsableAtMaximumZoom \
-	testSidebarDefaultsClosedAndRemembersVisibilityAfterRelaunch \
-	testGitFileTreeShowsPrimaryCheckoutChangesAcrossRepositories \
-	testGitFileTreeRefreshesConflictsAndUnavailableRepositories \
-	testFileMenuCanOpenWindowsAndFoldersAfterClosingLastWindow \
-	testSettingsPopupLoadsSavesAndProtectsUnsavedChanges \
-	testSavingSettingsReflowsExistingTerminalsInAllFolderWindows \
-	testSidebarToolbarInFullScreenInDarkAppearance \
-	testZoomIsSharedByNewWindowsAndRememberedAfterRelaunch \
-	testZoomReflowsTerminalAndScalesEditorPopoverAndSheet \
-	testZoomBoundsKeepSplitDraggingAndSmallWindowsUsable \
-	testZoomedWebPreviewsKeepLocalLinksInteractive \
-	testHTMLPreviewFillsViewportAtEveryZoomLevel \
-	testRelaunchOpensLastFolderAndReturnsToStartPage \
-	testFolderWindowsKeepShellsAndCommandsIndependent \
-	testOpeningAnOpenFolderFocusesItsWindowIncludingSymlinks \
-	testRelaunchRestoresAllFolderWindowsAndLeavesClosedFoldersClosed \
-	testClosingAnUnavailableRestoredFolderKeepsItClosedOnRelaunch \
-	testSessionsOwnTabsAndRestoreFreshShellsAfterRelaunch \
-	testSidebarTabsNestUnderSessionsMoveWithUndoAndSwitchLayouts \
-	testMinimizedSidebarRailPeeksAndDocks \
-	testQuitStopsShellAndDescendant \
-	testTerminalRunsLibraryInjectionAndDebugger \
-	testTerminalRenderingRemainsUsableAcrossZoomAndResize \
-	testShellAgentPresentationPreservesShellAndReturnsAfterExit \
-	testWorkflowTraceUsesPromptInsteadOfGraphAndSurvivesRelaunch \
-	testSingleAgentStartsInteractivelyTakesInputAndCancels \
-	testSingleAgentUsesHarnessDefaultsAndRemembersYoloMode \
-	testKiroLaunchesRecordsTracesAndResumesEachConversation \
-	testClaudeMinimapDotsSelectTheirTraceAndScrollToThePrompt \
-	testTimelineInspectorShowsNestedCallsFiltersAndSurvivesRelaunch \
-	testNativeHistoryShowsModelSummaryFullDetailsAndStoragePinAfterRelaunch \
-	testTraceViewModesPreserveSelectionAndCollapsedState \
-	testLegacyTraceEventsKeepLoadedPagesWhenThePanelRefreshes \
-	testAgentReceivesTerminalColors \
-	testForceQuitPreservesAgentOutputAndCanResumeItsSession \
-	testAdversarialHarnessSelectionUserCompletionReviewLoopAndTraces \
-	testWorkflowDesignerKeyboardEntryValidationAndBuiltinCopy \
-	testDecisionNodesSwitchFromAgentsAndRouteThroughSharedDragConnectors \
-	testDecisionValidationReturnsToAnOffscreenNodeRepeatedly \
-	testAlwaysDecisionOutputsAndZoomButtonHitAreas \
-	testChoiceOptionsMapToAgentsAndEdgeMenuIncludesAlways \
-	testEdgeChoicesCreateCancelAndMoveThroughUnassignedConnections \
-	testSavedWorkflowHoverDeleteRequiresConfirmation \
-	testBentoPanesKeepEachShellAndMoveTheKeyboardBetweenThem \
+# Representative native UI journeys; detailed subsystem cases remain available with ONLY or ALL=1.
+# Keep this small: core and app unit tests cover state, permutations, and failure combinations.
+UI_DEFAULT_TESTS := testKeepAwakeMenuWorksOnOpeningScreenAndSharesToolbarState \
+	testTabCreationButtonsMatchTabsAcrossScrollbarsAndZoom \
 	testTerminalSplitsResizeKeepTheirNeighborAndRestoreOutput \
+	testSingleAgentStartsInteractivelyTakesInputAndCancels \
+	testBentoPanesKeepEachShellAndMoveTheKeyboardBetweenThem \
+	testTimelineInspectorShowsNestedCallsFiltersAndSurvivesRelaunch \
+	testManagedTabsRenameReorderPinNavigateAndReopenWithoutRestarting \
+	testCollapsedSidebarExpandsOnHoverAndPreservesTabs \
+	testFolderWindowsKeepShellsAndCommandsIndependent \
+	testBrowserNavigationValidationPopupAndContextualClose \
+	testSettingsPopupLoadsSavesAndProtectsUnsavedChanges \
+	testWorkflowAssistantCreatesAppliesUndoesAndSavesFromLeftPanel \
 	testFileEditingUndoSaveAndConflictChoices \
-	testAutosaveSettingsApplyToOpenTabsAndCommandSSavesExplicitly \
-	testFileTreeContextMenusTargetClickedRowsAndPreserveEdits \
-	testSwiftSyntaxHighlightingPreservesUnicodeCRLFEditingAndUndo \
-	testSyntaxLanguageOverridesStayWithTheirFileTabs \
-	testHTMLSyntaxHighlightingPreservesSourceEditingAndCSSDetection \
-	testMarkdownPreviewSourceSaveReloadAndLocalLinks \
+	testSidebarTabsNestUnderSessionsMoveWithUndoAndSwitchLayouts \
 	testMemoryDockReadRefreshAndLeaveSourcesUnchanged \
-	testHandshakeMemoriesAutomaticallyShareBothDirectionsAndSurviveRelaunch \
-	testHandshakeMemoriesPublishNewFilesWhileBothProfilesAreActive \
-	testRunningAgentRefreshesSharedMemoryAtNextPromptWithoutRestart \
-	testMemoryCorrectionReachesRunningAgentUnderPressureAndSurvivesRelaunch \
-	testMemoryCorrectionPreservesDraftWhenSelectedMemoryChanges \
-	testMemoryDockClaudeScopesNarrowNavigationAndHiddenTerminal \
-	testMemoryDockOtherWorkspacesRememberNavigationAcrossRelaunch \
-	testMemoryDockArrowNavigationKeepsFocusAfterRendering \
-	testCodexMemoryMarkdownRenderingLinksEditingAndConflict \
-	testClaudeMemoryMarkdownRenderingLinksEditingAndConflict \
-	testSQLiteMemoryMarkdownRendersWithoutAnEditAction \
-	testClearedTraceOpensSavedInputAndOutputWithoutAScrollbackWarning
+	testBrowserCLIControlsNativePageAndUserCanTakeOver \
+	testHistoryHeavyAgentTabsPreserveScrollAndAcceptInputAfterSwitching \
+	testGitFileTreeShowsPrimaryCheckoutChangesAcrossRepositories
 UI_VISUAL_TESTS := testFolderWindowInDarkAppearance \
 	testDraftAndFooterAtMinimumWindowSizeInDarkAppearance \
 	testTracesInDarkAppearance testCoordinatorGraphInDarkAppearance \
@@ -140,7 +71,7 @@ UI_VISUAL_TESTS := testFolderWindowInDarkAppearance \
 # SHARD=n/N runs every Nth default test, starting at the nth, so CI can split the list across machines.
 UI_SHARD_TESTS = $(shell printf '%s\n' $(UI_DEFAULT_TESTS) | \
 	awk -v shard='$(SHARD)' 'BEGIN { split(shard, part, "/") } part[2] > 0 && NR % part[2] == part[1] % part[2]')
-# RETRIES=n reruns each failed UI test up to n more times. CI uses RETRIES=1.
+# RETRIES=n opts into rerunning failed UI tests. CI deliberately runs without retries.
 UI_RETRY_ARGS = $(if $(filter-out 0,$(RETRIES)),-retry-tests-on-failure -test-iterations $(shell expr $(RETRIES) + 1))
 UI_TEST_ARGS := $(if $(strip $(ONLY)),\
 	$(addprefix -only-testing:HandshakeUITests/HandshakeUITests/,$(ONLY)),\
@@ -225,15 +156,15 @@ test-app: $(call needs,build-tests) ## Run the app's unit tests
 	TEST_RUNNER_CLAUDE_CONFIG_DIR="$$handshake_test_data/native/claude" \
 	TEST_RUNNER_HANDSHAKE_DATA_DIRECTORY="$$handshake_test_data" \
 	TEST_RUNNER_XDG_CONFIG_HOME="$$handshake_test_data/config" $(TEST_ENV) \
-		$(TEST_RUN) -only-testing:HandshakeTests
+		$(TEST_RUN) $(APP_TEST_ARGS)
 
 .PHONY: check-app
 check-app: lint-app test-app ## Lint and unit-test the app
 
 .PHONY: ui-test
-ui-test: $(call needs,build-tests) ## Run UI tests (ONLY="testA testB", ALL=1 or SHARD=n/N; RETRIES=n)
+ui-test: $(call needs,build-tests) ## Run UI tests (ONLY="testA testB", ALL=1 or SHARD=n/N; UI_TEST_TIMEOUT_SECONDS=300)
 	@test -n "$(strip $(UI_TEST_ARGS))" || { echo 'usage: make ui-test [ONLY="testA testB" | ALL=1 | SHARD=n/N]' >&2; exit 2; }
-	TEST_RUNNER_HANDSHAKE_TEST_GIT="$$(xcrun --find git)" $(TEST_ENV) $(TEST_RUN) $(UI_TEST_ARGS) $(UI_RETRY_ARGS)
+	TEST_RUNNER_HANDSHAKE_TEST_GIT="$$(xcrun --find git)" $(TEST_ENV) $(TEST_RUN) $(UI_TEST_ARGS) $(UI_TIMEOUT_ARGS) $(UI_RETRY_ARGS)
 
 .PHONY: ui-test-visual
 ui-test-visual: ## Run the visual UI tests

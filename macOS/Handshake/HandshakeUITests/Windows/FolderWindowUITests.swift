@@ -208,9 +208,9 @@ extension HandshakeUITests {
 
     @MainActor
     func resizeWindow(_ window: XCUIElement, to size: CGSize) {
-        // Keep a tall restored window's bottom resize edge on-screen.
+        // Keep a tall restored window's bottom resize edge on-screen. Drag above toolbar controls.
         let titleBar = window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0))
-            .withOffset(CGVector(dx: 0, dy: 20))
+            .withOffset(CGVector(dx: 0, dy: 6))
         let positionTarget = titleBar.withOffset(CGVector(dx: 0, dy: 30 - window.frame.minY))
         // Avoid clicking a toolbar control when the window is already at the target position.
         if abs(window.frame.minY - 30) > 2 {
