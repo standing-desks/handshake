@@ -12,6 +12,8 @@ use crate::process::signal_process_group;
 use crate::process::signal_session;
 
 const SUPERVISOR_POLL_INTERVAL: Duration = Duration::from_millis(10);
+// Newly spawned children can take longer to acknowledge SIGSTOP under startup load.
+const STOP_ACK_TIMEOUT: Duration = Duration::from_secs(2);
 
 type ExitResult = Result<TerminalExit, String>;
 pub(super) type SharedChild = Arc<Mutex<ChildProcess>>;
@@ -232,7 +234,7 @@ pub(super) fn force_stop_harness_children(
                 return Err(error);
             }
             stopped.push((pid, identity.started));
-            let deadline = std::time::Instant::now() + Duration::from_millis(250);
+            let deadline = std::time::Instant::now() + STOP_ACK_TIMEOUT;
             let mut verified = false;
             while let Some(current) = native_process(pid)? {
                 if current.started != identity.started {

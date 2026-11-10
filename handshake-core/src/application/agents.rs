@@ -1182,17 +1182,23 @@ mod tests {
                 }
             );
             assert!(!span.is_live);
+            let events = second.trace_events(span.span_id, None, 10).unwrap().events;
             assert_eq!(
-                second
-                    .trace_events(span.span_id, None, 10)
-                    .unwrap()
-                    .events
-                    .len(),
-                if expected == WorkflowStatus::Cancelled {
-                    3
-                } else {
-                    2
-                }
+                events
+                    .iter()
+                    .filter(|event| event.kind == crate::TraceEventKind::ProcessStarted)
+                    .count(),
+                1
+            );
+            let ending = if expected == WorkflowStatus::Exited {
+                crate::TraceEventKind::ProcessExited
+            } else {
+                crate::TraceEventKind::ProcessStopped
+            };
+            // A pending launch can stop without ever producing a native exit callback.
+            assert_eq!(
+                events.iter().filter(|event| event.kind == ending).count(),
+                1
             );
             assert!(
                 restored
