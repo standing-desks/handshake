@@ -3548,7 +3548,16 @@ os.execvp('pi', ['pi', '--append-system-prompt', instructions, '--', prompt])
     }
 
     fn change_agents_disconnected(app: &Application, id: WorkflowId, agents_disconnected: bool) {
-        let workflow = app.snapshot().unwrap().workflows.workflows[0].clone();
+        // Read the UI's current state without polling and accepting queued completions first.
+        let workflow = app
+            .lock_inner()
+            .unwrap()
+            .workflows
+            .workflows
+            .iter()
+            .find(|workflow| workflow.workflow_id == id)
+            .unwrap()
+            .clone();
         let run = workflow.run.as_ref().unwrap();
         accepted(
             app,
