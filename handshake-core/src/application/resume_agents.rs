@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use super::{Application, ApplicationError};
 use crate::event::{CommandResult, EventKind, StateEvent};
-use crate::harness::{launch::LaunchOptions, resume};
+use crate::harness::resume;
 use crate::{TerminalId, TerminalSize, TerminalStatus, Workflow, WorkflowKind, WorkflowStatus};
 
 pub(super) const RESTORED_SIZE: TerminalSize = TerminalSize {
@@ -16,6 +16,235 @@ pub(super) const RESTORED_SIZE: TerminalSize = TerminalSize {
 };
 
 impl Application {
+    pub(super) fn retire_completed_harness_hooks(
+        &self,
+        workflow: &Workflow,
+    ) -> Result<(), ApplicationError> {
+        let mut recordings = self
+            .harness_steps
+            .lock()
+            .map_err(|_| ApplicationError::Poisoned)?;
+        for terminal in workflow
+            .terminal_history
+            .iter()
+            .map(|entry| entry.terminal_id)
+            .chain(workflow.terminal_ids())
+        {
+            if !self.terminals.is_harness_running(terminal) {
+                recordings.remove(&terminal);
+            }
+        }
+        Ok(())
+    }
+
+    pub(super) fn recorded_agent_session(
+        store: &crate::store::Store,
+        workflow: &Workflow,
+        agent: Option<crate::AgentId>,
+        terminal: TerminalId,
+    ) -> Result<Option<String>, ApplicationError> {
+        if let Some(session) = store.harness_session(terminal)? {
+            return Ok(Some(session));
+        }
+        for previous in workflow
+            .terminal_history
+            .iter()
+            .rev()
+            .filter(|entry| entry.agent_id == agent)
+        {
+            if let Some(session) = store.harness_session(previous.terminal_id)? {
+                return Ok(Some(session));
+            }
+        }
+        Ok(None)
+    }
+
+    #[expect(
+        clippy::too_many_lines,
+        reason = "recovery validates identity before choosing shell restart or exact resume"
+    )]
+    pub(super) fn recover_agent(
+        &self,
+        workflow_id: crate::WorkflowId,
+        agent_id: Option<crate::AgentId>,
+        requested: Option<&str>,
+        shell_only: bool,
+    ) -> Result<super::CommandDisposition, ApplicationError> {
+        let (saved, folder, previous, harness) = {
+            let inner = self.lock_inner()?;
+            let Some(workflow) = inner
+                .workflows
+                .workflows
+                .iter()
+                .find(|workflow| workflow.workflow_id == workflow_id)
+            else {
+                return Ok(super::workflows::reject(
+                    "workflowNotFound",
+                    "The workflow is no longer open.",
+                ));
+            };
+            if workflow.kind == WorkflowKind::Agents && agent_id.is_none() {
+                return Ok(super::workflows::reject(
+                    "agentRequired",
+                    "Choose the agent whose shell or conversation should recover.",
+                ));
+            }
+            let tab =
+                agent_id.and_then(|id| workflow.agents.iter().find(|agent| agent.agent_id == id));
+            if agent_id.is_some() && tab.is_none() {
+                return Ok(super::workflows::reject(
+                    "agentNotFound",
+                    "The agent is no longer open.",
+                ));
+            }
+            let terminal = tab.map_or(workflow.terminal_id, |agent| agent.terminal_id);
+            let harness = agent_id
+                .and_then(|id| {
+                    workflow
+                        .run
+                        .as_ref()?
+                        .agents
+                        .iter()
+                        .find(|agent| agent.agent_id == id.0)
+                        .map(|agent| agent.harness)
+                })
+                .or(workflow.harness);
+            if harness == Some(crate::HarnessId::Nouli) {
+                return Ok(super::workflows::reject(
+                    "notInteractive",
+                    "Decision roles use their decision controls rather than a terminal.",
+                ));
+            }
+            let folder = inner
+                .workflows
+                .sessions
+                .iter()
+                .find(|session| session.session_id == workflow.session_id)
+                .ok_or(ApplicationError::Poisoned)?
+                .folder
+                .clone();
+            (workflow.clone(), folder, terminal, harness)
+        };
+        self.terminals.poll_program_exits();
+        if self.terminals.is_harness_running(previous) {
+            return Ok(super::workflows::reject(
+                "agentAlreadyRunning",
+                "This agent is already running.",
+            ));
+        }
+        if shell_only {
+            if self.terminals.is_running(previous) {
+                return Ok(super::CommandDisposition::Accepted);
+            }
+            let reserved = self.terminals.reserve_terminal()?;
+            let terminal = self.start_terminal(reserved, &folder, RESTORED_SIZE, true)?;
+            let mut inner = self.lock_inner()?;
+            let index = inner
+                .workflows
+                .workflows
+                .iter()
+                .position(|workflow| workflow.workflow_id == workflow_id)
+                .ok_or(ApplicationError::Poisoned)?;
+            let mut workflow = inner.workflows.workflows[index].clone();
+            if let Some(id) = agent_id {
+                workflow
+                    .agents
+                    .iter_mut()
+                    .find(|agent| agent.agent_id == id)
+                    .expect("validated agent")
+                    .terminal_id = terminal;
+            } else {
+                workflow.terminal_id = terminal;
+            }
+            if previous.value() != 0 {
+                workflow.terminal_history.push(crate::WorkflowTerminal {
+                    terminal_id: previous,
+                    agent_id,
+                });
+            }
+            if matches!(workflow.kind, WorkflowKind::Terminal | WorkflowKind::Draft)
+                || (workflow.kind == WorkflowKind::Agents && workflow.run.is_none())
+            {
+                workflow.status = WorkflowStatus::Running;
+                workflow.ended_at = None;
+            }
+            workflow.restored = true;
+            inner.terminals.insert(terminal, TerminalStatus::Running);
+            if workflow.run.is_some() {
+                inner.publish_run_best_effort(index, workflow)?;
+            } else {
+                if let Err(error) = inner.folders.store().remember_terminals(&workflow) {
+                    tracing::warn!(%error, "could not persist the recovered shell; keeping its pane usable");
+                }
+                inner.workflows.workflows[index] = workflow.clone();
+                inner
+                    .events
+                    .append(EventKind::State(StateEvent::WorkflowChanged(workflow)))?;
+            }
+            return Ok(super::CommandDisposition::Accepted);
+        }
+        let session = requested
+            .filter(|value| !value.trim().is_empty())
+            .map(str::to_owned)
+            .or(Self::recorded_agent_session(
+                self.lock_inner()?.folders.store(),
+                &saved,
+                agent_id,
+                previous,
+            )?);
+        let Some(session) = session else {
+            return Ok(super::workflows::reject(
+                "sessionUnavailable",
+                "No exact conversation was recorded. Enter its session ID to resume; the shell remains available.",
+            ));
+        };
+        let Some(harness) = harness else {
+            return Ok(super::workflows::reject(
+                "harnessUnavailable",
+                "This pane has no recorded agent harness.",
+            ));
+        };
+        if resume::arguments(harness, &session).is_none() {
+            return Ok(super::workflows::reject(
+                "invalidSession",
+                "Enter a valid exact conversation ID or absolute session file path.",
+            ));
+        }
+        self.harness_steps
+            .lock()
+            .map_err(|_| ApplicationError::Poisoned)?
+            .remove(&previous);
+        if let Some(id) = agent_id {
+            if !self
+                .run_processes
+                .lock()
+                .map_err(|_| ApplicationError::Poisoned)?
+                .contains_key(&workflow_id)
+            {
+                self.resume_workflow_run(&saved, &folder)?;
+            }
+            let located = self.locate_harness(harness.definition())?;
+            {
+                let mut processes = self
+                    .run_processes
+                    .lock()
+                    .map_err(|_| ApplicationError::Poisoned)?;
+                let Some(processes) = processes.get_mut(&workflow_id) else {
+                    return Ok(super::workflows::reject(
+                        "agentResumeUnavailable",
+                        "Couldn't prepare this conversation.",
+                    ));
+                };
+                processes.harnesses.insert(harness, located);
+                processes.resumed_sessions.insert(id, session);
+            }
+            self.launch_private_conversations(workflow_id)?;
+        } else {
+            self.resume_single_agent(&saved, &folder, Some(&session))?;
+        }
+        Ok(super::CommandDisposition::Accepted)
+    }
+
     pub(super) fn resume_agent(
         &self,
         request_id: super::RequestId,
@@ -37,7 +266,7 @@ impl Application {
                 ));
             };
             if workflow.kind != WorkflowKind::SingleAgent
-                || workflow.status == WorkflowStatus::Running
+                || self.terminals.is_harness_running(workflow.terminal_id)
             {
                 return Ok(super::workflows::reject(
                     "agentNotStopped",
@@ -119,43 +348,62 @@ impl Application {
         let Some(harness) = saved.harness else {
             return Ok(());
         };
-        let session = requested.map(str::to_owned).or(self
-            .lock_inner()?
-            .folders
-            .store()
-            .harness_session(saved.terminal_id)?);
+        let session = requested
+            .map(str::to_owned)
+            .or(Self::recorded_agent_session(
+                self.lock_inner()?.folders.store(),
+                saved,
+                None,
+                saved.terminal_id,
+            )?);
         let Some(session) = session else {
             return Ok(());
         };
         let Some(resume_args) = resume::arguments(harness, &session) else {
             return Ok(());
         };
+        self.retire_completed_harness_hooks(saved)?;
         let located = self.locate_harness(harness.definition())?;
         let history = self
             .lock_inner()?
             .folders
             .store()
             .terminal_history(saved.workflow_id)?;
-        let reserved = self.terminals.reserve_terminal()?;
+        let reserved = if self.terminals.is_running(saved.terminal_id) {
+            saved.terminal_id
+        } else {
+            self.terminals.reserve_terminal()?
+        };
         if harness == crate::HarnessId::Kiro && !self.terminals.is_running(saved.terminal_id) {
             self.harness_steps
                 .lock()
                 .map_err(|_| ApplicationError::Poisoned)?
                 .remove(&saved.terminal_id);
         }
-        let (mut arguments, hooks) = match self.harness_arguments(
-            harness,
-            reserved,
-            LaunchOptions::default(),
-            "",
-            Some(&session),
-        ) {
-            Ok(prepared) => prepared,
-            Err(error) => {
-                let _ = self.terminals.cancel_reserved_terminal(reserved);
-                return Err(crate::StoreError::TracePayload(error).into());
-            }
-        };
+        let saved_options = self
+            .lock_inner()?
+            .folders
+            .store()
+            .agent_options(saved.workflow_id)?;
+        let options = saved_options
+            .as_ref()
+            .and_then(|options| {
+                crate::harness::launch::validate_options(
+                    harness,
+                    options.model.as_deref(),
+                    options.effort.as_deref(),
+                    options.yolo,
+                )
+            })
+            .unwrap_or_default();
+        let (mut arguments, hooks) =
+            match self.harness_arguments(harness, reserved, options, "", Some(&session)) {
+                Ok(prepared) => prepared,
+                Err(error) => {
+                    let _ = self.terminals.cancel_reserved_terminal(reserved);
+                    return Err(crate::StoreError::TracePayload(error).into());
+                }
+            };
         let (memory_environment, memory_lease) =
             match self.resume_memory_environment(harness, folder, &session) {
                 Ok(values) => values,
@@ -191,7 +439,7 @@ impl Application {
         }
         arguments.extend(resume_args);
         let mut inner = self.lock_inner()?;
-        let id = self.terminals.start_program(
+        let id = self.terminals.start_managed_program(
             reserved,
             folder,
             &located.program,
@@ -208,11 +456,15 @@ impl Application {
                 .collect::<Vec<_>>(),
             RESTORED_SIZE,
             Arc::new(self.memory_exit_callback(memory_lease)),
+            Arc::new(self.exit_callback()),
         )?;
         let mut workflow = saved.clone();
         workflow.restored = true;
         workflow.archived = false;
-        workflow.terminal_history = history;
+        workflow.terminal_history = history
+            .into_iter()
+            .filter(|entry| entry.terminal_id != id)
+            .collect();
         workflow.terminal_id = id;
         workflow.status = WorkflowStatus::Running;
         workflow.started_at = crate::workflow::timestamp();
@@ -226,10 +478,13 @@ impl Application {
         );
         if let Err(error) = recorded {
             drop(inner);
-            let _ = self.terminals.close(id);
+            if id != saved.terminal_id {
+                let _ = self.terminals.close(id);
+            }
             return Err(error);
         }
-        let retire_previous = inner.terminals.remove(&saved.terminal_id).is_some();
+        let retire_previous =
+            id != saved.terminal_id && inner.terminals.remove(&saved.terminal_id).is_some();
         inner.terminals.insert(id, TerminalStatus::Running);
         if let Some(current) = inner
             .workflows
@@ -371,17 +626,116 @@ while IFS= read -r line; do printf 'INPUT:%s\n' "$line"; done
     }
 
     #[test]
+    fn explicit_resume_updates_the_exact_handle_in_a_reused_shell_without_hooks() {
+        let folder = tempfile::tempdir().unwrap();
+        let bin = tempfile::tempdir().unwrap();
+        let app = fixture(folder.path(), bin.path());
+        let original = start(&app, folder.path(), HarnessId::Codex);
+        output(&app, original.terminal_id, "READY");
+        app.lock_inner()
+            .unwrap()
+            .folders
+            .store()
+            .remember_harness_session(original.terminal_id, "conversation-a")
+            .unwrap();
+        for (round, requested) in [Some("conversation-b".to_owned()), None]
+            .into_iter()
+            .enumerate()
+        {
+            accepted(
+                &app,
+                Command::ForceStopAgent {
+                    workflow_id: original.workflow_id,
+                },
+            );
+            accepted(
+                &app,
+                Command::RecoverAgent {
+                    workflow_id: original.workflow_id,
+                    agent_id: None,
+                    session: requested,
+                    shell_only: false,
+                },
+            );
+            assert_eq!(
+                workflow(&app, original.workflow_id).terminal_id,
+                original.terminal_id
+            );
+            let marker = format!("ready-for-next-round-{round}");
+            app.write_terminal_input(original.terminal_id, format!("{marker}\r").as_bytes())
+                .unwrap();
+            output(&app, original.terminal_id, &format!("INPUT:{marker}"));
+            assert_eq!(
+                app.lock_inner()
+                    .unwrap()
+                    .folders
+                    .store()
+                    .harness_session(original.terminal_id)
+                    .unwrap()
+                    .as_deref(),
+                Some("conversation-b")
+            );
+        }
+        app.write_terminal_input(original.terminal_id, b"still interactive\r")
+            .unwrap();
+        output(&app, original.terminal_id, "INPUT:still interactive");
+    }
+
+    #[test]
+    fn restart_shell_then_resume_uses_the_recorded_conversation_in_the_same_pane() {
+        let folder = tempfile::tempdir().unwrap();
+        let bin = tempfile::tempdir().unwrap();
+        let app = fixture(folder.path(), bin.path());
+        let original = start(&app, folder.path(), HarnessId::Codex);
+        app.lock_inner()
+            .unwrap()
+            .folders
+            .store()
+            .remember_harness_session(original.terminal_id, "exact-conversation")
+            .unwrap();
+        app.terminals.terminate(original.terminal_id).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while workflow(&app, original.workflow_id).status == WorkflowStatus::Running {
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        accepted(
+            &app,
+            Command::RecoverAgent {
+                workflow_id: original.workflow_id,
+                agent_id: None,
+                session: None,
+                shell_only: true,
+            },
+        );
+        let shell = workflow(&app, original.workflow_id).terminal_id;
+        assert_ne!(shell, original.terminal_id);
+        accepted(
+            &app,
+            Command::RecoverAgent {
+                workflow_id: original.workflow_id,
+                agent_id: None,
+                session: None,
+                shell_only: false,
+            },
+        );
+        assert_eq!(workflow(&app, original.workflow_id).terminal_id, shell);
+        let text = output(&app, shell, "READY");
+        assert!(text.contains("exact-conversation"), "{text}");
+    }
+
+    #[test]
     fn failed_resume_keeps_the_old_handle_and_success_retires_the_previous_terminal() {
         let folder = tempfile::tempdir().unwrap();
         let bin = tempfile::tempdir().unwrap();
         let app = fixture(folder.path(), bin.path());
         let original = start(&app, folder.path(), HarnessId::Codex);
-        accepted(
-            &app,
-            Command::CancelAgent {
-                workflow_id: original.workflow_id,
-            },
-        );
+        app.terminals.terminate(original.terminal_id).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while workflow(&app, original.workflow_id).status == WorkflowStatus::Running {
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(10));
+        }
         let old_history = app
             .lock_inner()
             .unwrap()
@@ -406,7 +760,7 @@ while IFS= read -r line; do printf 'INPUT:%s\n' "$line"; done
         ));
         assert_eq!(
             workflow(&app, original.workflow_id).status,
-            WorkflowStatus::Cancelled
+            WorkflowStatus::Interrupted
         );
         assert_eq!(
             app.lock_inner()
@@ -518,7 +872,10 @@ while IFS= read -r line; do printf 'INPUT:%s\n' "$line"; done
                 path: folder.path().to_owned(),
             },
         );
-        assert_eq!(workflow(&app, original.workflow_id).terminal_ids(), []);
+        assert!(
+            app.terminals
+                .is_running(workflow(&app, original.workflow_id).terminal_id)
+        );
         let invalid = app
             .handle_command(
                 RequestId(2),

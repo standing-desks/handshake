@@ -4,6 +4,7 @@ import SwiftUI
 struct ResumeAgentButton: View {
     @Environment(CoreClient.self) private var client
     let workflow: CoreWorkflow
+    var agentID: UInt64?
     @State private var isPresented = false
     @State private var session = ""
     @State private var isResuming = false
@@ -12,15 +13,15 @@ struct ResumeAgentButton: View {
     private var usesFile: Bool { workflow.harness == .piAgent || workflow.harness == .omp }
 
     var body: some View {
-        Button("Resume Session…") { isPresented = true }
+        Button("Resume agent…", systemImage: "arrow.clockwise") { isPresented = true }
             .accessibilityIdentifier("resumeAgentSession")
             .sheet(isPresented: $isPresented) {
                 VStack(alignment: .leading, spacing: 16) {
                     Text("Resume \(workflow.name)").font(.headline)
                     Text(
                         usesFile
-                            ? "Enter the absolute path to this agent's saved session file."
-                            : "Enter the session ID from the harness's conversation history."
+                            ? "Leave blank to resume the recorded conversation, or enter its exact session file path."
+                            : "Leave blank to resume the recorded conversation, or enter its exact session ID."
                     )
                     .foregroundStyle(.secondary)
                     TextField(usesFile ? "Session file path" : "Session ID", text: $session)
@@ -33,7 +34,7 @@ struct ResumeAgentButton: View {
                             .disabled(isResuming)
                         Button(isResuming ? "Resuming…" : "Resume") { isResuming = true }
                             .keyboardShortcut(.defaultAction)
-                            .disabled(isResuming || session.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            .disabled(isResuming)
                     }
                 }
                 .padding(24).frame(width: 420)
@@ -41,7 +42,12 @@ struct ResumeAgentButton: View {
                 .task(id: isResuming) {
                     guard isResuming else { return }
                     do {
-                        try await client.resumeAgent(workflowID: workflow.id, session: session)
+                        let receipt = try await client.send(
+                            .recoverAgent(workflowID: workflow.id, agentID: agentID, session: session, shellOnly: false)
+                        )
+                        if let error = receipt.error {
+                            throw CoreFailure.commandRejected(code: error.code, message: error.message)
+                        }
                         isPresented = false
                     } catch { failure = error.localizedDescription }
                     isResuming = false

@@ -130,11 +130,16 @@ impl Store {
         }
         if let Some(anchor) = &new.anchor {
             transaction.execute(
-                "INSERT OR IGNORE INTO workflow_terminals (terminal_id, workflow_id, harness_session) VALUES (?1, ?2, ?3)",
+                "INSERT INTO workflow_terminals (terminal_id, workflow_id, harness_session) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(terminal_id) DO UPDATE SET harness_session=COALESCE(excluded.harness_session,workflow_terminals.harness_session)",
                 params![sql_integer(anchor.terminal_id.value())?, sql_integer(new.workflow_id.0)?, session],
             )?;
         }
         let span_id = insert_span(&transaction, new)?;
+        transaction.execute(
+            "UPDATE trace_spans SET harness_session=?2 WHERE id=?1",
+            params![sql_integer(span_id.0)?, session],
+        )?;
         transaction.commit()?;
         Ok(span_id)
     }
@@ -604,7 +609,7 @@ fn read_kind(row: &Row<'_>, index: usize) -> rusqlite::Result<TraceEventKind> {
     }
 }
 
-const fn status_name(status: TraceSpanStatus) -> &'static str {
+pub(super) const fn status_name(status: TraceSpanStatus) -> &'static str {
     match status {
         TraceSpanStatus::Running => "running",
         // The work_span column distinguishes completion from legacy process exit on disk.

@@ -146,10 +146,7 @@ mod tests {
         store.execute_test_sql("DROP TRIGGER reject_recovery");
         store.recover_interrupted_work().unwrap();
         let stored = store.workflows(Path::new("/folder")).unwrap();
-        assert_eq!(
-            stored[0].run.as_ref().unwrap().status,
-            RunStatus::Interrupted
-        );
+        assert_eq!(stored[0].run.as_ref().unwrap().status, RunStatus::Paused);
         assert_eq!(
             stored[0].run.as_ref().unwrap().agents[0].status,
             crate::RunAgentStatus::Interrupted

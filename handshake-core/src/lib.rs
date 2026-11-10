@@ -26,12 +26,12 @@ mod workflow_type;
 pub use workflow_assistant::{WorkflowChatMessage, WorkflowDraft};
 pub use workflow_run::{
     Assignment, CompletionSignal, Decision, GraphOutput, GraphRun, RoleLaunch, RunAgent,
-    RunAgentStatus, RunError, RunStatus, WorkflowRun, WorkflowTrace,
+    RunAgentStatus, RunError, RunStatus, WorkOutcome, WorkOutcomeKind, WorkflowRun, WorkflowTrace,
 };
 
 pub use application::{
     Application, ApplicationError, ApplicationState, Command, CommandDisposition, CommandReceipt,
-    RequestId, Snapshot,
+    RequestId, Snapshot, WorkflowInputContext,
 };
 pub use event::{CommandResult, Event, EventError, EventKind, StateEvent};
 pub use files::{

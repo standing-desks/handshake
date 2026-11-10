@@ -195,7 +195,7 @@ mod tests {
         let cancelled = launch(&app, &folder);
         command(
             &app,
-            Command::CancelWorkflowRun {
+            Command::ForceStopWorkflowAgents {
                 workflow_id: cancelled,
             },
         );
@@ -247,6 +247,10 @@ mod tests {
         }
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "subprocess verification keeps saved proofs and their recovery assertions together"
+    )]
     fn verify(data: &Path) {
         let proof: Proof =
             serde_json::from_slice(&std::fs::read(data.join("ready.json")).unwrap()).unwrap();
@@ -257,22 +261,42 @@ mod tests {
             WorkflowStatus::Interrupted
         );
         let active = workflow(&app, WorkflowId(proof.active));
-        assert_eq!(active.status, WorkflowStatus::Interrupted);
-        assert_eq!(active.terminal_ids(), []);
+        assert_eq!(active.status, WorkflowStatus::Running);
+        assert!(
+            active
+                .terminal_ids()
+                .iter()
+                .all(|terminal| app.terminals.is_running(*terminal))
+        );
         assert_ne!(active.agents[0].terminal_id.value(), 0);
-        assert_eq!(active.agents[1].terminal_id.value(), 0);
+        assert_ne!(active.agents[1].terminal_id.value(), 0);
         let run = active.run.unwrap();
-        assert_eq!(run.status, RunStatus::Interrupted);
+        assert_eq!(run.status, RunStatus::Idle);
+        assert_eq!(
+            run.last_outcome.as_ref().unwrap().kind,
+            crate::WorkOutcomeKind::Interrupted
+        );
         assert_eq!(run.agents[0].status, RunAgentStatus::Interrupted);
         assert_eq!(run.agents[1].status, RunAgentStatus::Waiting);
         for (id, previous) in &proof.ended {
-            assert_eq!(
-                workflow(&app, WorkflowId(*id)).run.as_deref(),
-                Some(previous)
-            );
+            let recovered = workflow(&app, WorkflowId(*id));
+            let run = recovered.run.as_ref().unwrap();
+            assert_eq!(run.work_completed(), previous.work_completed());
+            assert_eq!(run.completions, previous.completions);
         }
         for (id, previous) in &proof.ended_history {
-            assert_eq!(&history(&app, WorkflowId(*id)), previous);
+            let recovered = history(&app, WorkflowId(*id));
+            assert_eq!(recovered["lanes"], previous["lanes"]);
+            let spans = recovered["spans"].as_array().unwrap();
+            for old in previous["spans"].as_array().unwrap() {
+                let new = spans.iter().find(|span| span["id"] == old["id"]).unwrap();
+                for key in ["lane", "title", "start", "terminal"] {
+                    assert_eq!(new[key], old[key]);
+                }
+                for event in old["events"].as_array().unwrap() {
+                    assert!(new["events"].as_array().unwrap().contains(event));
+                }
+            }
         }
         for (id, terminal, bytes, previous) in &proof.history {
             let TranscriptRead::Output(page) = app
@@ -321,7 +345,7 @@ mod tests {
                 .as_ref()
                 .unwrap()
                 .status,
-            RunStatus::Interrupted
+            RunStatus::Paused
         );
         drop(inner);
         let revisions = app.snapshot().unwrap().traces;

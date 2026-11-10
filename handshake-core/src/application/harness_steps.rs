@@ -9,6 +9,7 @@ use crate::{HarnessId, TerminalId, TraceAnchor, WorkflowId};
 pub(super) struct HarnessRecording {
     workflow_id: WorkflowId,
     single_agent: bool,
+    invocation_span: Option<crate::TraceSpanId>,
     active: bool,
     inbox: StepInbox,
     pending: VecDeque<ObservedStep>,
@@ -58,9 +59,10 @@ impl HarnessRecording {
                 .session_observed_at
                 .is_none_or(|time| item.received_at > time)
         {
-            store.remember_harness_session(
+            store.bind_harness_session(
                 terminal,
                 item.step.session_id.as_deref().expect("has session"),
+                self.invocation_span,
             )?;
             self.session_observed_at = Some(item.received_at);
             self.has_session_start = has_start;
@@ -103,7 +105,11 @@ impl HarnessRecording {
             }
             if (self.single_agent
                 && (!self.active
-                    || !store.has_harness_turn(terminal_id, step.turn_id.as_deref())?))
+                    || !store.has_harness_turn(
+                        terminal_id,
+                        step.turn_id.as_deref(),
+                        self.invocation_span,
+                    )?))
                 || (!self.single_agent
                     && step
                         .turn_id
@@ -247,6 +253,7 @@ impl Application {
         single_agent: bool,
         inbox: StepInbox,
     ) -> Result<(), ApplicationError> {
+        let invocation_span = self.lock_inner()?.trace_spans.get(&terminal_id).copied();
         let mut recordings = self
             .harness_steps
             .lock()
@@ -256,6 +263,7 @@ impl Application {
             HarnessRecording {
                 workflow_id,
                 single_agent,
+                invocation_span,
                 active: !single_agent,
                 inbox,
                 pending: VecDeque::new(),
@@ -295,6 +303,7 @@ impl Application {
             .map_err(|_| ApplicationError::Poisoned)?;
         let mut inner = self.lock_inner()?;
         let mut activations = Vec::new();
+        let mut responses = Vec::new();
         let mut maintenance = false;
         for (&terminal_id, recording) in recordings.iter_mut() {
             if !inner
@@ -349,6 +358,7 @@ impl Application {
                     crate::store::HarnessStepContext {
                         workflow_id: recording.workflow_id,
                         single_agent: recording.single_agent,
+                        invocation_span: recording.invocation_span,
                         activate: recording.single_agent && !recording.active,
                         span: item
                             .step
@@ -362,12 +372,50 @@ impl Application {
                     &anchor,
                 ) {
                     Ok(span) => {
+                        if item.step.kind == StepKind::Responded
+                            && !recording.single_agent
+                            && span.is_some_and(|span| {
+                                inner.trace_spans.get(&terminal_id) == Some(&span)
+                            })
+                            && let Some(index) =
+                                inner.workflows.workflows.iter().position(|workflow| {
+                                    workflow.workflow_id == recording.workflow_id
+                                })
+                        {
+                            let mut workflow = inner.workflows.workflows[index].clone();
+                            let agent = workflow
+                                .agents
+                                .iter()
+                                .find(|agent| agent.terminal_id == terminal_id)
+                                .map(|agent| agent.agent_id.0);
+                            if let (Some(run), Some(agent)) = (&mut workflow.run, agent)
+                                && run.status == crate::RunStatus::Running
+                                && !run.agents_disconnected
+                                && run
+                                    .active_agents()
+                                    .iter()
+                                    .any(|active| active.agent_id == agent)
+                                && !run.completions.contains_key(&agent)
+                            {
+                                run.message = Some("An agent finished responding without reporting its result. Ask it to report using its Handshake command, or send a fresh message.".into());
+                                inner.publish_run_best_effort(index, workflow)?;
+                            }
+                        }
+                        if item.step.kind == StepKind::Responded
+                            && let Some(started) = item
+                                .step
+                                .turn_id
+                                .as_ref()
+                                .and_then(|turn| recording.turns.received_at.get(turn))
+                        {
+                            responses.push((terminal_id, *started));
+                        }
                         maintenance |= item
                             .step
                             .activity
                             .as_ref()
                             .is_some_and(|a| a.detail_path.is_some());
-                        if !recording.single_agent {
+                        {
                             if item.step.kind == StepKind::Prompt && item.step.turn_id.is_none() {
                                 recording.turns.unidentified = true;
                             }
@@ -446,8 +494,7 @@ impl Application {
                         }
                         // Mark a turn recorded only after its task state is durable. A failed
                         // save leaves this hook eligible for adoption when polling retries it.
-                        if !recording.single_agent
-                            && item.step.kind == StepKind::Prompt
+                        if item.step.kind == StepKind::Prompt
                             && let (Some(turn), Some(span)) = (&item.step.turn_id, span)
                             && !recording.turns.spans.contains_key(turn)
                         {
@@ -516,7 +563,8 @@ impl Application {
             if recording.pending.is_empty() {
                 recording.pending.extend(recording.inbox.take(256));
             }
-            if inner.terminals.get(&terminal_id) != Some(&crate::TerminalStatus::Running)
+            if !self.terminals.is_harness_running(terminal_id)
+                || inner.terminals.get(&terminal_id) != Some(&crate::TerminalStatus::Running)
                 || !inner
                     .workflows
                     .workflows
@@ -560,6 +608,9 @@ impl Application {
         }
         for (workflow, agent, generation, ready, received_at) in activations {
             self.activate_workflow_completion(workflow, agent, generation, ready, received_at)?;
+        }
+        for (terminal, started) in responses {
+            self.deliver_deferred_handoffs(terminal, started)?;
         }
         Ok(())
     }
@@ -776,7 +827,7 @@ exec '{}' "$@"
             &json!({"hook_event_name":"UserPromptSubmit","prompt_id":"fresh","prompt":"Wrong replay"}),
         );
         assert_eq!(workflow(&app, id).run.unwrap().prompt, "Fresh task");
-        accepted(&app, Command::CancelWorkflowRun { workflow_id: id });
+        accepted(&app, Command::ForceStopWorkflowAgents { workflow_id: id });
     }
 
     fn start_adversarial(app: &Application, id: WorkflowId) {
@@ -1071,7 +1122,7 @@ exec '{}' "$@"
         assert_eq!(page.spans.len(), 2);
         assert_eq!(page.spans[0].title, "Fix the tests");
         assert_eq!(page.spans[0].status, TraceSpanStatus::Running);
-        accepted(&app, Command::CancelAgent { workflow_id: id });
+        accepted(&app, Command::ForceStopAgent { workflow_id: id });
         assert_eq!(
             std::fs::read_to_string(settings).unwrap(),
             r#"{"extensions":["./existing.js"]}"#
@@ -1107,11 +1158,11 @@ exec '{}' "$@"
         app.write_terminal_input(terminal, b"still interactive\n")
             .unwrap();
         wait_for_output(&app, terminal, b"OUTPUT:still interactive");
-        accepted(&app, Command::CancelAgent { workflow_id: id });
+        accepted(&app, Command::ForceStopAgent { workflow_id: id });
         let page = trace_for_terminal(&app, id, terminal);
         assert_eq!(page.spans.len(), 1);
         assert_eq!(page.spans[0].span_id, original);
-        assert_eq!(page.spans[0].status, TraceSpanStatus::Stopped);
+        assert_ne!(page.spans[0].status, TraceSpanStatus::Running);
     }
 
     #[test]
@@ -1554,38 +1605,39 @@ exec '{}' "$@"
     }
 
     #[test]
-    fn a_prompt_delayed_past_cancellation_stays_stopped_after_reopening() {
+    fn force_stopping_an_idle_conversation_stops_the_harness_and_releases_hooks() {
         let folder = tempfile::tempdir().unwrap();
         let bin = tempfile::tempdir().unwrap();
-        let data = tempfile::tempdir().unwrap();
-        let mut app = Application::with_config(data.path(), Config::default()).unwrap();
+        let mut app = Application::with_event_capacity(4096).unwrap();
         let id = setup(&mut app, folder.path(), bin.path());
         let terminal = start_single(&app, id);
-        accepted(&app, Command::CancelAgent { workflow_id: id });
         send_hook(
             &app,
             terminal,
-            &json!({"hook_event_name":"UserPromptSubmit","prompt_id":"late","prompt":"Delayed prompt"}),
+            &json!({"hook_event_name":"UserPromptSubmit","prompt_id":"idle","prompt":"Ready"}),
         );
-        let page = app.workflow_trace(id, None, 20).unwrap();
-        assert_eq!(page.spans[0].status, TraceSpanStatus::Stopped);
-        assert!(page.spans[0].ended_at.is_some());
-        assert!(!page.spans[0].is_live);
-        // Once the bounded grace elapses, a stopped process no longer owns an inbox or worker.
-        app.harness_steps
-            .lock()
-            .unwrap()
-            .get_mut(&terminal)
-            .unwrap()
-            .ended_since = Some(Instant::now().checked_sub(HOOK_GRACE).unwrap());
-        app.poll_harness_steps().unwrap();
+        send_hook(
+            &app,
+            terminal,
+            &json!({"hook_event_name":"Stop","prompt_id":"idle"}),
+        );
+        assert!(app.harness_turn_finished(terminal).unwrap());
+        accepted(&app, Command::ForceStopAgent { workflow_id: id });
+        accepted(&app, Command::ForceStopAgent { workflow_id: id });
+        assert!(app.terminals.is_running(terminal));
         assert!(!app.harness_steps.lock().unwrap().contains_key(&terminal));
-        drop(app);
-        let reopened = Application::with_config(data.path(), Config::default()).unwrap();
-        assert_eq!(
-            reopened.workflow_trace(id, None, 20).unwrap().spans[0].status,
-            TraceSpanStatus::Stopped
-        );
+        let shell = workflow(&app, id).terminal_id;
+        assert_eq!(shell, terminal);
+        app.write_terminal_input(shell, b"touch shell-usable\r")
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !folder.path().join("shell-usable").exists() {
+            assert!(
+                Instant::now() < deadline,
+                "recovered shell did not accept input"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
     }
 
     #[test]
@@ -1668,7 +1720,13 @@ exec '{}' "$@"
         );
         app.lock_inner().unwrap().folders.store().execute_test_sql(
             "CREATE TRIGGER reject_hooks BEFORE INSERT ON trace_events BEGIN SELECT RAISE(FAIL, 'temporary hook recording failure'); END;");
-        accepted(&app, Command::CancelAgent { workflow_id: id });
+        let observation = app.terminals.observe(terminal).unwrap();
+        assert!(
+            app.lock_inner()
+                .unwrap()
+                .stop_trace(terminal, observation, "Injected stop")
+                .is_err()
+        );
         assert!(
             app.lock_inner()
                 .unwrap()
@@ -1934,7 +1992,7 @@ exec '{}' "$@"
         assert_eq!(page.spans.len(), 2);
         assert_eq!(page.spans[0].title, "Follow up");
         assert_eq!(page.spans[0].status, TraceSpanStatus::Running);
-        accepted(&app, Command::CancelAgent { workflow_id: id });
+        accepted(&app, Command::ForceStopAgent { workflow_id: id });
         let events = app.trace_events(span_id, None, 20).unwrap().events;
         assert_eq!(std::fs::read(user_config).unwrap(), before);
         drop(app);
@@ -2048,11 +2106,11 @@ exec '{}' "$@"
         app.write_terminal_input(terminal, b"still interactive\n")
             .unwrap();
         wait_for_output(&app, terminal, b"OUTPUT:still interactive");
-        accepted(&app, Command::CancelAgent { workflow_id: id });
+        accepted(&app, Command::ForceStopAgent { workflow_id: id });
         let page = trace_for_terminal(&app, id, terminal);
         assert_eq!(page.spans.len(), 1);
         assert_eq!(page.spans[0].span_id, original);
-        assert_eq!(page.spans[0].status, TraceSpanStatus::Stopped);
+        assert_ne!(page.spans[0].status, TraceSpanStatus::Running);
     }
 
     #[test]
@@ -2381,7 +2439,7 @@ exec '{}' "$@"
             terminal,
             &json!({"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"make test"}}),
         );
-        accepted(&app, Command::CancelAgent { workflow_id: id });
+        accepted(&app, Command::ForceStopAgent { workflow_id: id });
         let page = app.workflow_trace(id, None, 20).unwrap();
         assert_eq!(page.spans[0].title, "Run tests");
         assert_eq!(page.spans[0].status, TraceSpanStatus::Stopped);

@@ -1,4 +1,3 @@
-use std::ffi::{OsStr, OsString};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
@@ -46,35 +45,28 @@ pub(super) fn default_shell_command(
     Ok((command, integration))
 }
 
-/// The user's login shell.
-pub(crate) fn login_shell() -> PathBuf {
-    PathBuf::from(CommandBuilder::new_default_prog().get_shell())
-}
-
-/// `program` with `arguments`, started in `working_directory` through the launcher handshake.
-pub(super) fn program_launcher_command(
-    working_directory: &Path,
-    program: &Path,
-    arguments: &[OsString],
-    path: &OsStr,
-    environment: &[(&str, &str)],
+/// Unsupported shell integrations still return to the user's shell after a managed invocation.
+pub(super) fn managed_fallback_command(
+    folder: &Path,
+    shell: &Path,
+    wrapper: &Path,
 ) -> CommandBuilder {
     let mut command = CommandBuilder::new("/bin/sh");
     command.args([
         "-c",
-        "if cd \"$1\" 2>/dev/null; then printf '\\036'; shift; exec \"$@\"; else printf '\\037'; exit 125; fi",
-        "handshake-program-launcher",
+        "cd \"$1\" || exit 125; printf '\\036'; \"$3\"; exec \"$2\" -l",
+        "handshake-managed-launcher",
     ]);
-    command.arg(working_directory.as_os_str());
-    command.arg(program.as_os_str());
-    command.args(arguments);
-    command.env("PATH", path);
+    command.arg(folder);
+    command.arg(shell);
+    command.arg(wrapper);
     command.env("TERM", "xterm-256color");
-    command.env("COLORTERM", "truecolor");
-    for (name, value) in environment {
-        command.env(name, value);
-    }
     command
+}
+
+/// The user's login shell.
+pub(crate) fn login_shell() -> PathBuf {
+    PathBuf::from(CommandBuilder::new_default_prog().get_shell())
 }
 
 #[cfg(test)]

@@ -36,7 +36,8 @@ struct AppZoomLayoutTests {
                 NativeTerminal(view: terminal)
                     .padding(kind == .agents ? Spacing.agentTerminalContent : BentoLayout.terminalPadding)
             }
-            .appZoom().environment(\.appZoom, zoom).environment(TraceTerminalNavigation()))
+            .appZoom().environment(\.appZoom, zoom).environment(TraceTerminalNavigation())
+            .environment(CoreClient(transport: RecoveryTransport(snapshot: .testReady()))))
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 520, height: height * zoom.scale),
             styleMask: [.titled], backing: .buffered, defer: false)

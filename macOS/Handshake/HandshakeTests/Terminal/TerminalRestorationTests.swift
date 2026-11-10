@@ -51,6 +51,8 @@ struct TerminalRestorationTests {
         #expect(workflow.terminalIDs == [20])
         var archived = workflow
         archived.terminalHistory = [.init(terminalID: 20, agentID: nil)]
+        #expect(archived.terminalIDs == [20], "History membership does not remove a live terminal")
+        archived.archived = true
         #expect(archived.terminalIDs.isEmpty)
     }
 

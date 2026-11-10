@@ -53,7 +53,7 @@ struct WorkflowWorkspace: View {
                 WorkspaceTabBar(
                     model: tabManagement, folder: folder, sessionID: sessionID, workflows: allWorkflows,
                     tabWorkflows: tabWorkflows, selectedRoot: selectedRoot, selection: $selection,
-                    close: closeGroup, closeFile: tabClosing.closeFile, cancel: cancelAgent,
+                    close: closeGroup, closeFile: tabClosing.closeFile, cancel: forceStopAgent,
                     create: { Task { await create() } }, reportFailure: { failureMessage = $0 })
                 if tabLayout == .top { TerminalSplitControls(split: split, isEnabled: canSplit) }
             }
@@ -129,8 +129,8 @@ struct WorkflowWorkspace: View {
             create: { Task { await create() } },
             createAgents: { roles in Task { await create(kind: .agents, roles: roles) } },
             close: isVisible ? selection.selectedID.map { id in { close(id) } } : nil,
-            cancelAgent: workflows.first(where: { isVisible && $0.id == selection.selectedID && $0.isRunningAgent })
-                .map { workflow in { cancelAgent(workflow.id) } },
+            forceStopAgent: workflows.first(where: { isVisible && $0.id == selection.selectedID && $0.isRunningAgent })
+                .map { workflow in { forceStopAgent(workflow.id) } },
             layoutMode: isVisible ? selectedWorkflow.flatMap(layoutMode(for:)) : nil,
             moveFocus: isVisible ? selectedWorkflow.flatMap(focusMover(for:)) : nil,
             splitTerminal: canSplit ? { split($0) } : nil
@@ -225,16 +225,16 @@ struct WorkflowWorkspace: View {
         }
     }
 
-    private func cancelAgent(_ id: UInt64) {
+    private func forceStopAgent(_ id: UInt64) {
         Task {
             do {
-                try await coreClient.cancelAgent(workflowID: id)
+                try await coreClient.forceStopAgent(workflowID: id)
             } catch {
-                // The agent can end on its own just as Cancel is chosen.
+                // The agent can end on its own just as Force stop is chosen.
                 if (error as? CoreFailure)?.isAgentNotRunning == true { return }
                 if !workflows.contains(where: { $0.id == id && $0.isRunningAgent }) { return }
                 failureMessage = error.localizedDescription
-                workflowLogger.error("Could not cancel agent: \(error.localizedDescription, privacy: .public)")
+                workflowLogger.error("Could not force stop agent: \(error.localizedDescription, privacy: .public)")
             }
         }
     }

@@ -272,7 +272,19 @@ const MIGRATIONS: &[&str] = &[
      ALTER TABLE workflows ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0,1))",
     // 21: Assignment titles keep their first native prompt independently of turn correlation.
     "ALTER TABLE trace_spans ADD COLUMN title_from_prompt INTEGER NOT NULL DEFAULT 0
-     CHECK(title_from_prompt IN (0,1))"
+     CHECK(title_from_prompt IN (0,1))",
+    // 22: Exact standalone conversation recovery preserves its launch settings.
+    "ALTER TABLE workflows ADD COLUMN agent_options TEXT",
+    // 23: Private harness invocations have distinct trace identities within a persistent pane.
+    "ALTER TABLE trace_spans ADD COLUMN launch_sequence INTEGER;
+     ALTER TABLE trace_spans ADD COLUMN invocation_span INTEGER;
+     ALTER TABLE trace_spans ADD COLUMN harness_session TEXT;
+     UPDATE trace_spans SET harness_session=(SELECT harness_session FROM workflow_terminals WHERE terminal_id=trace_spans.terminal_id);
+     DROP INDEX trace_harness_turn;
+     CREATE UNIQUE INDEX trace_harness_turn ON trace_spans(terminal_id, COALESCE(invocation_span,0), harness_turn_id)
+     WHERE harness_turn_id IS NOT NULL",
+
+
 ];
 
 /// How long a write waits for another connection, such as a second Handshake process, to release the

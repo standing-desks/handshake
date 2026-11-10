@@ -288,6 +288,7 @@ nonisolated enum WorkflowStageState: Equatable {
 
     static func of(_ stageID: String, in definition: CoreWorkflowType.Definition, run: CoreWorkflowRun?) -> Self {
         guard let run, let index = definition.stages.firstIndex(where: { $0.id == stageID }) else { return .idle }
+        if run.workCompleted { return .done }
         let current = definition.stages.firstIndex { $0.id == run.stageID }
         switch run.status {
         case .running:
@@ -295,7 +296,7 @@ nonisolated enum WorkflowStageState: Equatable {
             return index < current ? .done : index == current ? .current : .pending
         case .completed:
             return .done
-        case .limitReached, .cancelled, .failed, .interrupted:
+        case .idle, .paused, .limitReached, .cancelled, .failed, .interrupted:
             guard let current else { return .idle }
             return index < current ? .done : .idle
         }

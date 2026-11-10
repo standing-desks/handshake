@@ -36,7 +36,8 @@ extension HandshakeUITests {
             let start = item("workflowStart")
             XCTAssertTrue(start.waitForExistence(timeout: 10), app.debugDescription)
             start.click()
-            XCTAssertTrue(item("workflowMarkDone").waitForExistence(timeout: 20), app.debugDescription)
+            XCTAssertTrue(item("inspectWorkflowType").waitForExistence(timeout: 20), app.debugDescription)
+            XCTAssertFalse(item("workflowMarkDone").exists)
         }
         app.typeText(fixture.prompt + "\r")
         try waitForLocalPiResult(fixture, result: result, in: app)
@@ -95,7 +96,7 @@ extension HandshakeUITests {
             }
             app.typeText(followUp.prompt + "\r")
             if fixture.workflow != "Single agent" {
-                XCTAssertTrue(app.staticTexts["Completed"].waitForNonExistence(timeout: 10), app.debugDescription)
+                XCTAssertTrue(completedWorkflowTab(in: app).waitForNonExistence(timeout: 10), app.debugDescription)
             }
             try waitForLocalPiResult(
                 fixture, result: followUpResult, in: app, marker: followUp.resultContains,
@@ -144,9 +145,9 @@ extension HandshakeUITests {
                 evaluatedWith: nil)
             wait(for: [finished], timeout: fixture.timeout)
         } else {
-            // Completion must come from the actual agents' mailbox command; never click Mark done.
+            // Completion comes from the actual agents' result reports.
             XCTAssertTrue(
-                app.staticTexts["Completed"].waitForExistence(timeout: fixture.timeout), app.debugDescription)
+                completedWorkflowTab(in: app).waitForExistence(timeout: fixture.timeout), app.debugDescription)
         }
         XCTAssertTrue(FileManager.default.fileExists(atPath: result.path), app.debugDescription)
         if let marker {

@@ -293,13 +293,8 @@ impl Application {
         if run.status != RunStatus::Running {
             workflow.ended_at = Some(timestamp());
         }
-        let stopped = run.status == RunStatus::Interrupted;
-        let terminals = workflow.terminal_ids();
         inner.publish_run(index, workflow)?;
         drop(inner);
-        if stopped {
-            self.stop_run_terminals(&terminals, "Decision paused; workflow agents stopped.");
-        }
         Ok(())
     }
 
@@ -328,7 +323,7 @@ impl Application {
                 ));
             };
             if run.generation != generation
-                || run.status != RunStatus::Interrupted
+                || run.status != RunStatus::Paused
                 || run
                     .graph
                     .as_ref()
@@ -349,16 +344,45 @@ impl Application {
                     .ok_or(ApplicationError::Poisoned)?,
             )
         };
-        workflow
-            .run
-            .as_mut()
-            .expect("checked")
-            .graph
-            .as_mut()
-            .expect("checked")
-            .decision_errors
-            .clear();
-        self.resume_workflow_run(&workflow, &folder)?;
+        let run = workflow.run.as_mut().expect("checked");
+        let graph = run.graph.as_mut().expect("checked");
+        let failed = graph.decision_errors.keys().copied().collect::<Vec<_>>();
+        for agent in failed {
+            let next = graph
+                .assignment_generations
+                .get(&agent)
+                .copied()
+                .unwrap_or(run.generation)
+                .checked_add(1)
+                .ok_or(ApplicationError::Poisoned)?;
+            graph.assignment_generations.insert(agent, next);
+            graph.assigned.remove(&agent);
+            graph.ready.insert(agent);
+            run.completions.remove(&agent);
+            if let Some(agent) = run
+                .agents
+                .iter_mut()
+                .find(|current| current.agent_id == agent)
+            {
+                agent.status = RunAgentStatus::Waiting;
+            }
+        }
+        graph.decision_errors.clear();
+        run.status = RunStatus::Running;
+        run.last_outcome = None;
+        run.message = None;
+        let prepared = Self::prepare_decisions(run);
+        let mut inner = self.lock_inner()?;
+        let index = inner
+            .workflows
+            .workflows
+            .iter()
+            .position(|current| current.workflow_id == workflow_id)
+            .ok_or(ApplicationError::Poisoned)?;
+        inner.publish_run(index, workflow)?;
+        drop(inner);
+        let _ = folder;
+        self.start_decisions(workflow_id, prepared)?;
         Ok(CommandDisposition::Accepted)
     }
 }

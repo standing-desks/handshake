@@ -12,6 +12,134 @@ mod tests {
     use super::*;
 
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "compare two complete native invocation lifetimes and their saved events"
+    )]
+    fn resuming_in_the_same_terminal_preserves_prior_turns_and_process_endings() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut store = Store::open(&directory.path().join("traces.db")).unwrap();
+        let session = store
+            .create_session(std::path::Path::new("/folder"), "Work", 1)
+            .unwrap();
+        let workflow = store
+            .create_workflow(session, "Agent", crate::WorkflowKind::Terminal, &[])
+            .unwrap()
+            .0;
+        store.execute_test_sql(&format!(
+            "INSERT INTO workflow_terminals(terminal_id,workflow_id) VALUES(1,{})",
+            workflow.0
+        ));
+        let anchor = TraceAnchor {
+            terminal_id: TerminalId::from_value(1),
+            byte_offset: 0,
+            boundary_sizes: None,
+        };
+        let mut previous: Option<(crate::TraceSpan, Vec<crate::TraceEvent>)> = None;
+        for (time, title) in [(10, "First task"), (20, "Resumed task")] {
+            let fallback = store
+                .start_trace_span(&NewTraceSpan {
+                    workflow_id: workflow,
+                    lane_key: "agent",
+                    lane_name: "Agent",
+                    is_agent: true,
+                    role: Some("agent"),
+                    harness: Some("Pi"),
+                    title: "Pi",
+                    started_at: time,
+                    anchor: Some(anchor.clone()),
+                })
+                .unwrap();
+            store
+                .bind_harness_session(anchor.terminal_id, title, Some(fallback))
+                .unwrap();
+            let context = HarnessStepContext {
+                workflow_id: workflow,
+                single_agent: true,
+                invocation_span: Some(fallback),
+                activate: true,
+                span: None,
+            };
+            let mut step = HarnessStep {
+                activity: None,
+                session_id: None,
+                kind: StepKind::Prompt,
+                turn_id: Some("native-turn".into()),
+                tool_call_id: None,
+                title: title.into(),
+                detail: title.into(),
+            };
+            assert_eq!(
+                store
+                    .record_harness_step(context, &step, time + 1, &anchor)
+                    .unwrap(),
+                Some(fallback)
+            );
+            let page = store.workflow_trace(workflow, None, 20).unwrap();
+            let current = page
+                .spans
+                .iter()
+                .find(|span| span.span_id == fallback)
+                .unwrap();
+            assert_eq!(current.title, title);
+            assert_eq!(current.status, TraceSpanStatus::Running);
+            if let Some((ref prior, ref events)) = previous {
+                assert_eq!(
+                    store
+                        .history_request(prior.span_id)
+                        .unwrap()
+                        .unwrap()
+                        .session,
+                    "First task"
+                );
+
+                assert_eq!(
+                    page.spans.iter().find(|span| span.span_id == prior.span_id),
+                    Some(prior)
+                );
+                assert_eq!(
+                    &store.trace_events(prior.span_id, None, 20).unwrap().events,
+                    events
+                );
+            }
+            step.kind = StepKind::Responded;
+            store
+                .record_harness_step(
+                    HarnessStepContext {
+                        activate: false,
+                        ..context
+                    },
+                    &step,
+                    time + 2,
+                    &anchor,
+                )
+                .unwrap();
+            store
+                .record_harness_process_ending(
+                    workflow,
+                    anchor.terminal_id,
+                    &TraceEnding {
+                        observed_at: time + 3,
+                        status: TraceSpanStatus::Exited,
+                        kind: TraceEventKind::ProcessExited,
+                        message: "Harness exited",
+                        anchor: Some(anchor.clone()),
+                    },
+                )
+                .unwrap();
+            let page = store.workflow_trace(workflow, None, 20).unwrap();
+            previous = Some((
+                page.spans
+                    .iter()
+                    .find(|span| span.span_id == fallback)
+                    .unwrap()
+                    .clone(),
+                store.trace_events(fallback, None, 20).unwrap().events,
+            ));
+        }
+    }
+
+    #[test]
     fn assignment_titles_keep_the_first_prompt_across_retries_and_reopen() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("traces.db");
@@ -45,6 +173,7 @@ mod tests {
                 })
                 .unwrap();
             let context = HarnessStepContext {
+                invocation_span: None,
                 workflow_id: workflow,
                 single_agent: false,
                 activate: false,
@@ -91,6 +220,7 @@ mod tests {
 pub(crate) struct HarnessStepContext {
     pub workflow_id: WorkflowId,
     pub single_agent: bool,
+    pub invocation_span: Option<TraceSpanId>,
     pub activate: bool,
     pub span: Option<TraceSpanId>,
 }
@@ -114,12 +244,17 @@ impl Store {
         &self,
         terminal_id: TerminalId,
         turn_id: Option<&str>,
+        invocation_span: Option<TraceSpanId>,
     ) -> Result<bool, StoreError> {
         Ok(self.connection.query_row(
-            "SELECT EXISTS(SELECT 1 FROM trace_spans WHERE terminal_id = ?1 AND (?2 IS NULL OR harness_turn_id = ?2))",
-            params![sql_integer(terminal_id.value())?, turn_id], |row| row.get(0))?)
+            "SELECT EXISTS(SELECT 1 FROM trace_spans WHERE terminal_id = ?1 AND (?2 IS NULL OR harness_turn_id = ?2) AND (?3 IS NULL OR id >= ?3))",
+            params![sql_integer(terminal_id.value())?, turn_id, invocation_span.map(|id| sql_integer(id.0)).transpose()?], |row| row.get(0))?)
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "native prompt adoption and causal activity recording commit atomically"
+    )]
     pub(crate) fn record_harness_step(
         &mut self,
         context: HarnessStepContext,
@@ -130,23 +265,22 @@ impl Store {
         let HarnessStepContext {
             workflow_id,
             single_agent,
+            invocation_span,
             activate,
             span: assigned_span,
         } = context;
         let transaction = self
             .connection
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-        if activate {
-            activate_harness_trace(&transaction, anchor.terminal_id)?;
-        }
-        let correlated = super::activities::activity_span(&transaction, anchor.terminal_id, step)?;
+        let correlated = super::activities::activity_span(&transaction, anchor.terminal_id, step)?
+            .filter(|span| invocation_span.is_none_or(|start| span.0 >= start.0));
         let current: Option<TraceSpanId> = transaction
             .query_row(
                 "SELECT s.id FROM trace_spans s JOIN trace_lanes l ON l.id = s.lane_id
              WHERE l.workflow_id = ?1 AND s.terminal_id = ?2
              AND (?3 IS NULL OR s.harness_turn_id = ?3)
              AND (?4 IS NULL OR s.id = ?4)
-             AND (?5 OR s.started_at <= ?6) ORDER BY s.id DESC LIMIT 1",
+             AND (?5 OR s.started_at <= ?6) AND (?7 IS NULL OR s.id >= ?7) ORDER BY s.id DESC LIMIT 1",
                 params![
                     sql_integer(workflow_id.0)?,
                     sql_integer(anchor.terminal_id.value())?,
@@ -161,16 +295,38 @@ impl Store {
                         .transpose()?,
                     single_agent || assigned_span.is_some(),
                     sql_integer(observed_at)?,
+                    invocation_span.map(|span| sql_integer(span.0)).transpose()?,
                 ],
                 |row| Ok(TraceSpanId(super::unsigned_column(row, 0)?)),
             )
             .optional()?;
         let message = step.message();
-        let span = if single_agent
+        let span = if let Some(span) =
+            invocation_span.filter(|_| activate && single_agent && step.kind == StepKind::Prompt)
+        {
+            transaction.execute(
+                "UPDATE trace_spans SET title=?2, started_at=?3, harness_turn_id=?4, invocation_span=?1,
+                    ended_at=CASE WHEN ended_at IS NULL THEN NULL ELSE MAX(ended_at,?3) END WHERE id=?1",
+                params![
+                    sql_integer(span.0)?,
+                    step.title,
+                    sql_integer(observed_at)?,
+                    step.turn_id
+                ],
+            )?;
+            span
+        } else if single_agent
             && step.kind == StepKind::Prompt
             && current.as_ref().is_none_or(|_| step.turn_id.is_none())
         {
-            start_prompt_span(&transaction, workflow_id, step, observed_at, anchor)?
+            start_prompt_span(
+                &transaction,
+                workflow_id,
+                step,
+                observed_at,
+                anchor,
+                invocation_span,
+            )?
         } else if let Some(current) = current {
             current
         } else {
@@ -178,6 +334,15 @@ impl Store {
             // Recording can recover at the next explicit prompt.
             return Ok(None);
         };
+        transaction.execute(
+            "UPDATE trace_spans SET invocation_span=COALESCE(invocation_span,?2),
+                harness_session=COALESCE(harness_session,(SELECT harness_session FROM workflow_terminals WHERE terminal_id=?3)) WHERE id=?1",
+            params![
+                sql_integer(span.0)?,
+                invocation_span.map(|id| sql_integer(id.0)).transpose()?,
+                sql_integer(anchor.terminal_id.value())?
+            ],
+        )?;
         if !single_agent && step.kind == StepKind::Prompt && !step.title.trim().is_empty() {
             // An assignment retains its first native prompt as its title. Replayed hooks
             // and follow-up prompts must not rename the work already shown in history.
@@ -187,20 +352,14 @@ impl Store {
                 params![sql_integer(span.0)?, step.title],
             )?;
         }
-        if single_agent && step.kind == StepKind::Prompt {
-            transaction.execute(
-                "UPDATE trace_events SET span_id = ?1 WHERE workflow_id = ?2 AND terminal_id = ?3 AND span_id IS NULL",
-                params![sql_integer(span.0)?, sql_integer(workflow_id.0)?, sql_integer(anchor.terminal_id.value())?],
-            )?;
-        }
         if single_agent && step.kind == StepKind::Responded {
             // An async Stop can arrive after process exit. Its explicit completion distinguishes
             // a response from a process ending; cancellation remains stopped.
             transaction.execute(
                 "UPDATE trace_spans SET status = 'exited', work_span = 1, ended_at = MAX(started_at, ?2)
                  WHERE id = ?1 AND (status IN ('running', 'exited') OR (status = 'stopped'
-                 AND NOT EXISTS(SELECT 1 FROM trace_events WHERE terminal_id = ?3 AND kind = 'processStopped')))",
-                params![sql_integer(span.0)?, sql_integer(observed_at)?, sql_integer(anchor.terminal_id.value())?],
+                 AND NOT EXISTS(SELECT 1 FROM trace_events WHERE terminal_id = ?3 AND kind = 'processStopped' AND (?4 IS NULL OR span_id >= ?4))))",
+                params![sql_integer(span.0)?, sql_integer(observed_at)?, sql_integer(anchor.terminal_id.value())?, invocation_span.map(|span| sql_integer(span.0)).transpose()?],
             )?;
         }
         if single_agent && step.kind == StepKind::ToolStarted {
@@ -211,8 +370,8 @@ impl Store {
                  WHERE id = ?1 AND status = 'exited' AND work_span = 1
                  AND id = (SELECT id FROM trace_spans WHERE terminal_id = ?2 ORDER BY id DESC LIMIT 1)
                  AND NOT EXISTS(SELECT 1 FROM trace_events WHERE terminal_id = ?2
-                    AND kind IN ('processStopped', 'processExited', 'processFailed'))",
-                params![sql_integer(span.0)?, sql_integer(anchor.terminal_id.value())?],
+                    AND kind IN ('processStopped', 'processExited', 'processFailed') AND (?3 IS NULL OR span_id >= ?3))",
+                params![sql_integer(span.0)?, sql_integer(anchor.terminal_id.value())?, invocation_span.map(|span| sql_integer(span.0)).transpose()?],
             )?;
         }
         super::activities::record_activity(
@@ -252,28 +411,13 @@ impl Store {
     }
 }
 
-fn activate_harness_trace(
-    transaction: &rusqlite::Transaction<'_>,
-    terminal_id: TerminalId,
-) -> Result<(), StoreError> {
-    transaction.execute(
-        "UPDATE trace_events SET span_id = NULL WHERE span_id IN
-        (SELECT id FROM trace_spans WHERE terminal_id = ?1)",
-        [sql_integer(terminal_id.value())?],
-    )?;
-    transaction.execute(
-        "DELETE FROM trace_spans WHERE terminal_id = ?1",
-        [sql_integer(terminal_id.value())?],
-    )?;
-    Ok(())
-}
-
 fn start_prompt_span(
     transaction: &rusqlite::Transaction<'_>,
     workflow_id: WorkflowId,
     step: &HarnessStep,
     observed_at: u64,
     anchor: &TraceAnchor,
+    invocation_span: Option<TraceSpanId>,
 ) -> Result<TraceSpanId, StoreError> {
     let prior: Option<TraceSpanId> = transaction.query_row(
         "SELECT id FROM trace_spans WHERE terminal_id = ?1 AND status = 'running' ORDER BY id DESC LIMIT 1",
@@ -308,19 +452,23 @@ fn start_prompt_span(
         },
     )?;
     transaction.execute(
-        "UPDATE trace_spans SET harness_turn_id = ?2 WHERE id = ?1",
-        params![sql_integer(span.0)?, step.turn_id],
+        "UPDATE trace_spans SET harness_turn_id = ?2, invocation_span=?3 WHERE id = ?1",
+        params![
+            sql_integer(span.0)?,
+            step.turn_id,
+            invocation_span.map(|id| sql_integer(id.0)).transpose()?
+        ],
     )?;
     // A prompt hook can arrive after cancellation, exit, or workflow close. Replay the
     // authoritative process ending instead of leaving an impossible active response.
     transaction.execute(
         "UPDATE trace_spans SET ended_at = started_at, status = CASE
-            WHEN EXISTS(SELECT 1 FROM trace_events WHERE terminal_id = ?2 AND kind = 'processStopped') THEN 'stopped'
-            WHEN EXISTS(SELECT 1 FROM trace_events WHERE terminal_id = ?2 AND kind = 'processFailed') THEN 'failed'
+            WHEN EXISTS(SELECT 1 FROM trace_events WHERE terminal_id = ?2 AND kind = 'processStopped' AND (?3 IS NULL OR span_id >= ?3)) THEN 'stopped'
+            WHEN EXISTS(SELECT 1 FROM trace_events WHERE terminal_id = ?2 AND kind = 'processFailed' AND (?3 IS NULL OR span_id >= ?3)) THEN 'failed'
             ELSE 'exited' END
          WHERE id = ?1 AND EXISTS(SELECT 1 FROM trace_events WHERE terminal_id = ?2
-            AND kind IN ('processStopped', 'processExited', 'processFailed'))",
-        params![sql_integer(span.0)?, sql_integer(anchor.terminal_id.value())?],
+            AND kind IN ('processStopped', 'processExited', 'processFailed') AND (?3 IS NULL OR span_id >= ?3))",
+        params![sql_integer(span.0)?, sql_integer(anchor.terminal_id.value())?, invocation_span.map(|span| sql_integer(span.0)).transpose()?],
     )?;
     Ok(span)
 }
@@ -331,6 +479,15 @@ pub(super) fn insert_process_ending(
     terminal_id: TerminalId,
     ending: &TraceEnding<'_>,
 ) -> Result<(), StoreError> {
+    transaction.execute(
+        "UPDATE trace_spans SET status=CASE WHEN work_span=1 AND ?2='exited' THEN 'stopped' ELSE ?2 END, ended_at=MAX(started_at,?3)
+         WHERE terminal_id=?1 AND status='running'",
+        params![
+            sql_integer(terminal_id.value())?,
+            super::traces::status_name(ending.status),
+            sql_integer(ending.observed_at)?
+        ],
+    )?;
     transaction.execute(
         "UPDATE trace_activities SET status = 'interrupted' WHERE status = 'running'
          AND span_id IN (SELECT id FROM trace_spans WHERE terminal_id = ?1)",

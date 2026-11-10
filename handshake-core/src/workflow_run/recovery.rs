@@ -19,6 +19,32 @@ impl WorkflowRun {
                 agent.status = status;
             }
         }
+        if !matches!(
+            run.status,
+            RunStatus::Running | RunStatus::Idle | RunStatus::Paused
+        ) {
+            let kind = match run.status {
+                RunStatus::Completed => super::WorkOutcomeKind::Completed,
+                RunStatus::Cancelled => super::WorkOutcomeKind::Stopped,
+                RunStatus::Interrupted => super::WorkOutcomeKind::Interrupted,
+                RunStatus::LimitReached => super::WorkOutcomeKind::LimitReached,
+                _ => super::WorkOutcomeKind::Failed,
+            };
+            run.status = match kind {
+                super::WorkOutcomeKind::Completed | super::WorkOutcomeKind::Stopped => {
+                    RunStatus::Idle
+                }
+                _ => RunStatus::Paused,
+            };
+            if run.last_outcome.is_none() {
+                run.last_outcome = Some(super::WorkOutcome {
+                    kind,
+                    generation: run.generation,
+                    finished_at: run.traces.last().map_or(0, |trace| trace.timestamp),
+                    summary: run.message.clone().unwrap_or_default(),
+                });
+            }
+        }
         Ok(run)
     }
 
@@ -43,6 +69,7 @@ impl WorkflowRun {
                     };
                 }
                 RunStatus::Interrupted => return RunAgentStatus::Interrupted,
+                RunStatus::Idle | RunStatus::Paused => return RunAgentStatus::Waiting,
                 RunStatus::Cancelled => return RunAgentStatus::Cancelled,
                 RunStatus::Failed | RunStatus::LimitReached => return RunAgentStatus::Failed,
                 RunStatus::Completed => {}
@@ -113,18 +140,26 @@ mod tests {
     }
 
     #[test]
-    fn individual_mode_survives_storage_and_older_records_default_off() {
+    fn agents_disconnected_survives_storage_and_older_records_default_off() {
         let mut run = run();
         run.complete(1, 1, signal(Decision::Done)).unwrap();
         run.complete(2, 2, signal(Decision::Approve)).unwrap();
-        run.set_individual_mode(true, 2, 0).unwrap();
+        run.set_agents_disconnected(true, 2, 0).unwrap();
         let stored = serde_json::to_string(&run).unwrap();
         assert_eq!(WorkflowRun::from_stored_json(&stored).unwrap(), run);
+        let mut legacy = serde_json::to_value(&run).unwrap();
+        legacy.as_object_mut().unwrap().remove("agentsDisconnected");
+        legacy["individualMode"] = serde_json::json!(true);
+        assert!(
+            WorkflowRun::from_stored_json(&legacy.to_string())
+                .unwrap()
+                .agents_disconnected
+        );
         let mut old = serde_json::to_value(&run).unwrap();
-        old.as_object_mut().unwrap().remove("individualMode");
+        old.as_object_mut().unwrap().remove("agentsDisconnected");
         old.as_object_mut().unwrap().remove("modeRevision");
         let restored = WorkflowRun::from_stored_json(&old.to_string()).unwrap();
-        assert!(!restored.individual_mode);
+        assert!(!restored.agents_disconnected);
         assert_eq!(restored.mode_revision, 0);
     }
 
@@ -144,7 +179,7 @@ mod tests {
                 .all(|a| a.status == RunAgentStatus::Completed)
         );
         assert_eq!(restored.traces, run.traces);
-        assert_eq!(restored.status, RunStatus::Completed);
+        assert_eq!(restored.status, RunStatus::Idle);
         run.agents[0].status = RunAgentStatus::Exited;
         let restored =
             WorkflowRun::from_stored_json(&serde_json::to_string(&run).unwrap()).unwrap();

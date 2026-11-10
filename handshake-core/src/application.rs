@@ -69,6 +69,15 @@ const DEFAULT_TERMINAL_CAPACITY_CHUNKS: usize = 4_096;
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct RequestId(pub u64);
 
+/// Routing intent captured when user input is queued, transported alongside binary bytes.
+#[derive(Clone, Copy, Debug)]
+pub struct WorkflowInputContext {
+    pub workflow_id: WorkflowId,
+    pub agent_id: crate::AgentId,
+    pub generation: u64,
+    pub mode_revision: u64,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Command {
     Ping,
@@ -175,12 +184,18 @@ pub enum Command {
         prompt: String,
         size: TerminalSize,
     },
+    RecoverAgent {
+        workflow_id: WorkflowId,
+        agent_id: Option<crate::AgentId>,
+        session: Option<String>,
+        shell_only: bool,
+    },
     ResumeAgent {
         workflow_id: WorkflowId,
         session: String,
     },
     /// Stops a running agent, leaving its workflow open.
-    CancelAgent {
+    ForceStopAgent {
         workflow_id: WorkflowId,
     },
     /// Starts a workflow run. With an empty `prompt`, the first stage asks the user for the task
@@ -205,11 +220,11 @@ pub enum Command {
         generation: u64,
         mode_revision: u64,
     },
-    SetWorkflowIndividualMode {
+    SetWorkflowAgentsDisconnected {
         workflow_id: WorkflowId,
         generation: u64,
         mode_revision: u64,
-        individual_mode: bool,
+        agents_disconnected: bool,
     },
     SubmitWorkflowTask {
         workflow_id: WorkflowId,
@@ -225,7 +240,7 @@ pub enum Command {
         workflow_id: WorkflowId,
         generation: u64,
     },
-    CancelWorkflowRun {
+    ForceStopWorkflowAgents {
         workflow_id: WorkflowId,
     },
     StartTerminal {
@@ -306,7 +321,7 @@ pub struct Application {
     harness_path: Option<std::ffi::OsString>,
     #[cfg(test)]
     nouli_home: Option<PathBuf>,
-    run_processes: Mutex<HashMap<WorkflowId, runs::RunProcesses>>,
+    run_processes: Arc<Mutex<HashMap<WorkflowId, runs::RunProcesses>>>,
     harness_steps: Mutex<HashMap<TerminalId, harness_steps::HarnessRecording>>,
     history: Mutex<crate::harness::history::HistoryWorkers>,
 }
@@ -487,7 +502,7 @@ impl Application {
             shared_recording,
             memory_worker: None,
             files: crate::files::FileWatcher::new()?,
-            run_processes: Mutex::new(HashMap::new()),
+            run_processes: Arc::new(Mutex::new(HashMap::new())),
             harness_steps: Mutex::new(HashMap::new()),
             history: Mutex::new(
                 crate::harness::history::HistoryWorkers::new()
@@ -683,11 +698,19 @@ impl Application {
                 &prompt,
                 size,
             )?,
+            Command::RecoverAgent {
+                workflow_id,
+                agent_id,
+                session,
+                shell_only,
+            } => self.recover_agent(workflow_id, agent_id, session.as_deref(), shell_only)?,
             Command::ResumeAgent {
                 workflow_id,
                 session,
             } => self.resume_agent(request_id, workflow_id, &session)?,
-            Command::CancelAgent { workflow_id } => self.cancel_agent(request_id, workflow_id)?,
+            Command::ForceStopAgent { workflow_id } => {
+                self.force_stop_agent(request_id, workflow_id)?
+            }
             Command::StartWorkflowRun {
                 workflow_id,
                 workflow_type,
@@ -707,16 +730,16 @@ impl Application {
                 generation,
                 mode_revision,
             } => self.continue_workflow_run(workflow_id, agent_id, generation, mode_revision)?,
-            Command::SetWorkflowIndividualMode {
+            Command::SetWorkflowAgentsDisconnected {
                 workflow_id,
                 generation,
                 mode_revision,
-                individual_mode,
-            } => self.set_workflow_individual_mode(
+                agents_disconnected,
+            } => self.set_workflow_agents_disconnected(
                 workflow_id,
                 generation,
                 mode_revision,
-                individual_mode,
+                agents_disconnected,
             )?,
             Command::SubmitWorkflowTask {
                 workflow_id,
@@ -732,7 +755,9 @@ impl Application {
                 workflow_id,
                 generation,
             } => self.retry_decision(workflow_id, generation)?,
-            Command::CancelWorkflowRun { workflow_id } => self.cancel_workflow_run(workflow_id)?,
+            Command::ForceStopWorkflowAgents { workflow_id } => {
+                self.force_stop_workflow_agents(workflow_id)?
+            }
             Command::StartTerminal {
                 working_directory,
                 size,

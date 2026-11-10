@@ -48,8 +48,8 @@ extension HandshakeUITests {
         harness.click()
         app.menuItems["pi"].click()
         item("workflowStart").click()
-        XCTAssertTrue(item("workflowMarkDone").waitForExistence(timeout: 10))
-        completeRole(in: app, summary: "Draft is ready", task: "Write a short release note")
-        XCTAssertTrue(app.staticTexts["Completed"].waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(item("inspectWorkflowType").waitForExistence(timeout: 10))
+        XCTAssertFalse(item("workflowMarkDone").exists)
+        XCTAssertFalse(completedWorkflowTab(in: app).exists)
     }
 }

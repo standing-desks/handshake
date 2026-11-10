@@ -12,12 +12,14 @@ use crate::error::BridgeError;
 #[serde(rename_all = "camelCase")]
 pub(super) struct WireRun<'a> {
     generation: u64,
-    individual_mode: bool,
+    agents_disconnected: bool,
     mode_revision: u64,
     stage: &'a str,
     stage_id: &'a str,
     workflow_type: &'a handshake_core::WorkflowType,
     status: RunStatus,
+    work_completed: bool,
+    last_outcome: Option<&'a handshake_core::WorkOutcome>,
     message: Option<&'a str>,
     /// The first stage still has to report the task the user gave it.
     needs_task: bool,
@@ -32,6 +34,10 @@ pub(super) struct WireRun<'a> {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "wire compatibility preserves independent assignment and invocation fields"
+)]
 struct WireRunAgent<'a> {
     agent_id: u64,
     assignment_generation: u64,
@@ -39,6 +45,7 @@ struct WireRunAgent<'a> {
     instance: u8,
     active: bool,
     done: bool,
+    harness_running: bool,
     reviewer: bool,
     harness: handshake_core::HarnessId,
     status: handshake_core::RunAgentStatus,
@@ -79,12 +86,14 @@ impl<'a> From<&'a WorkflowRun> for WireRun<'a> {
                 .map(|g| g.decision_errors.clone())
                 .unwrap_or_default(),
             generation: run.generation,
-            individual_mode: run.individual_mode,
+            agents_disconnected: run.agents_disconnected,
             mode_revision: run.mode_revision,
             stage: run.stage_name(),
             stage_id: run.stage_id(),
             workflow_type: &run.workflow_type,
             status: run.status,
+            work_completed: run.work_completed(),
+            last_outcome: run.last_outcome.as_ref(),
             message: run.message.as_deref(),
             needs_task: run.needs_task(),
             outputs: run
@@ -103,6 +112,7 @@ impl<'a> From<&'a WorkflowRun> for WireRun<'a> {
                     instance: agent.instance,
                     active: run.status == RunStatus::Running && active.contains(&agent),
                     done: run.completions.contains_key(&agent.agent_id),
+                    harness_running: agent.harness_running,
                     reviewer: run.is_reviewer(agent.agent_id),
                     harness: agent.harness,
                     status: agent.status,
@@ -155,11 +165,11 @@ struct RawContinue {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RawIndividualMode {
+struct RawAgentsDisconnected {
     workflow_id: u64,
     generation: u64,
     mode_revision: u64,
-    individual_mode: bool,
+    agents_disconnected: bool,
 }
 
 fn decode_retry(raw: &Value) -> Result<Command, BridgeError> {
@@ -249,21 +259,21 @@ pub(super) fn decode_command(kind: &str, raw: &Value) -> Result<Command, BridgeE
                 mode_revision: raw.mode_revision,
             })
         }
-        "setWorkflowIndividualMode" => {
-            let raw: RawIndividualMode =
+        "setWorkflowAgentsDisconnected" => {
+            let raw: RawAgentsDisconnected =
                 serde_json::from_value(raw.clone()).map_err(|_| BridgeError::MalformedCommand)?;
-            Ok(Command::SetWorkflowIndividualMode {
+            Ok(Command::SetWorkflowAgentsDisconnected {
                 workflow_id: WorkflowId(raw.workflow_id),
                 generation: raw.generation,
                 mode_revision: raw.mode_revision,
-                individual_mode: raw.individual_mode,
+                agents_disconnected: raw.agents_disconnected,
             })
         }
         "retryDecision" => decode_retry(raw),
-        "cancelWorkflowRun" => raw
+        "forceStopWorkflowAgents" => raw
             .get("workflowId")
             .and_then(Value::as_u64)
-            .map(|id| Command::CancelWorkflowRun {
+            .map(|id| Command::ForceStopWorkflowAgents {
                 workflow_id: WorkflowId(id),
             })
             .ok_or(BridgeError::MalformedCommand),
@@ -276,21 +286,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn individual_mode_commands_require_an_explicit_mode_and_revision() {
-        let raw = serde_json::json!({"workflowId": 3, "generation": 5, "modeRevision": 2, "individualMode": true});
+    fn agents_disconnected_commands_require_an_explicit_mode_and_revision() {
+        let raw = serde_json::json!({"workflowId": 3, "generation": 5, "modeRevision": 2, "agentsDisconnected": true});
         assert!(matches!(
-            decode_command("setWorkflowIndividualMode", &raw).unwrap(),
-            Command::SetWorkflowIndividualMode {
+            decode_command("setWorkflowAgentsDisconnected", &raw).unwrap(),
+            Command::SetWorkflowAgentsDisconnected {
                 workflow_id: WorkflowId(3),
                 generation: 5,
                 mode_revision: 2,
-                individual_mode: true
+                agents_disconnected: true
             }
         ));
-        for field in ["individualMode", "modeRevision", "generation"] {
+        for field in ["agentsDisconnected", "modeRevision", "generation"] {
             let mut invalid = raw.clone();
             invalid.as_object_mut().unwrap().remove(field);
-            assert!(decode_command("setWorkflowIndividualMode", &invalid).is_err());
+            assert!(decode_command("setWorkflowAgentsDisconnected", &invalid).is_err());
         }
     }
 
@@ -327,7 +337,7 @@ mod tests {
         .unwrap();
         let wire = serde_json::to_value(WireRun::from(&run)).unwrap();
         assert_eq!(wire["stage"], "Work");
-        assert_eq!(wire["individualMode"], false);
+        assert_eq!(wire["agentsDisconnected"], false);
         assert_eq!(wire["modeRevision"], 0);
         assert_eq!(wire["stageId"], "review");
         assert_eq!(

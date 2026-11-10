@@ -19,3 +19,9 @@ end
 function _handshake_prompt --on-event fish_prompt
     builtin printf '\033]133;A;handshake=@TOKEN@\007'
 end
+
+if set -q HANDSHAKE_INITIAL_COMMAND
+    set -l initial $HANDSHAKE_INITIAL_COMMAND
+    set -e HANDSHAKE_INITIAL_COMMAND
+    "$initial"
+end

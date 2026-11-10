@@ -2,7 +2,7 @@ import XCTest
 
 extension HandshakeUITests {
     @MainActor
-    func testAdversarialHarnessSelectionUserCompletionReviewLoopAndTraces() throws {
+    func testAdversarialConnectionsAndExitedHarnessKeepInteractiveShells() throws {
         let app = try workflowRunApp()
         defer { app.terminate() }
         func item(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
@@ -12,8 +12,9 @@ extension HandshakeUITests {
         for role in ["implementer", "reviewer"] {
             let picker = item("roleHarness-\(role)-0")
             XCTAssertTrue(picker.waitForExistence(timeout: 10), app.debugDescription)
-            picker.click()
-            app.menuItems["pi"].click()
+            let available = expectation(
+                for: NSPredicate { _, _ in picker.value as? String == "pi" }, evaluatedWith: nil)
+            wait(for: [available], timeout: 30)
         }
         app.buttons["workflowTab-1"].click()
         app.buttons["workflowTab-2"].click()
@@ -22,103 +23,41 @@ extension HandshakeUITests {
         XCTAssertFalse(app.staticTexts["Draft"].waitForNonExistence(timeout: 2), "Typing stays out of the shell")
         XCTAssertTrue(item("workflowStart").exists)
         app.typeKey(.return, modifierFlags: [])
-        // The run opens on the implementer, which asks for the task in its terminal.
-        XCTAssertTrue(item("workflowMarkDone").waitForExistence(timeout: 10), app.debugDescription)
-        XCTAssertTrue(item("workflowIndividualMode").exists)
-        XCTAssertFalse(item("workflowIndividualMode").isEnabled)
-        XCTAssertEqual(app.buttons["agentSubtab-1"].value as? String, "Selected", app.debugDescription)
+        XCTAssertTrue(item("workflowAgentConnections").waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertFalse(item("workflowMarkDone").exists)
+        XCTAssertTrue(item("workflowAgentConnections").isEnabled)
         XCTAssertTrue(app.buttons["agentSubtab-2"].exists)
         inspectStage("implement", in: app)
-
-        completeRole(in: app, summary: "Initial implementation", task: "Build a small feature")
-        attachScreenshot(of: app, named: "Implementer after accepted completion")
-        XCTAssertTrue(app.staticTexts["Agent completed"].waitForExistence(timeout: 5), app.debugDescription)
-        inspectStage("review", in: app)
-        app.buttons["agentSubtab-2"].click()
-        XCTAssertTrue(item("workflowMarkDone").waitForExistence(timeout: 10))
-        completeRole(in: app, summary: "Fix the edge case", requestChanges: true)
-        inspectStage("implement", in: app)
+        checkAgentConnections(item("workflowAgentConnections"))
+        // The system fixture exits without reporting a result: the same pane must return to a shell.
+        let bin = try XCTUnwrap(app.launchEnvironment["HANDSHAKE_HARNESS_PATH"]?.split(separator: ":").first)
+        let folder = URL(filePath: String(bin)).deletingLastPathComponent()
+        let witness = folder.appending(path: "shell-still-usable")
         app.buttons["agentSubtab-1"].click()
-        XCTAssertTrue(item("workflowMarkDone").waitForExistence(timeout: 10))
-        // The previous reviewer remains completed in its retained, hidden pane. Check this
-        // round's new implementer terminal rather than every agent's badge.
-        completeRole(in: app, summary: "Fixed the edge case")
-        app.buttons["agentSubtab-2"].click()
-        XCTAssertTrue(item("workflowMarkDone").waitForExistence(timeout: 10))
-        completeRole(in: app, summary: "Approved")
-        XCTAssertTrue(app.staticTexts["Completed"].waitForExistence(timeout: 10), app.debugDescription)
-        checkIndividualModeToggle(item("workflowIndividualMode"))
-        XCTAssertFalse(item("workflowCancel").exists)
-        XCTAssertTrue(item("workflowResults").exists)
-        XCTAssertTrue(app.staticTexts["Agent completed"].waitForExistence(timeout: 5), app.debugDescription)
-        inspectGraphTraceFeedback(in: app)
-        inspectSavedHarnesses(in: app)
+        app.typeText("touch shell-still-usable\r")
+        let shellWorked = expectation(
+            for: NSPredicate { _, _ in
+                FileManager.default.fileExists(atPath: witness.path)
+            }, evaluatedWith: nil)
+        wait(for: [shellWorked], timeout: 10)
+        XCTAssertFalse(completedWorkflowTab(in: app).exists, "Process exit must not claim work completion")
+        XCTAssertFalse(item("workflowForceStop").exists, "No native agents remain to stop")
+        XCTAssertTrue(item("workflowAgentConnections").isEnabled)
+        attachScreenshot(of: app, named: "Workflow controls and recovered interactive shell")
+
     }
 
     @MainActor
-    private func checkIndividualModeToggle(_ individual: XCUIElement) {
+    private func checkAgentConnections(_ individual: XCUIElement) {
         XCTAssertTrue(individual.isEnabled)
         individual.click()
-        let modeOn = expectation(for: NSPredicate { _, _ in individual.value as? String == "On" }, evaluatedWith: nil)
+        let modeOn = expectation(
+            for: NSPredicate { _, _ in individual.value as? String == "Disconnected" }, evaluatedWith: nil)
         XCTAssertEqual(XCTWaiter.wait(for: [modeOn], timeout: 5), .completed)
         individual.click()
-        let modeOff = expectation(for: NSPredicate { _, _ in individual.value as? String == "Off" }, evaluatedWith: nil)
+        let modeOff = expectation(
+            for: NSPredicate { _, _ in individual.value as? String == "Connected" }, evaluatedWith: nil)
         XCTAssertEqual(XCTWaiter.wait(for: [modeOff], timeout: 5), .completed)
-    }
-
-    @MainActor
-    private func inspectSavedHarnesses(in app: XCUIApplication) {
-        func item(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
-        app.buttons["newWorkflow"].click()
-        let choices = app.scrollViews["newTabChoices"]
-        XCTAssertTrue(choices.waitForExistence(timeout: 10), app.debugDescription)
-        // The expanded Traces panel leaves the workflow types below the first visible choices.
-        choices.scroll(byDeltaX: 0, deltaY: -400)
-        let choice = item("workflowChoice-Adversarial")
-        XCTAssertTrue(choice.waitForExistence(timeout: 10), app.debugDescription)
-        choice.click()
-        for role in ["implementer", "reviewer"] {
-            let picker = item("roleHarness-\(role)-0")
-            XCTAssertTrue(picker.waitForExistence(timeout: 10), app.debugDescription)
-            XCTAssertEqual(picker.value as? String, "pi")
-        }
-        attachScreenshot(of: app, named: "Adversarial graph and saved harness choices")
-    }
-
-    @MainActor
-    private func inspectGraphTraceFeedback(in app: XCUIApplication) {
-        func item(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
-        item("tracesHeader").click()
-        let implementation = app.buttons.matching(
-            NSPredicate(
-                format: "identifier BEGINSWITH %@ AND label ENDSWITH %@",
-                "traceSpan-", "Implementer: Graph · Round 1, Completed")
-        ).firstMatch
-        XCTAssertTrue(implementation.waitForExistence(timeout: 10), app.debugDescription)
-        implementation.click()
-        let log = app.scrollViews["traceEventLog"]
-        XCTAssertTrue(log.waitForExistence(timeout: 5), app.debugDescription)
-        // The lazy log creates rows as they enter the visible area.
-        log.scroll(byDeltaX: 0, deltaY: -400)
-        let result = log.buttons.matching(
-            NSPredicate(format: "label CONTAINS %@", "Graph · Implementer → Reviewer: Initial implementation")
-        ).firstMatch
-        XCTAssertTrue(result.waitForExistence(timeout: 10), app.debugDescription)
-        let review = app.buttons.matching(
-            NSPredicate(
-                format: "identifier BEGINSWITH %@ AND label ENDSWITH %@",
-                "traceSpan-", "Reviewer: Graph · Round 1, Completed")
-        ).firstMatch
-        review.click()
-        log.scroll(byDeltaX: 0, deltaY: -400)
-        let completion = log.buttons.matching(
-            NSPredicate(format: "label CONTAINS %@", "Graph · Reviewer → Implementer: Fix the edge case")
-        ).firstMatch
-        XCTAssertTrue(completion.waitForExistence(timeout: 10), app.debugDescription)
-        let screenshot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
-        screenshot.name = "Completed Adversarial workflow and traces"
-        screenshot.lifetime = .keepAlways
-        add(screenshot)
     }
 
     @MainActor
@@ -141,27 +80,10 @@ extension HandshakeUITests {
     }
 
     @MainActor
-    func completeRole(
-        in app: XCUIApplication, summary: String, requestChanges: Bool = false, task: String? = nil
-    ) {
-        func item(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
-        item("workflowMarkDone").click()
-        XCTAssertTrue(item("completionSummary").waitForExistence(timeout: 5), app.debugDescription)
-        // Only the first stage's completion, before the task is known, asks for it.
-        XCTAssertEqual(item("completionTask").exists, task != nil, app.debugDescription)
-        if let task {
-            item("completionTask").click()
-            item("completionTask").typeText(task)
-        }
-        if requestChanges {
-            let decision = item("Request changes")
-            XCTAssertTrue(decision.waitForExistence(timeout: 5), app.debugDescription)
-            decision.click()
-        }
-        item("completionSummary").click()
-        item("completionSummary").typeText(summary)
-        item("completionSubmit").click()
-        XCTAssertTrue(item("completionSubmit").waitForNonExistence(timeout: 10), app.debugDescription)
+    func completedWorkflowTab(in app: XCUIApplication) -> XCUIElement {
+        app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@ AND value CONTAINS %@", "workflowTab-", "Done")
+        ).firstMatch
     }
 
     @MainActor
@@ -172,7 +94,7 @@ extension HandshakeUITests {
         let bin = folder.appending(path: "bin")
         try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
         // A system binary avoids macOS's restriction on executing scripts written by the
-        // sandboxed UI test runner. It exits without signaling, exercising Mark done's fallback.
+        // sandboxed UI test runner. It exits without reporting a result, exercising shell recovery.
         try FileManager.default.createSymbolicLink(
             at: bin.appending(path: "pi"),
             withDestinationURL: URL(filePath: "/usr/bin/true"))

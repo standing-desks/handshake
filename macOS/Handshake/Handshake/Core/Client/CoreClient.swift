@@ -17,16 +17,18 @@ final class CoreClient {
     private(set) var traceSnapshotGeneration: UInt64 = 0
     private(set) var lastCommandCompletion: CoreCommandCompletion?
     struct WorkflowModeChange {
-        let individualMode: Bool
+        let agentsDisconnected: Bool
         let generation: UInt64
         let modeRevision: UInt64
         let completion: Task<Void, any Error>
     }
+    var workflowInputContexts: [UInt64: CoreWorkflowInputContext] = [:]
     var workflowModeChanges: [UInt64: WorkflowModeChange] = [:]
 
     @ObservationIgnored let terminalPresentations = TerminalPresentationStore()
     let transport: any CoreTransport
     private var eventTask: Task<Void, Never>?
+    private var outputTask: Task<Void, Never>?
     private var stopTask: Task<Void, Never>?
     private var closeFolderOnStop = false
     private(set) var isStopping = false
@@ -35,7 +37,7 @@ final class CoreClient {
     private var ignoredCommandResults: Set<UInt64> = []
     private var commandWaiters: [UInt64: CheckedContinuation<CoreCommandResult, any Error>] = [:]
     var terminalChunkRouter = TerminalChunkRouter(capacityBytes: 1024 * 1024)
-    private var isFetchingTerminalChunk = false
+    var isFetchingTerminalChunk = false
 
     init(transport: any CoreTransport) {
         self.transport = transport
@@ -61,34 +63,20 @@ final class CoreClient {
                 .deleteWorkflowType, .ping, .startTerminal, .closeTerminal,
                 .createWorkflow,
                 .activateWorkflow, .reopenWorkflow, .closeWorkflow,
-                .startAgent, .resumeAgent, .cancelAgent, .createSession, .renameSession, .selectSession, .deleteSession:
+                .startAgent, .resumeAgent, .forceStopAgent, .createSession, .renameSession, .selectSession,
+                .deleteSession:
                 if commandResults.removeValue(forKey: receipt.requestID) == nil {
                     ignoredCommandResults.insert(receipt.requestID)
                 }
             case .reloadConfig, .openFolder, .restoreFolder, .closeFolder, .closeFolderIfOpen, .removeRecentFolder,
                 .nameDraftWorkflow, .renameWorkflow, .moveWorkflow,
                 .refreshGitBranch, .startWorkflowRun, .submitWorkflowTask, .chooseWorkflowResult,
-                .completeWorkflowRole, .continueWorkflowRun,
-                .setWorkflowIndividualMode, .retryDecision, .cancelWorkflowRun:
+                .continueWorkflowRun, .recoverAgent,
+                .setWorkflowAgentsDisconnected, .retryDecision, .forceStopWorkflowAgents:
                 break
             }
         }
         return receipt
-    }
-
-    func nextTerminalChunk(for terminalID: UInt64) async throws -> CoreTerminalChunk? {
-        guard runState == .running else { throw CoreFailure.notRunning }
-        if let chunk = terminalChunkRouter.dequeue(for: terminalID) {
-            return chunk
-        }
-        guard terminalChunkRouter.hasCapacity, !isFetchingTerminalChunk else { return nil }
-        isFetchingTerminalChunk = true
-        defer { isFetchingTerminalChunk = false }
-        guard let chunk = try await transport.nextTerminalChunk() else { return nil }
-        guard runState == .running, !isStopping else { throw CoreFailure.notRunning }
-        terminalChunkRouter.enqueue(chunk)
-        try Task.checkCancellation()
-        return terminalChunkRouter.dequeue(for: terminalID)
     }
 
     func sendAndAwaitCompletion(_ command: CoreCommand) async throws -> CoreCommandResult {
@@ -117,6 +105,7 @@ final class CoreClient {
             guard !Task.isCancelled else { return }
             apply(initialSnapshot)
             runState = .running
+            outputTask = Task { [weak self] in await self?.runTerminalOutputPump() }
             await runEventPump()
         } catch is CancellationError {
             return
@@ -142,14 +131,15 @@ final class CoreClient {
                 do {
                     apply(try await transport.snapshot())
                 } catch {
-                    fail(error)
-                    return
+                    coreLogger.error("Snapshot recovery failed: \(error.localizedDescription, privacy: .public)")
+                    try? await Task.sleep(for: .milliseconds(250))
                 }
             } catch is CancellationError {
                 return
             } catch {
-                fail(error)
-                return
+                coreLogger.error("Core polling failed: \(error.localizedDescription, privacy: .public)")
+                try? await Task.sleep(for: .milliseconds(250))
+                if let recovered = try? await transport.snapshot() { apply(recovered) }
             }
         }
     }
@@ -232,7 +222,7 @@ final class CoreClient {
         case .workflowDrafted, .workflowTypeValidated, .workflowTypeSaved, .workflowTypeDeleted, .pong,
             .workflowCreated,
             .workflowActivated, .workflowReopened, .workflowClosed,
-            .agentStarted, .agentCancelled,
+            .agentStarted, .agentStopped,
             .sessionCreated, .sessionRenamed, .sessionSelected, .sessionDeleted:
             break
         }
@@ -258,6 +248,8 @@ final class CoreClient {
         coreLogger.error("handshake-core failed: \(error.localizedDescription, privacy: .public)")
         runState = .failed(error.localizedDescription)
         eventTask?.cancel()
+        outputTask?.cancel()
+        outputTask = nil
         eventTask = nil
         commandResults.removeAll()
         ignoredCommandResults.removeAll()
@@ -347,20 +339,25 @@ extension CoreClient {
     private func performStop() async {
         terminalPresentations.removeAll()
         let task = eventTask
+        let output = outputTask
         task?.cancel()
-        await task?.value
+        output?.cancel()
         if closeFolderOnStop, task != nil {
             do { _ = try await transport.send(.closeFolder) } catch {
                 coreLogger.error("Window folder cleanup failed: \(error.localizedDescription, privacy: .public)")
             }
         }
         await transport.close()
+        await task?.value
+        await output?.value
         eventTask = nil
+        outputTask = nil
         snapshot = nil
         lastCommandCompletion = nil
         commandResults.removeAll()
         ignoredCommandResults.removeAll()
         terminalChunkRouter.removeAll()
+        workflowInputContexts.removeAll()
         failCommandWaiters(with: CoreFailure.notRunning)
         runState = .idle
     }

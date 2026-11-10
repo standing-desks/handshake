@@ -56,7 +56,8 @@ extension HandshakeUITests {
         let start = app.descendants(matching: .any).matching(identifier: "workflowStart").firstMatch
         XCTAssertTrue(start.waitForExistence(timeout: 10))
         start.click()
-        XCTAssertTrue(app.buttons["workflowMarkDone"].waitForExistence(timeout: 20), app.debugDescription)
+        XCTAssertTrue(app.buttons["inspectWorkflowType"].waitForExistence(timeout: 20), app.debugDescription)
+        XCTAssertFalse(app.buttons["workflowMarkDone"].exists)
         var accepted = Set<URL>()
         acceptLiveKiroConsent(in: app, accepted: &accepted)
         let task =
@@ -67,7 +68,7 @@ extension HandshakeUITests {
         XCTAssertTrue(reviewer.waitForExistence(timeout: 60), app.debugDescription)
         reviewer.click()
         acceptLiveKiroConsent(in: app, accepted: &accepted)
-        XCTAssertTrue(app.staticTexts["Completed"].waitForExistence(timeout: 180), app.debugDescription)
+        XCTAssertTrue(completedWorkflowTab(in: app).waitForExistence(timeout: 180), app.debugDescription)
         let contents = try String(contentsOf: folder.appending(path: "workflow-result.txt"), encoding: .utf8)
         XCTAssertTrue(contents.contains("KIRO_WORKFLOW_OK"), contents)
         attachScreenshot(of: app, named: "Authenticated Kiro roles completed through native completion commands")

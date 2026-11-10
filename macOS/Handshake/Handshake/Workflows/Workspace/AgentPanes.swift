@@ -11,11 +11,12 @@ struct AgentPanes: View {
     let workflow: CoreWorkflow
     @Binding var layout: WorkflowLayout
     let isSelected: Bool
+    var focusRequest = 0
     /// Tells the strip whether the panes are tiled, each with a header naming its agent.
     let reportTiling: (Bool) -> Void
     /// The panel's size, which decides how many Bento panes fit.
     @State private var size: CGSize?
-    @State private var focusRequest = 0
+    @State private var layoutFocusRequest = 0
     // A divider's fraction while it's dragged. It's saved when the drag ends, so a drag doesn't update
     // the shared layouts, which every workflow reads, on each step.
     @State private var draggedColumnFraction: Double?
@@ -38,7 +39,8 @@ struct AgentPanes: View {
                 AgentPane(
                     agent: agent, workflow: workflow,
                     isShown: arrangement.visibleAgentIDs.contains(agent.id), isTiled: arrangement.isTiled,
-                    isFocused: agent.id == focusedID, isWorkflowSelected: isSelected, focusRequest: focusRequest,
+                    isFocused: agent.id == focusedID, isWorkflowSelected: isSelected,
+                    focusRequest: focusRequest + layoutFocusRequest,
                     focus: { layout.focus(agent.id, in: agents) },
                     place: { chosen in
                         if let index = paneIDs.firstIndex(of: agent.id) {
@@ -82,7 +84,7 @@ struct AgentPanes: View {
         .animation(reduceMotion ? nil : Motion.paneLayout, value: layout.mode)
         .onGeometryChange(for: CGSize.self, of: { $0.size }, action: { size = $0 })
         // Clicking the layout picker can take the keyboard, so give it back to the focused terminal.
-        .onChange(of: layout.mode) { focusRequest += 1 }
+        .onChange(of: layout.mode) { layoutFocusRequest += 1 }
         .onChange(of: arrangement.isTiled, initial: true) { _, isTiled in reportTiling(isTiled) }
     }
 
@@ -130,6 +132,7 @@ private struct AgentPane: View {
     let focusRequest: Int
     let focus: () -> Void
     let place: (UInt64) -> Void
+    @State private var recoveryFailure: String?
     private var isWorking: Bool {
         workflow.run?.agents.contains { $0.id == agent.id && $0.isWorking } == true
     }
@@ -156,11 +159,23 @@ private struct AgentPane: View {
                             ? (workflow.run?.workflowType?.definition.graph != nil
                                 ? "This agent starts when incoming work arrives."
                                 : "This agent starts when its stage begins.")
-                            : "Open a new workflow to try again.")
+                            : recoveryFailure ?? "Restart this pane’s shell, then resume the recorded conversation.")
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(.windowBackground)
                 .onTapGesture(perform: focus)
+                Button("Restart shell", systemImage: "terminal") {
+                    Task {
+                        do {
+                            let receipt = try await coreClient.send(
+                                .recoverAgent(workflowID: workflow.id, agentID: agent.id, session: nil, shellOnly: true)
+                            )
+                            recoveryFailure = receipt.error?.message
+                        } catch { recoveryFailure = error.localizedDescription }
+                    }
+                }
+                .controlSize(.small)
+                .padding(.bottom, 12)
             } else {
                 TerminalSurface(
                     terminalID: agent.terminalID,
@@ -200,11 +215,11 @@ private struct AgentPane: View {
         if workflow.run == nil { return "Shell Couldn't Restart" }
         if let status = workflow.run?.agents.first(where: { $0.id == agent.id })?.status {
             switch status {
-            case .interrupted: return "Agent Interrupted"
-            case .completed: return "Agent Completed"
-            case .cancelled: return "Agent Cancelled"
-            case .exited: return "Agent Exited"
-            case .failed: return "Agent Failed"
+            case .interrupted: return "Shell Unavailable"
+            case .completed: return "Shell Unavailable"
+            case .cancelled: return "Shell Unavailable"
+            case .exited: return "Shell Unavailable"
+            case .failed: return "Shell Unavailable"
             case .waiting, .running: break
             }
         }

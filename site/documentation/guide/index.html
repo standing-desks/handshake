@@ -229,9 +229,11 @@ Work moves through the graph's links. Harnesses run directly in the open folder.
 Kiro uses its V3 engine and native login (<code>kiro-cli login</code>). Handshake supplies a temporary named profile for its hooks and role instructions. Kiro may ask you to trust a newly opened folder before continuing.</p>
 <p>Each agent has a terminal subtab. Review rounds reuse the agent's live harness conversation
 when it remains available. After an agent completes its work, its terminal stays interactive.
-After a workflow completes or reaches its review limit, give a start agent another task
-to start a new cycle with the same conversations and trace history. Older stage workflows
-also have <strong>Individual mode</strong> for separate follow-up conversations. Restored workflows
+Choose <strong>Disconnect agents</strong> at any time to stop handoffs and clear queued
+coordination while keeping each conversation and current response available. Choose
+<strong>Reconnect agents</strong> to restore the workflow's connections for fresh messages.
+Reconnecting starts no work and never replays old handoffs. A new message in an agent's
+conversation can start a fresh cycle with the same conversations and trace history. Restored workflows
 resume recorded harness conversations when all unfinished active agents have
 compatible session handles.</p>
 <p>Click the <strong>+</strong> button to open a new tab. The workflow chooser has two grids:
@@ -350,10 +352,14 @@ Older ordered stage definitions remain readable. The editor converts them to gra
 New saves must use graphs.</p>
 <p>Agents send work through their links when they explicitly report completion. Terminal text and
 process exits do not advance a workflow.</p>
-<p><strong>Mark done…</strong> is always available for an unfinished active role, including after its process
-exits. Its form also supports review decisions and worker assignments. Review loops stop at the
-type's limit; <strong>Cancel workflow</strong> stops all its agents. Runs restored after quitting or a crash
-resume their unfinished active agents when every one has a recorded harness session. Otherwise they remain interrupted with their saved output. The Traces panel shows each
+<p>The last required agent reports completion to Handshake. The existing green checkmark on the
+workflow tab shows that the work is complete; the conversations remain connected and interactive.
+Sending fresh connected work clears the current checkmark and starts another cycle.
+<strong>Force stop agents</strong> terminates active agents and their owned processes, while preserving their existing shells and terminal connections. Their exact conversations remain available to resume,
+and their connection setting is preserved. When a harness exits, its pane returns to a usable shell.
+<strong>Resume agent…</strong> resumes the recorded conversation, and <strong>Restart shell</strong>
+recovers a shell that has exited. After relaunch, available exact conversations restore without
+replaying tasks or queued handoffs. The Traces panel shows each
 role's stage invocations on compact agent tracks in shared start order, with equal spacing
 regardless of pauses. Select a step to focus a seven-step window and inspect its stage
 changes, completions, and handoffs; this history survives reopening the app.</p>
@@ -566,7 +572,7 @@ prompt. Single agents resume their exact recorded harness session, retaining ear
 Codex and Claude Code use session IDs; pi and OMP use session files. Kiro conversations started in Handshake restore both their exact session ID and managed profile identity. Antigravity and OpenCode
 support exact-ID resume but don't expose launch observers, so use <strong>Resume Session…</strong> to supply
 the conversation/session ID once. The same action is available for older tabs without a captured
-session. Handshake never guesses the latest conversation. Cancelled or failed agents remain stopped.
+session. Handshake never guesses the latest conversation. Stopped or failed agents remain available to resume.
 <strong>Saved output</strong> opens earlier invocations, including an idle shell with no trace step.
 Live views and ANSI replay retain up to 100,000 rows in memory; the raw transcript limits below
 apply independently. New workflows appear in Traces once their terminals are active.</p>

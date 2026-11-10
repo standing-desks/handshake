@@ -607,3 +607,12 @@ filenames, AMIS adapter/profile IDs and source keys remain compatibility contrac
 They preserve native startup memory, owned-file recognition, sealed receipts and
 immutable provenance. Product labels and new application symbols use Handshake;
 historical memory content and imported AMIS schema bytes are not rewritten.
+
+### Workflow connection setting compatibility
+
+Saved workflow records containing `individualMode` remain readable as
+`agentsDisconnected`. This compatibility input preserves the connection choice
+in existing conversations. New saved records, bridge commands, and snapshots use
+`agentsDisconnected`; the old in-process command name has no external consumer
+and is replaced outright. Core owns saved-state decoding; the bridge and Swift
+client use the current protocol together.

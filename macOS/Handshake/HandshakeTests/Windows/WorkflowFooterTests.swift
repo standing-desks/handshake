@@ -7,7 +7,7 @@ import Testing
 struct WorkflowFooterTests {
     @Test func agentStatusesNeverReadAsSuccess() {
         for (status, text) in [
-            (CoreWorkflow.Status.exited, "Exited"), (.cancelled, "Cancelled"), (.interrupted, "Interrupted"),
+            (CoreWorkflow.Status.exited, "Exited"), (.cancelled, "Stopped"), (.interrupted, "Interrupted"),
         ] {
             let workflow = CoreWorkflow(
                 workflowID: 1, sessionID: 1, name: "pi", kind: .singleAgent, harness: .piAgent, terminalID: 1,

@@ -199,6 +199,19 @@ impl HandshakeClient {
         )?)
     }
 
+    pub(crate) fn write_workflow_input(
+        &self,
+        terminal: u64,
+        bytes: &[u8],
+        context: handshake_core::WorkflowInputContext,
+    ) -> Result<(), BridgeError> {
+        Ok(self.application.write_workflow_input(
+            TerminalId::from_value(terminal),
+            bytes,
+            context,
+        )?)
+    }
+
     pub(crate) fn write_terminal_input(
         &self,
         terminal_id: u64,

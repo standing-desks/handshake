@@ -22,6 +22,17 @@ struct TerminalChunkRouter {
         guard !closedTerminalIDs.contains(chunk.terminalID) else { return }
         chunksByTerminal[chunk.terminalID, default: []].append(chunk)
         byteCount += chunk.bytes.count
+        while byteCount > capacityBytes {
+            guard
+                let terminal = chunksByTerminal.max(by: { lhs, rhs in
+                    lhs.value.reduce(0) { $0 + $1.bytes.count } < rhs.value.reduce(0) { $0 + $1.bytes.count }
+                })?.key, var chunks = chunksByTerminal[terminal], !chunks.isEmpty
+            else { break }
+            let removed = chunks.removeFirst()
+            byteCount -= removed.bytes.count
+            consumedTerminalIDs.insert(terminal)
+            chunksByTerminal[terminal] = chunks.isEmpty ? nil : chunks
+        }
     }
 
     mutating func dequeue(for terminalID: UInt64) -> CoreTerminalChunk? {

@@ -275,21 +275,21 @@ extension TerminalControllerTests {
         try await client.waitUntilRunning()
         let controller = TerminalController(coreClient: client, terminalID: 41, failureMessage: .constant(nil))
         defer { controller.stop() }
-        var individualMode = true
+        var agentsDisconnected = true
         var capturedModes: [Bool] = []
         var release: CheckedContinuation<Void, Never>?
         controller.beforeUserInput = {
             if release == nil { await withCheckedContinuation { release = $0 } }
         }
         controller.prepareUserInput = {
-            let captured = individualMode
+            let captured = agentsDisconnected
             return { capturedModes.append(captured) }
         }
         let view = MetalTerminalView(frame: .zero)
         controller.send(source: view, data: Array("first".utf8)[...])
-        individualMode = false
+        agentsDisconnected = false
         controller.send(source: view, data: Array("second".utf8)[...])
-        individualMode = true
+        agentsDisconnected = true
         try await waitUntil { release != nil }
         release?.resume()
         try await waitUntil { await transport.userInput == Data("firstsecond".utf8) }

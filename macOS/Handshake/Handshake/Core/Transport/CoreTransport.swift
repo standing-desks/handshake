@@ -92,11 +92,16 @@ nonisolated protocol CoreTransport: Sendable {
     func terminalDisplayCache(terminalID: UInt64, operation: CoreDisplayCacheOperation) async throws -> Data?
     func terminalTranscript(terminalID: UInt64, offset: UInt64, limit: UInt32) async throws -> CoreTranscriptPage?
     func writeTerminalInput(terminalID: UInt64, bytes: Data) async throws
+    func writeWorkflowInput(terminalID: UInt64, bytes: Data, context: CoreWorkflowInputContext) async throws
     func writeTerminalResponse(terminalID: UInt64, bytes: Data) async throws
     func resizeTerminal(terminalID: UInt64, size: CoreTerminalSize) async throws
 }
 
 extension CoreTransport {
+    func writeWorkflowInput(terminalID: UInt64, bytes: Data, context: CoreWorkflowInputContext) async throws {
+        try await writeTerminalInput(terminalID: terminalID, bytes: bytes)
+    }
+
     func browserControl(_ request: Data) async throws -> Data { throw CoreFailure.unexpectedCommandResult }
     func keepAwake(_ enabled: Bool?) async throws -> Bool { throw CoreFailure.unexpectedCommandResult }
 

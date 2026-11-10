@@ -21,22 +21,6 @@ nonisolated struct CoreRoleLaunch: Codable, Equatable, Sendable {
     }
 }
 
-nonisolated struct CoreCompletionSignal: Codable, Equatable, Sendable {
-    var decision: Decision
-    var summary: String
-    var assignments: [Assignment] = []
-    /// The user's task, restated in full, while the run still needs it.
-    var task = ""
-
-    enum Decision: String, Codable, Sendable { case done, approve, requestChanges, pieceReady }
-    struct Assignment: Codable, Equatable, Sendable {
-        let role: String
-        let instance: Int
-        let task: String
-        let files: [String]
-    }
-}
-
 nonisolated struct CoreWorkflowRun: Decodable, Equatable, Sendable {
     let generation: UInt64
     let stage: String
@@ -49,23 +33,26 @@ nonisolated struct CoreWorkflowRun: Decodable, Equatable, Sendable {
     var selectedResult: UInt64?
     var stageID: String?
     var workflowType: CoreWorkflowType?
-    var individualMode = false
+    var workCompleted = false
+    var agentsDisconnected = false
     var modeRevision: UInt64 = 0
     var decisionResults: [String: String] = [:]
     var decisionInputs: [String: String] = [:]
     var decisionOutputs: [String: String] = [:]
     var decisionErrors: [String: String] = [:]
 
-    var canChangeIndividualMode: Bool { status == .completed || status == .limitReached }
-
     private enum CodingKeys: String, CodingKey {
-        case generation, stage, status, message, needsTask, agents, workflowType, individualMode, modeRevision, outputs,
+        case workCompleted, generation, stage, status, message, needsTask, agents, workflowType, agentsDisconnected,
+            modeRevision,
+            outputs,
             selectedResult
         case decisionResults, decisionInputs, decisionOutputs, decisionErrors
         case stageID = "stageId"
     }
 
-    enum Status: String, Decodable, Sendable { case running, completed, limitReached, cancelled, failed, interrupted }
+    enum Status: String, Decodable, Sendable {
+        case running, idle, paused, completed, limitReached, cancelled, failed, interrupted
+    }
 
     struct Output: Decodable, Equatable, Identifiable, Sendable {
         let agentId: UInt64
@@ -79,6 +66,7 @@ nonisolated struct CoreWorkflowRun: Decodable, Equatable, Sendable {
         let agentId: UInt64
         let active: Bool
         let done: Bool
+        var harnessRunning: Bool?
         let reviewer: Bool
         let harness: CoreHarness
         let targets: [Target]
@@ -88,7 +76,7 @@ nonisolated struct CoreWorkflowRun: Decodable, Equatable, Sendable {
         var status: AgentStatus?
         var id: UInt64 { agentId }
 
-        /// Doing its stage's work now: an exited or failed process isn't, even before Mark done.
+        /// Doing its stage's work now: an exited or failed harness is not working.
         var isWorking: Bool {
             guard active && !done else { return false }
             switch status {
@@ -128,7 +116,8 @@ extension CoreWorkflowRun {
         selectedResult = try values.decodeIfPresent(UInt64.self, forKey: .selectedResult)
         stageID = try values.decodeIfPresent(String.self, forKey: .stageID)
         workflowType = try values.decodeIfPresent(CoreWorkflowType.self, forKey: .workflowType)
-        individualMode = try values.decodeIfPresent(Bool.self, forKey: .individualMode) ?? false
+        workCompleted = try values.decodeIfPresent(Bool.self, forKey: .workCompleted) ?? false
+        agentsDisconnected = try values.decodeIfPresent(Bool.self, forKey: .agentsDisconnected) ?? false
         modeRevision = try values.decodeIfPresent(UInt64.self, forKey: .modeRevision) ?? 0
     }
 }
@@ -140,4 +129,12 @@ nonisolated struct CoreUserWorkflowVersion: Codable, Equatable, Sendable {
         case typeID = "type_id"
         case version
     }
+}
+
+/// Captured at the first queue boundary; it travels with binary terminal input.
+nonisolated struct CoreWorkflowInputContext: Sendable {
+    let workflowID: UInt64
+    let agentID: UInt64
+    let generation: UInt64
+    let modeRevision: UInt64
 }

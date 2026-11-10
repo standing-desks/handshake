@@ -43,13 +43,13 @@ struct TerminalRoutingTests {
 
         let firstRead = Task { try await client.nextTerminalChunk(for: 2) }
         try await waitUntil { await transport.readCount > 0 }
-        #expect(await transport.readCount == 1)
+        #expect(await transport.maximumPendingReads == 1)
         let competingRead = Task { try await client.nextTerminalChunk(for: 1) }
         try await Task.sleep(for: .milliseconds(20))
         await transport.completePendingReads()
 
         #expect(try await competingRead.value == nil)
-        #expect(await transport.readCount == 1)
+        #expect(await transport.maximumPendingReads == 1)
         #expect(try await firstRead.value == nil)
         let routed = try #require(try await client.nextTerminalChunk(for: 1))
         #expect(routed.offset == 0)
@@ -63,9 +63,8 @@ struct TerminalRoutingTests {
         defer { Task { await client.stop() } }
         try await waitUntil { client.runState == .running }
 
-        let cancelledRead = Task { try await client.nextTerminalChunk(for: 1) }
         try await waitUntil { await transport.readCount > 0 }
-        #expect(await transport.readCount == 1)
+        let cancelledRead = Task { try await client.nextTerminalChunk(for: 1) }
         cancelledRead.cancel()
         await transport.completeFirstRead(
             with: CoreTerminalChunk(terminalID: 2, offset: 0, bytes: Data("preserved".utf8))
@@ -74,7 +73,12 @@ struct TerminalRoutingTests {
         await #expect(throws: CancellationError.self) {
             try await cancelledRead.value
         }
-        let routed = try #require(try await client.nextTerminalChunk(for: 2))
+        var received: CoreTerminalChunk?
+        try await waitUntil {
+            received = try? await client.nextTerminalChunk(for: 2)
+            return received != nil
+        }
+        let routed = try #require(received)
         #expect(routed.offset == 0)
         #expect(routed.bytes == Data("preserved".utf8))
     }
@@ -88,7 +92,7 @@ struct TerminalRoutingTests {
 
         let pendingRead = Task { try await client.nextTerminalChunk(for: 1) }
         try await waitUntil { await transport.readCount > 0 }
-        #expect(await transport.readCount == 1)
+        #expect(await transport.maximumPendingReads == 1)
         try await client.closeTerminal(terminalID: 1)
         await transport.completeFirstRead(
             with: CoreTerminalChunk(terminalID: 1, offset: 0, bytes: Data("late".utf8))
@@ -255,6 +259,7 @@ private actor InterleavedTerminalCoreTransport: CoreTransport {
 
 private actor SuspendedTerminalOutputTransport: CoreTransport {
     private(set) var readCount = 0
+    private(set) var maximumPendingReads = 0
     private var readContinuations: [CheckedContinuation<CoreTerminalChunk?, Never>] = []
     private var eventsToDeliver: [CoreEvent] = []
     private var nextRequestID: UInt64 = 1
@@ -307,6 +312,7 @@ private actor SuspendedTerminalOutputTransport: CoreTransport {
         readCount += 1
         return await withCheckedContinuation { continuation in
             readContinuations.append(continuation)
+            maximumPendingReads = max(maximumPendingReads, readContinuations.count)
         }
     }
 

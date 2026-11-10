@@ -8,7 +8,11 @@ extension CoreClient {
     func writeTerminalInput(terminalID: UInt64, bytes: Data, isUserInput: Bool = true) async throws {
         guard terminalStatus(for: terminalID) == .running else { throw CoreFailure.terminalNotRunning }
         if isUserInput {
-            try await transport.writeTerminalInput(terminalID: terminalID, bytes: bytes)
+            if let context = workflowInputContexts[terminalID] {
+                try await transport.writeWorkflowInput(terminalID: terminalID, bytes: bytes, context: context)
+            } else {
+                try await transport.writeTerminalInput(terminalID: terminalID, bytes: bytes)
+            }
         } else {
             try await transport.writeTerminalResponse(terminalID: terminalID, bytes: bytes)
         }

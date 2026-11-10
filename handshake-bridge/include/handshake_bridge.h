@@ -201,6 +201,10 @@ HandshakeStatus handshake_transcript_request_destroy(HandshakeTranscriptRequest 
 // input_bytes. A null input pointer is valid only when input_length is zero.
 // Writes and resizes return HANDSHAKE_STATUS_TERMINAL_NOT_RUNNING after the process stops;
 // its remaining output and transcript stay readable until the terminal is closed.
+HandshakeStatus handshake_client_write_workflow_input(
+    HandshakeClient *client, uint64_t terminal_id, uint64_t workflow_id, uint64_t agent_id,
+    uint64_t generation, uint64_t mode_revision, const uint8_t *input_bytes, size_t input_length);
+
 HandshakeStatus handshake_client_write_terminal_input(
     HandshakeClient *client,
     uint64_t terminal_id,

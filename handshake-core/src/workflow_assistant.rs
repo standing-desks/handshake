@@ -366,15 +366,17 @@ mod tests {
                 })
                 .unwrap();
             let deadline = Instant::now() + Duration::from_secs(5);
-            while !pid_file.exists() {
+            // Creation precedes the shell's write; wait for a complete PID instead of an empty file.
+            let pid: i32 = loop {
+                if let Some(pid) = std::fs::read_to_string(&pid_file)
+                    .ok()
+                    .and_then(|text| text.trim().parse().ok())
+                {
+                    break pid;
+                }
                 assert!(Instant::now() < deadline);
                 std::thread::sleep(Duration::from_millis(10));
-            }
-            let pid: i32 = std::fs::read_to_string(&pid_file)
-                .unwrap()
-                .trim()
-                .parse()
-                .unwrap();
+            };
             if shutdown {
                 workers.shutdown();
             } else {

@@ -66,3 +66,11 @@ if [[ -z $(builtin trap -p DEBUG) && -z $(builtin trap -p EXIT) ]] && _handshake
     builtin trap '_handshake_debug' DEBUG
     builtin trap '_handshake_exit' EXIT
 fi
+
+# Run once, outside shell history, with harness configuration scoped to the child wrapper.
+if [[ -n ${HANDSHAKE_INITIAL_COMMAND:-} ]]; then
+    _handshake_initial=$HANDSHAKE_INITIAL_COMMAND
+    unset HANDSHAKE_INITIAL_COMMAND
+    "$_handshake_initial"
+    unset _handshake_initial
+fi

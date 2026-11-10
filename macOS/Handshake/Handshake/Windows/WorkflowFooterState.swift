@@ -9,11 +9,19 @@ struct WorkflowFooterState {
 
     init(workflow: CoreWorkflow, now: Date) {
         switch workflow.status {
-        case .running: status = workflow.kind == .draft ? "Draft" : "Running"
+        case .running:
+            status =
+                workflow.kind == .draft
+                ? "Draft"
+                : workflow.run?.agentsDisconnected == true
+                    ? "Disconnected"
+                    : workflow.run?.status == .paused
+                        ? "Needs attention"
+                        : workflow.run?.status == .idle ? "Idle" : "Running"
         case .completed: status = "Completed"
         case .exited: status = "Exited"
         case .failed: status = "Failed"
-        case .cancelled: status = "Cancelled"
+        case .cancelled: status = "Stopped"
         case .interrupted: status = "Interrupted"
         case .closed: status = "Closed"
         }
@@ -21,7 +29,7 @@ struct WorkflowFooterState {
             switch workflow.run?.status {
             // These statuses' messages only repeat the status beside them.
             case nil, .completed, .cancelled, .interrupted: nil
-            case .running, .limitReached, .failed:
+            case .running, .idle, .paused, .limitReached, .failed:
                 workflow.run?.message.flatMap { $0.isEmpty ? nil : $0 }
             }
         let end = workflow.endedAt.map { Double($0) / 1_000 } ?? now.timeIntervalSince1970

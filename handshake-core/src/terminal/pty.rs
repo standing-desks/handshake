@@ -137,7 +137,7 @@ pub(super) fn spawn_terminal_reader(
                             break;
                         }
                     }
-                    Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
+                    Err(error) if matches!(error.kind(), std::io::ErrorKind::Interrupted | std::io::ErrorKind::WouldBlock) => {}
                     Err(error) => {
                         debug!(terminal_id = terminal_id.value(), %error, "terminal reader stopped");
                         break;

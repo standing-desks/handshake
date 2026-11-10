@@ -61,6 +61,8 @@ final class TerminalController: NSObject, TerminalViewDelegate {
         guard task == nil else { return }
         task = Task { [weak self, weak view] in
             guard let self, let view else { return }
+            defer { task = nil }
+            isTerminalStopped = false
             do {
                 try await coreClient.waitUntilRunning()
                 try Task.checkCancellation()
@@ -94,7 +96,7 @@ final class TerminalController: NSObject, TerminalViewDelegate {
                     enqueueInput(pendingInput, terminalID: terminalID, isUserInput: true)
                     pendingInput = Data()
                 }
-                try await pumpOutput(for: terminalID, into: view)
+                await pumpWithRecovery(for: terminalID, into: view)
             } catch is CancellationError {
                 return
             } catch {
@@ -270,6 +272,15 @@ final class TerminalController: NSObject, TerminalViewDelegate {
 }
 
 extension TerminalController {
+    private func pumpWithRecovery(for terminalID: UInt64, into view: TerminalView) async {
+        while !Task.isCancelled && !isStopping {
+            do { try await pumpOutput(for: terminalID, into: view) } catch is CancellationError { return } catch {
+                report(error)
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+        }
+    }
+
     private func pumpOutput(for terminalID: UInt64, into view: TerminalView) async throws {
         while !Task.isCancelled {
             if let chunk = try await coreClient.nextTerminalChunk(for: terminalID) {
@@ -282,12 +293,7 @@ extension TerminalController {
                     startHistory(terminalID: terminalID, view: metal)
                     continue
                 }
-                guard chunk.offset <= expectedOffset else {
-                    throw TerminalControllerError.offset(
-                        expected: expectedOffset,
-                        received: chunk.offset
-                    )
-                }
+                await recoverGap(before: chunk.offset, terminalID: terminalID, into: view)
                 let terminal = view.getTerminal()
                 if liveSizes.last?.columns != terminal.cols || liveSizes.last?.rows != terminal.rows {
                     liveSizes.append(.init(offset: expectedOffset, rows: terminal.rows, columns: terminal.cols))
@@ -316,6 +322,38 @@ extension TerminalController {
             // The process-exit event and the PTY reader are supervised independently. Keep
             // polling after exit so bytes already in the PTY cannot be mistaken for EOF.
             try await Task.sleep(for: .milliseconds(10))
+        }
+    }
+
+    private func recoverGap(before offset: UInt64, terminalID: UInt64, into view: TerminalView) async {
+        var attempts = 0
+        while offset > expectedOffset, !Task.isCancelled {
+            do {
+                let page = try await coreClient.terminalTranscript(
+                    terminalID: terminalID, offset: expectedOffset,
+                    limit: UInt32(min(64 * 1024, offset - expectedOffset)))
+                if let page, !page.bytes.isEmpty {
+                    feedResponses = Data()
+                    view.feed(byteArray: Array(page.bytes)[...])
+                    if let responses = feedResponses, !responses.isEmpty {
+                        enqueueInput(responses, terminalID: terminalID)
+                    }
+                    feedResponses = nil
+                    expectedOffset = page.nextOffset
+                    attempts = 0
+                } else {
+                    failureMessage.wrappedValue = "Some earlier output is unavailable. Live input remains available."
+                    expectedOffset = offset
+                }
+            } catch {
+                attempts += 1
+                if attempts >= 3 {
+                    report(error)
+                    expectedOffset = offset
+                } else {
+                    try? await Task.sleep(for: .milliseconds(100))
+                }
+            }
         }
     }
 
@@ -354,15 +392,4 @@ extension TerminalController {
         )
     }
 
-}
-
-private enum TerminalControllerError: LocalizedError {
-    case offset(expected: UInt64, received: UInt64)
-
-    var errorDescription: String? {
-        switch self {
-        case .offset(let expected, let received):
-            "Terminal output was out of order (expected byte \(expected), received \(received))."
-        }
-    }
 }

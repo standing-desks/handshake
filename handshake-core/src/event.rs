@@ -73,7 +73,7 @@ pub enum CommandResult {
     AgentStarted {
         workflow_id: WorkflowId,
     },
-    AgentCancelled {
+    AgentStopped {
         workflow_id: WorkflowId,
     },
     TerminalStarted {

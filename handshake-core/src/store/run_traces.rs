@@ -34,6 +34,12 @@ impl Store {
             )?;
         }
         let spans = record_starts(&transaction, workflow, run)?;
+        for (terminal, span) in &spans {
+            if let Some((_, session)) = sessions.iter().find(|(id, _)| id == terminal) {
+                transaction.execute("UPDATE trace_spans SET harness_session=COALESCE(harness_session,?2) WHERE id=?1",
+                    params![sql_integer(span.0)?,session])?;
+            }
+        }
         save_run_state(&transaction, workflow.workflow_id, run)?;
         transaction.commit()?;
         Ok(spans)
@@ -75,14 +81,6 @@ fn record_starts(
         if agent.terminal_id.value() == 0 {
             continue;
         }
-        let exists: bool = transaction.query_row(
-            "SELECT EXISTS(SELECT 1 FROM trace_spans WHERE terminal_id = ?1 AND run_generation = ?2)",
-            params![sql_integer(agent.terminal_id.value())?, sql_integer(run.assignment_generation(agent.agent_id.0))?],
-            |row| row.get(0),
-        )?;
-        if exists {
-            continue;
-        }
         let role = run
             .agents
             .iter()
@@ -91,11 +89,49 @@ fn record_starts(
         // Waiting tabs retain their prior terminal while the next stage is prepared.
         let Some(launch) = run.traces.iter().rev().find(|event| {
             event.generation == run.assignment_generation(role.agent_id)
-                && matches!(event.kind.as_str(), "agentStarted" | "agentContinued")
+                && matches!(
+                    event.kind.as_str(),
+                    "agentStarted" | "agentContinued" | "conversationStarted"
+                )
                 && event.agent_id == Some(role.agent_id)
         }) else {
             continue;
         };
+        // A restored shell is not an invocation of the assignment recorded in history.
+        if launch
+            .anchor
+            .as_ref()
+            .is_some_and(|anchor| anchor.terminal_id != agent.terminal_id)
+        {
+            continue;
+        }
+        if launch.kind == "conversationStarted" {
+            let span = conversation_span(transaction, workflow.workflow_id, run, launch)?;
+            let already_recorded: bool = transaction.query_row(
+                "SELECT EXISTS(SELECT 1 FROM trace_events WHERE span_id=?1 AND kind='processStarted')",
+                [sql_integer(span.0)?], |row| row.get(0))?;
+            if !already_recorded {
+                insert_event(
+                    transaction,
+                    workflow.workflow_id,
+                    span,
+                    launch.timestamp,
+                    TraceEventKind::ProcessStarted,
+                    "Conversation resumed.",
+                    launch.anchor.as_ref(),
+                )?;
+                spans.push((agent.terminal_id, span));
+            }
+            continue;
+        }
+        let exists: bool = transaction.query_row(
+            "SELECT EXISTS(SELECT 1 FROM trace_spans WHERE terminal_id = ?1 AND run_generation = ?2)",
+            params![sql_integer(agent.terminal_id.value())?, sql_integer(run.assignment_generation(agent.agent_id.0))?],
+            |row| row.get(0),
+        )?;
+        if exists {
+            continue;
+        }
         let started_at = run
             .traces
             .iter()
@@ -136,6 +172,49 @@ fn record_starts(
         spans.push((agent.terminal_id, span));
     }
     Ok(spans)
+}
+
+fn conversation_span(
+    transaction: &Transaction<'_>,
+    workflow_id: WorkflowId,
+    run: &WorkflowRun,
+    event: &WorkflowTrace,
+) -> Result<TraceSpanId, StoreError> {
+    let existing = transaction
+        .query_row(
+            "SELECT s.id FROM trace_spans s JOIN trace_lanes l ON l.id=s.lane_id
+         WHERE l.workflow_id=?1 AND s.launch_sequence=?2",
+            params![sql_integer(workflow_id.0)?, sql_integer(event.sequence)?],
+            |row| super::unsigned_column(row, 0),
+        )
+        .optional()?;
+    if let Some(id) = existing {
+        return Ok(TraceSpanId(id));
+    }
+    let agent = run
+        .agents
+        .iter()
+        .find(|agent| Some(agent.agent_id) == event.agent_id)
+        .expect("launch belongs to an agent");
+    let span = insert_span_record(
+        transaction,
+        &NewTraceSpan {
+            workflow_id,
+            lane_key: &format!("agent:{}", agent.agent_id),
+            lane_name: &agent.label,
+            is_agent: true,
+            role: Some(&agent.role),
+            harness: Some(agent.harness.definition().name),
+            title: "Conversation",
+            started_at: event.timestamp,
+            anchor: event.anchor.clone(),
+        },
+    )?;
+    transaction.execute(
+        "UPDATE trace_spans SET launch_sequence=?2 WHERE id=?1",
+        params![sql_integer(span.0)?, sql_integer(event.sequence)?],
+    )?;
+    Ok(span)
 }
 
 fn work_span(
@@ -190,12 +269,20 @@ fn work_span(
     Ok(span)
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "map one workflow event and its span endings in the same transaction"
+)]
 fn record_event(
     transaction: &Transaction<'_>,
     workflow_id: WorkflowId,
     run: &WorkflowRun,
     event: &WorkflowTrace,
 ) -> Result<(), StoreError> {
+    if event.kind == "conversationStarted" {
+        let span = conversation_span(transaction, workflow_id, run, event)?;
+        return write_event(transaction, workflow_id, run, event, span);
+    }
     if matches!(event.kind.as_str(), "decisionStarted" | "decisionPaused")
         && let Some(agent) = event.agent_id
     {
@@ -253,7 +340,10 @@ fn record_event(
     }
     for span in spans {
         write_event(transaction, workflow_id, run, event, span)?;
-        if matches!(event.kind.as_str(), "roleCompleted" | "stageCompleted") {
+        if matches!(
+            event.kind.as_str(),
+            "roleCompleted" | "stageCompleted" | "roleStopped"
+        ) {
             transaction.execute(
                 "UPDATE trace_spans SET status = ?3, ended_at = MAX(started_at, ?2)
                 WHERE id = ?1 AND work_span = 1 AND status = 'running'",
@@ -269,14 +359,21 @@ fn record_event(
             )?;
         }
     }
-    if event.kind == "workflowEnded" {
+    if matches!(
+        event.kind.as_str(),
+        "workflowEnded" | "workflowAgentsDisconnected"
+    ) {
         transaction.execute(
             "UPDATE trace_spans SET status = ?2, ended_at = MAX(started_at, ?3)
             WHERE work_span = 1 AND status = 'running' AND lane_id IN
             (SELECT id FROM trace_lanes WHERE workflow_id = ?1)",
             params![
                 sql_integer(workflow_id.0)?,
-                if run.status == crate::RunStatus::Failed {
+                if run
+                    .last_outcome
+                    .as_ref()
+                    .is_some_and(|outcome| outcome.kind == crate::WorkOutcomeKind::Failed)
+                {
                     "failed"
                 } else {
                     "stopped"
@@ -350,7 +447,7 @@ fn failure_span(
         "INSERT INTO trace_spans (lane_id, title, started_at, ended_at, status, run_generation)
          SELECT id, ?2, ?3, ?3, ?4, ?5 FROM trace_lanes WHERE workflow_id = ?1 AND lane_key = 'workflow'",
         params![sql_integer(workflow_id.0)?, event.stage, sql_integer(event.timestamp)?,
-            if run.status == crate::RunStatus::Failed { "failed" } else { "stopped" }, sql_integer(event.generation)?],
+            if run.last_outcome.as_ref().is_some_and(|outcome| outcome.kind == crate::WorkOutcomeKind::Failed) { "failed" } else { "stopped" }, sql_integer(event.generation)?],
     )?;
     Ok(transaction.last_insert_rowid())
 }
@@ -415,6 +512,81 @@ mod tests {
             terminal_history: Vec::new(),
             run: Some(Box::new(run)),
         }
+    }
+
+    #[test]
+    fn private_resumes_and_shell_recovery_never_rebind_historical_assignments() {
+        let mut store = Store::open_in_memory().unwrap();
+        let mut workflow = workflow(&mut store, BuiltinType::Adversarial.legacy_definition());
+        let agent = workflow.run.as_ref().unwrap().agents[0].agent_id;
+        workflow.agents.push(crate::workflow::Agent {
+            agent_id: crate::AgentId(agent),
+            role: "implementer".into(),
+            terminal_id: TerminalId::from_value(1),
+        });
+        workflow
+            .run
+            .as_mut()
+            .unwrap()
+            .trace("agentStarted", Some(agent), None, "Started");
+        workflow
+            .run
+            .as_mut()
+            .unwrap()
+            .traces
+            .last_mut()
+            .unwrap()
+            .anchor = Some(TraceAnchor {
+            terminal_id: TerminalId::from_value(1),
+            byte_offset: 0,
+            boundary_sizes: None,
+        });
+        store.save_workflow_run(&workflow).unwrap();
+        workflow
+            .run
+            .as_mut()
+            .unwrap()
+            .finish(RunStatus::Interrupted, "Interrupted");
+        store.save_workflow_run(&workflow).unwrap();
+        let original = store
+            .workflow_trace(workflow.workflow_id, None, 20)
+            .unwrap()
+            .spans[0]
+            .clone();
+        workflow.agents[0].terminal_id = TerminalId::from_value(2);
+        let run = workflow.run.as_mut().unwrap();
+        run.trace(
+            "conversationStarted",
+            Some(agent),
+            None,
+            "Conversation resumed",
+        );
+        run.traces.last_mut().unwrap().anchor = Some(TraceAnchor {
+            terminal_id: TerminalId::from_value(2),
+            byte_offset: 0,
+            boundary_sizes: None,
+        });
+        store.save_workflow_run(&workflow).unwrap();
+        workflow.agents[0].terminal_id = TerminalId::from_value(3);
+        store.save_workflow_run(&workflow).unwrap();
+        let page = store
+            .workflow_trace(workflow.workflow_id, None, 20)
+            .unwrap();
+        assert_eq!(page.spans.len(), 2);
+        assert_eq!(
+            page.spans
+                .iter()
+                .find(|span| span.span_id == original.span_id),
+            Some(&original)
+        );
+        assert_eq!(
+            page.spans
+                .iter()
+                .find(|span| span.span_id != original.span_id)
+                .unwrap()
+                .terminal_id,
+            Some(TerminalId::from_value(2))
+        );
     }
 
     #[test]

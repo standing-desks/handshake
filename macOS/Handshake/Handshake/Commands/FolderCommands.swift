@@ -23,7 +23,7 @@ struct WorkflowActions {
     /// Opens an agents workflow with one agent per role, in order.
     let createAgents: ([String]) -> Void
     let close: (() -> Void)?
-    let cancelAgent: (() -> Void)?
+    let forceStopAgent: (() -> Void)?
     /// The selected workflow's layout mode, when it has agents to arrange.
     let layoutMode: Binding<WorkflowLayout.Mode>?
     /// Moves the keyboard forward or back by a number of agents: subtabs in tab mode, panes in Bento mode.
@@ -70,9 +70,9 @@ struct FolderCommands: Commands {
             Button("New workflow graph…") { newWorkflowType = true }
                 .keyboardShortcut("n", modifiers: [.command, .option])
                 .disabled(newWorkflowType == nil || !isRunning)
-            Button("Cancel Agent") { workflowActions?.cancelAgent?() }
+            Button("Force Stop Agent") { workflowActions?.forceStopAgent?() }
                 .keyboardShortcut(".")
-                .disabled(workflowActions?.cancelAgent == nil || !isRunning)
+                .disabled(workflowActions?.forceStopAgent == nil || !isRunning)
             #if DEBUG
                 // Until harnesses can launch, agents run shells, and only debug builds open them.
                 Menu("New Test Workflow") {
