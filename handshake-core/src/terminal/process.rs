@@ -12,8 +12,8 @@ use crate::process::signal_process_group;
 use crate::process::signal_session;
 
 const SUPERVISOR_POLL_INTERVAL: Duration = Duration::from_millis(10);
-// Newly spawned children can take longer to acknowledge SIGSTOP under startup load.
 const STOP_ACK_TIMEOUT: Duration = Duration::from_secs(2);
+const STOP_RETRY_INTERVAL: Duration = Duration::from_millis(10);
 
 type ExitResult = Result<TerminalExit, String>;
 pub(super) type SharedChild = Arc<Mutex<ChildProcess>>;
@@ -226,29 +226,8 @@ pub(super) fn force_stop_harness_children(
             if pid == shell || identity.parent != parent {
                 continue;
             }
-            if unsafe { libc::kill(pid, libc::SIGSTOP) } != 0 {
-                let error = std::io::Error::last_os_error();
-                if error.raw_os_error() == Some(libc::ESRCH) {
-                    continue;
-                }
-                return Err(error);
-            }
             stopped.push((pid, identity.started));
-            let deadline = std::time::Instant::now() + STOP_ACK_TIMEOUT;
-            let mut verified = false;
-            while let Some(current) = native_process(pid)? {
-                if current.started != identity.started {
-                    break;
-                }
-                if current.stopped {
-                    verified = true;
-                    break;
-                }
-                if std::time::Instant::now() >= deadline {
-                    return Err(std::io::Error::other("harness child did not stop"));
-                }
-                thread::sleep(Duration::from_millis(1));
-            }
+            let verified = stop_process(&identity, || native_process(pid), || request_stop(pid))?;
             if verified {
                 pending.extend(child_pids(pid)?.into_iter().map(|child| (child, pid)));
             }
@@ -278,6 +257,44 @@ pub(super) fn force_stop_harness_children(
         }
     }
     failure.map_or(Ok(()), Err)
+}
+
+/// A successful request is not an acknowledgment; retry only the same owned process.
+fn stop_process(
+    expected: &NativeProcess,
+    mut inspect: impl FnMut() -> std::io::Result<Option<NativeProcess>>,
+    mut request: impl FnMut() -> std::io::Result<bool>,
+) -> std::io::Result<bool> {
+    let deadline = std::time::Instant::now() + STOP_ACK_TIMEOUT;
+    while let Some(current) = inspect()? {
+        if current.started != expected.started || current.parent != expected.parent {
+            return Ok(false);
+        }
+        if current.stopped {
+            return Ok(true);
+        }
+        if std::time::Instant::now() >= deadline {
+            return Err(std::io::Error::other("harness child did not stop"));
+        }
+        if !request()? {
+            return Ok(false);
+        }
+        thread::sleep(STOP_RETRY_INTERVAL);
+    }
+    Ok(false)
+}
+
+fn request_stop(pid: libc::pid_t) -> std::io::Result<bool> {
+    // SAFETY: the caller revalidates this owned process's parent and birth identity.
+    if unsafe { libc::kill(pid, libc::SIGSTOP) } == 0 {
+        return Ok(true);
+    }
+    let error = std::io::Error::last_os_error();
+    if error.raw_os_error() == Some(libc::ESRCH) {
+        Ok(false)
+    } else {
+        Err(error)
+    }
 }
 
 pub(super) struct NativeProcess {
@@ -383,4 +400,71 @@ fn child_pids(parent: libc::pid_t) -> std::io::Result<Vec<libc::pid_t>> {
         }
     }
     Ok(children)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::Cell;
+
+    #[test]
+    fn stop_retries_a_successful_request_without_an_acknowledgment() {
+        let expected = NativeProcess {
+            parent: 42,
+            stopped: false,
+            started: (1, 2),
+        };
+        let requests = Cell::new(0);
+        let stopped = stop_process(
+            &expected,
+            || {
+                Ok(Some(NativeProcess {
+                    parent: expected.parent,
+                    started: expected.started,
+                    stopped: requests.get() >= 2,
+                }))
+            },
+            || {
+                requests.set(requests.get() + 1);
+                Ok(true)
+            },
+        )
+        .unwrap();
+        assert!(stopped);
+        assert_eq!(requests.get(), 2);
+    }
+
+    #[test]
+    fn stop_retries_never_signal_a_changed_birth_or_parent() {
+        for changed_parent in [false, true] {
+            let expected = NativeProcess {
+                parent: 42,
+                stopped: false,
+                started: (1, 2),
+            };
+            let requests = Cell::new(0);
+            let stopped = stop_process(
+                &expected,
+                || {
+                    let changed = requests.get() > 0;
+                    Ok(Some(NativeProcess {
+                        parent: if changed && changed_parent { 43 } else { 42 },
+                        started: if changed && !changed_parent {
+                            (1, 3)
+                        } else {
+                            (1, 2)
+                        },
+                        stopped: false,
+                    }))
+                },
+                || {
+                    requests.set(requests.get() + 1);
+                    Ok(true)
+                },
+            )
+            .unwrap();
+            assert!(!stopped);
+            assert_eq!(requests.get(), 1);
+        }
+    }
 }
