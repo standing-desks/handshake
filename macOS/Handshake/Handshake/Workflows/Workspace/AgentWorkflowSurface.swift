@@ -12,6 +12,7 @@ struct AgentWorkflowSurface: View {
     let reportFailure: (String) -> Void
     /// Whether Bento panes are tiled, with headers that name their agents.
     @State private var panesAreTiled = false
+    @State private var focusRequest = 0
     private var destination: TraceTerminalTarget? {
         navigation.destination.flatMap { $0.workflowID == workflow.id ? $0 : nil }
     }
@@ -38,14 +39,18 @@ struct AgentWorkflowSurface: View {
                     if let run = workflow.run {
                         WorkflowRunControls(
                             workflowID: workflow.id, run: run, selectedAgentID: focused?.id,
-                            selectedRole: focused?.role, reportFailure: reportFailure)
+                            reportFailure: reportFailure,
+                            didChangeConnection: { focusRequest += 1 })
                     }
                 }
             }
             if workflow.restored {
                 RestoredWorkflowNotice(workflow: workflow)
             }
-            AgentPanes(workflow: workflow, layout: layout, isSelected: isSelected) { panesAreTiled = $0 }
+            AgentPanes(
+                workflow: workflow, layout: layout, isSelected: isSelected,
+                focusRequest: focusRequest
+            ) { panesAreTiled = $0 }
         }
         .onChange(of: destination, initial: true) {
             guard let history = destination else { return }

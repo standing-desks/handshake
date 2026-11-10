@@ -67,13 +67,13 @@ extension CoreClient {
         }
     }
 
-    func cancelAgent(workflowID: UInt64) async throws {
+    func forceStopAgent(workflowID: UInt64) async throws {
         if snapshot?.workflows.workflows.first(where: { $0.id == workflowID })?.run != nil {
-            try await cancelWorkflowRun(workflowID: workflowID)
+            try await forceStopWorkflowAgents(workflowID: workflowID)
             return
         }
-        let result = try await sendAndAwaitCompletion(.cancelAgent(workflowID: workflowID))
-        guard case .agentCancelled(let cancelledID) = result, cancelledID == workflowID else {
+        let result = try await sendAndAwaitCompletion(.forceStopAgent(workflowID: workflowID))
+        guard case .agentStopped(let cancelledID) = result, cancelledID == workflowID else {
             throw CoreFailure.unexpectedCommandResult
         }
     }

@@ -119,14 +119,14 @@ struct AgentWorkflowTests {
         await #expect(throws: CoreFailure.unexpectedCommandResult) {
             try await client.startAgent(workflowID: 3, choice: .init(harness: .codex))
         }
-        await transport.reply(with: .completes(.agentCancelled(workflowID: 99)))
+        await transport.reply(with: .completes(.agentStopped(workflowID: 99)))
         await #expect(throws: CoreFailure.unexpectedCommandResult) {
-            try await client.cancelAgent(workflowID: 3)
+            try await client.forceStopAgent(workflowID: 3)
         }
         await transport.reply(with: .completes(.agentStarted(workflowID: 3)))
         try await client.startAgent(workflowID: 3, choice: .init(harness: .codex))
-        await transport.reply(with: .completes(.agentCancelled(workflowID: 3)))
-        try await client.cancelAgent(workflowID: 3)
+        await transport.reply(with: .completes(.agentStopped(workflowID: 3)))
+        try await client.forceStopAgent(workflowID: 3)
     }
 
     @Test @MainActor func cancellingAnAgentThatAlreadyEndedIsNotAFailureToShow() async throws {
@@ -137,9 +137,9 @@ struct AgentWorkflowTests {
         try await waitUntil { client.runState == .running }
 
         await transport.reply(with: .rejects(code: "agentNotRunning", message: "The agent isn't running."))
-        let ended = await #expect(throws: CoreFailure.self) { try await client.cancelAgent(workflowID: 3) }
+        let ended = await #expect(throws: CoreFailure.self) { try await client.forceStopAgent(workflowID: 3) }
         await transport.reply(with: .rejects(code: "workflowNotFound", message: "The workflow is no longer open."))
-        let missing = await #expect(throws: CoreFailure.self) { try await client.cancelAgent(workflowID: 3) }
+        let missing = await #expect(throws: CoreFailure.self) { try await client.forceStopAgent(workflowID: 3) }
 
         #expect(ended?.isAgentNotRunning == true)
         #expect(missing?.isAgentNotRunning == false)
@@ -151,7 +151,7 @@ struct AgentWorkflowTests {
             ("workflowActivated", .workflowActivated(workflowID: 3)),
             ("workflowClosed", .workflowClosed(workflowID: 3)),
             ("agentStarted", .agentStarted(workflowID: 3)),
-            ("agentCancelled", .agentCancelled(workflowID: 3)),
+            ("agentStopped", .agentStopped(workflowID: 3)),
         ]
         for (type, expected) in types {
             let json = """
@@ -179,7 +179,7 @@ struct AgentWorkflowTests {
     }
 }
 
-/// A transport that answers Start Agent and Cancel Agent as the test scripts, and hands back the
+/// A transport that answers Start Agent and Force Stop Agent as the test scripts, and hands back the
 /// events and terminal output the test queues.
 actor ScriptedAgentTransport {
     enum Reply {
@@ -220,9 +220,9 @@ actor ScriptedAgentTransport {
         let requestID = nextRequestID
         nextRequestID += 1
         switch (command, scriptedReply) {
-        case (.startAgent, .completes(let result)), (.cancelAgent, .completes(let result)):
+        case (.startAgent, .completes(let result)), (.forceStopAgent, .completes(let result)):
             queue(event: .commandCompleted(requestID: requestID, result: result))
-        case (.startAgent, .rejects(let code, let message)), (.cancelAgent, .rejects(let code, let message)):
+        case (.startAgent, .rejects(let code, let message)), (.forceStopAgent, .rejects(let code, let message)):
             return CoreCommandReceipt(
                 requestID: requestID, status: .rejected,
                 error: .init(code: code, message: message))
@@ -250,6 +250,9 @@ actor ScriptedAgentTransport {
         throw CoreFailure.invalidArgument
     }
 
+    func writeWorkflowInput(terminalID: UInt64, bytes: Data, context: CoreWorkflowInputContext) {
+        continuationAgentIDs.append(context.agentID)
+    }
     func writeTerminalInput(terminalID: UInt64, bytes: Data) {}
 
     func resizeTerminal(terminalID: UInt64, size: CoreTerminalSize) {}

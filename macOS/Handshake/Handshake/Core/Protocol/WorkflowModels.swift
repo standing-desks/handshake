@@ -83,14 +83,10 @@ nonisolated struct CoreWorkflow: Decodable, Equatable, Identifiable, Sendable {
     /// Agents workflows with subtabs or a run get the strip at the top of the terminal panel.
     var showsTerminalStrip: Bool { kind == .agents && (showsAgentSubtabs || run != nil) }
 
-    /// The workflow's live shells: its agents' in an agents workflow, and otherwise its own.
+    /// Owned terminals; their separate terminal state reports whether the shells are running.
     var terminalIDs: [UInt64] {
         guard !isArchived else { return [] }
-        return (kind == .agents ? agents.map(\.terminalID) : [terminalID]).filter { id in
-            id != 0
-                && (!restored || !(kind == .singleAgent || run != nil)
-                    || terminalHistory?.contains(where: { $0.terminalID == id }) != true)
-        }
+        return (kind == .agents ? agents.map(\.terminalID) : [terminalID]).filter { $0 != 0 }
     }
 
     enum Kind: String, Codable, Sendable {
@@ -129,7 +125,7 @@ nonisolated struct CoreWorkflowTerminal: Decodable, Equatable, Sendable {
     }
 }
 
-/// One process filling one role in a workflow, shown as one of its subtabs.
+/// One persistent role conversation, shown as one of the workflow’s subtabs.
 nonisolated struct CoreAgent: Decodable, Equatable, Identifiable, Sendable {
     let agentID: UInt64
     let role: String

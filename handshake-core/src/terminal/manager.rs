@@ -10,9 +10,7 @@ use std::time::Duration;
 use portable_pty::{CommandBuilder, MasterPty};
 use tracing::{debug, warn};
 
-use super::launcher::{
-    canonical_working_directory, default_shell_command, program_launcher_command,
-};
+use super::launcher::{canonical_working_directory, default_shell_command};
 use super::process::{
     SharedChild, child_is_running, terminate_child, terminate_unobserved_child, wait_for_child,
 };
@@ -33,7 +31,7 @@ pub(crate) struct TerminalObservation {
     pub boundary_sizes: Option<Vec<TerminalSize>>,
 }
 
-type ExitCallback = Arc<
+pub(super) type ExitCallback = Arc<
     dyn Fn(TerminalId, Result<TerminalExit, String>, TerminalObservation) + Send + Sync + 'static,
 >;
 
@@ -61,6 +59,7 @@ struct TerminalSession {
     master: Box<dyn MasterPty + Send>,
     size: TerminalSize,
     writer: Arc<Mutex<Box<dyn Write + Send>>>,
+    input: super::input::TerminalInput,
     input_closed: Arc<AtomicBool>,
     child: SharedChild,
     output_position: Arc<super::ReplayPosition>,
@@ -81,6 +80,8 @@ pub(crate) struct TerminalManager {
     test_starts_before_failure: std::sync::atomic::AtomicUsize,
     sessions: Mutex<HashMap<TerminalId, TerminalSession>>,
     integrations: Mutex<HashMap<TerminalId, super::shell::ShellIntegration>>,
+    programs: Arc<Mutex<HashMap<TerminalId, Arc<super::managed::ManagedProgram>>>>,
+    shell_drafts: Mutex<std::collections::HashSet<TerminalId>>,
     cleanup: cleanup::TerminalCleanup,
 }
 
@@ -97,6 +98,8 @@ impl TerminalManager {
             test_starts_before_failure: std::sync::atomic::AtomicUsize::new(usize::MAX),
             sessions: Mutex::new(HashMap::new()),
             integrations: Mutex::new(HashMap::new()),
+            programs: Arc::new(Mutex::new(HashMap::new())),
+            shell_drafts: Mutex::new(std::collections::HashSet::new()),
             cleanup: cleanup::TerminalCleanup::default(),
         }
     }
@@ -201,35 +204,266 @@ impl TerminalManager {
         &self,
         terminal_id: TerminalId,
     ) -> Result<(), TerminalError> {
+        if self.is_running(terminal_id) {
+            return Ok(());
+        }
         self.output.cancel(terminal_id)
     }
 
-    /// Starts `program` in `working_directory` with the given environment `PATH`.
+    /// Starts a managed harness as a child of a shell, or resumes it in its existing shell.
     #[expect(
         clippy::too_many_arguments,
-        reason = "the reserved ID keeps transcript allocation outside application-state locks"
+        clippy::too_many_lines,
+        reason = "explicit launch contract shared with native harness preparation"
     )]
-    pub(crate) fn start_program(
+    pub(crate) fn start_managed_program(
         &self,
-        terminal_id: TerminalId,
+        terminal: TerminalId,
         working_directory: &Path,
         program: &Path,
         arguments: &[OsString],
         path: &OsStr,
         environment: &[(&str, &str)],
         size: TerminalSize,
-        on_exit: ExitCallback,
+        on_program_exit: ExitCallback,
+        on_shell_exit: ExitCallback,
     ) -> Result<TerminalId, TerminalError> {
-        let working_directory = match canonical_working_directory(working_directory) {
-            Ok(path) => path,
-            Err(error) => {
-                let _ = self.output.cancel(terminal_id);
-                return Err(error);
+        let existing = self.is_running(terminal);
+        let result = (|| {
+            let previous = self
+                .programs
+                .lock()
+                .map_err(|_| TerminalError::Poisoned)?
+                .get(&terminal)
+                .cloned();
+            let invocation = Arc::new(
+                super::managed::ManagedProgram::prepare(
+                    program,
+                    arguments,
+                    path,
+                    environment,
+                    on_program_exit,
+                    previous,
+                )
+                .map_err(|error| TerminalError::Pty {
+                    operation: "prepare harness launch",
+                    message: error.to_string(),
+                })?,
+            );
+            if self.is_running(terminal) {
+                if self
+                    .shell_drafts
+                    .lock()
+                    .map_err(|_| TerminalError::Poisoned)?
+                    .contains(&terminal)
+                {
+                    return Err(TerminalError::Pty {
+                        operation: "resume harness",
+                        message: "Clear or submit the shell draft before resuming this agent."
+                            .into(),
+                    });
+                }
+                if self.is_harness_running(terminal) {
+                    return Err(TerminalError::Pty {
+                        operation: "resume harness",
+                        message: "An agent is already running in this pane.".into(),
+                    });
+                }
+                if self
+                    .programs
+                    .lock()
+                    .map_err(|_| TerminalError::Poisoned)?
+                    .get(&terminal)
+                    .is_some_and(|program| !program.ended())
+                {
+                    return Err(TerminalError::Pty {
+                        operation: "resume harness",
+                        message:
+                            "The previous agent is still stopping. This pane remains interactive."
+                                .into(),
+                    });
+                }
+                // A just-retired wrapper may still be returning foreground control to the shell.
+                let deadline = std::time::Instant::now() + Duration::from_millis(250);
+                loop {
+                    let sessions = self.lock_sessions()?;
+                    let session = sessions.get(&terminal).ok_or(TerminalError::NotOpen {
+                        terminal_id: terminal,
+                    })?;
+                    let descriptor = session
+                        .master
+                        .as_raw_fd()
+                        .ok_or(TerminalError::InputClosed)?;
+                    // SAFETY: the live PTY and its owned root child retain these identities.
+                    let foreground = unsafe { libc::tcgetpgrp(descriptor) };
+                    let shell = super::process::process_id(&session.child)
+                        .and_then(|id| i32::try_from(id).ok());
+                    if Some(foreground) == shell {
+                        break;
+                    }
+                    drop(sessions);
+                    if std::time::Instant::now() >= deadline {
+                        return Err(TerminalError::Pty {
+                            operation: "resume harness",
+                            message: "Return to the shell prompt before resuming the agent.".into(),
+                        });
+                    }
+                    thread::sleep(Duration::from_millis(5));
+                }
+                let command = format!(
+                    "'{}/launch'\r",
+                    invocation
+                        .command()
+                        .display()
+                        .to_string()
+                        .replace('\'', "'\\''")
+                );
+                self.write_input(terminal, command.as_bytes())?;
+            } else {
+                let folder = canonical_working_directory(working_directory)?;
+                let shell = super::launcher::login_shell();
+                #[cfg(test)]
+                let shell = self.test_shell.clone().unwrap_or(shell);
+                let (mut command, integration) = default_shell_command(&folder, &shell, true)?;
+                #[cfg(test)]
+                if let Some(home) = &self.test_shell_home {
+                    command.env("HANDSHAKE_USER_ZDOTDIR", home);
+                    command.env("HANDSHAKE_USER_HOME", home);
+                }
+                if let Some(integration) = integration {
+                    command.env(
+                        "HANDSHAKE_INITIAL_COMMAND",
+                        invocation.command().join("launch"),
+                    );
+                    self.output
+                        .integrate_shell(terminal, integration.token.clone())?;
+                    self.integrations
+                        .lock()
+                        .map_err(|_| TerminalError::Poisoned)?
+                        .insert(terminal, integration);
+                } else {
+                    command = super::launcher::managed_fallback_command(
+                        &folder,
+                        &shell,
+                        &invocation.command().join("launch"),
+                    );
+                }
+                self.programs
+                    .lock()
+                    .map_err(|_| TerminalError::Poisoned)?
+                    .insert(terminal, Arc::clone(&invocation));
+                if let Err(error) =
+                    self.start_command(terminal, command, size, Some(folder), on_shell_exit)
+                {
+                    self.programs
+                        .lock()
+                        .map_err(|_| TerminalError::Poisoned)?
+                        .remove(&terminal);
+                    return Err(error);
+                }
             }
+            self.programs
+                .lock()
+                .map_err(|_| TerminalError::Poisoned)?
+                .insert(terminal, invocation);
+            Ok(terminal)
+        })();
+        if result.is_err() && !existing {
+            let _ = self.close(terminal);
+            let _ = self.output.cancel(terminal);
+            if let Ok(mut programs) = self.programs.lock() {
+                programs.remove(&terminal);
+            }
+        }
+        result
+    }
+
+    pub(crate) fn force_stop_harness(&self, terminal: TerminalId) -> Result<(), TerminalError> {
+        let invocation = self
+            .programs
+            .lock()
+            .map_err(|_| TerminalError::Poisoned)?
+            .get(&terminal)
+            .cloned();
+        let Some(invocation) = invocation else {
+            return Ok(());
         };
-        let command =
-            program_launcher_command(&working_directory, program, arguments, path, environment);
-        self.start_command(terminal_id, command, size, Some(working_directory), on_exit)
+        if !invocation.running() {
+            return Ok(());
+        }
+        let shell_pid = {
+            let sessions = self.lock_sessions()?;
+            let session = sessions.get(&terminal).ok_or(TerminalError::NotOpen {
+                terminal_id: terminal,
+            })?;
+            super::process::process_id(&session.child)
+                .and_then(|id| i32::try_from(id).ok())
+                .ok_or(TerminalError::InputClosed)?
+        };
+        invocation
+            .force_stop(shell_pid)
+            .map_err(|error| TerminalError::Pty {
+                operation: "force stop harness",
+                message: error.to_string(),
+            })?;
+        self.poll_program_exits();
+        Ok(())
+    }
+
+    pub(crate) fn note_shell_input(&self, terminal: TerminalId, bytes: &[u8]) {
+        if let Ok(mut drafts) = self.shell_drafts.lock() {
+            for byte in bytes {
+                if matches!(byte, b'\r' | b'\n' | 3) {
+                    drafts.remove(&terminal);
+                } else {
+                    drafts.insert(terminal);
+                }
+            }
+        }
+    }
+
+    pub(crate) fn is_harness_running(&self, terminal: TerminalId) -> bool {
+        self.programs
+            .lock()
+            .ok()
+            .and_then(|programs| programs.get(&terminal).map(|program| program.running()))
+            .unwrap_or(false)
+    }
+
+    /// User task input belongs to the shell until the validated native runner is released.
+    pub(crate) fn is_harness_ready(&self, terminal: TerminalId) -> bool {
+        self.programs
+            .lock()
+            .ok()
+            .and_then(|programs| programs.get(&terminal).map(|program| program.ready()))
+            .unwrap_or(false)
+    }
+
+    pub(crate) fn poll_program_exits(&self) {
+        let programs = self
+            .programs
+            .lock()
+            .map(|programs| {
+                programs
+                    .iter()
+                    .map(|(&id, program)| (id, Arc::clone(program)))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        for (id, program) in programs {
+            let shell = self
+                .lock_sessions()
+                .ok()
+                .and_then(|sessions| {
+                    sessions
+                        .get(&id)
+                        .and_then(|session| super::process::process_id(&session.child))
+                })
+                .and_then(|pid| i32::try_from(pid).ok());
+            if let (Some(shell), Ok(observation)) = (shell, self.observe(id)) {
+                program.poll(id, shell, observation);
+            }
+        }
     }
 
     /// The last size the terminal was given, if it is open.
@@ -253,6 +487,7 @@ impl TerminalManager {
     }
 
     /// Stops the process but keeps the terminal open, so its output stays readable until closed.
+    #[cfg(test)]
     pub(crate) fn terminate(&self, terminal_id: TerminalId) -> Result<(), TerminalError> {
         let child = {
             let sessions = self.lock_sessions()?;
@@ -293,6 +528,10 @@ impl TerminalManager {
         }
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "PTY startup pairs worker ownership and rollback in one place"
+    )]
     fn start_command(
         &self,
         terminal_id: TerminalId,
@@ -301,6 +540,21 @@ impl TerminalManager {
         working_directory_handshake: Option<PathBuf>,
         on_exit: ExitCallback,
     ) -> Result<TerminalId, TerminalError> {
+        let programs = Arc::clone(&self.programs);
+        let on_exit: ExitCallback = Arc::new(move |id, result, observation| {
+            let current = programs
+                .lock()
+                .ok()
+                .and_then(|mut programs| programs.remove(&id));
+            if let Some(current) = current {
+                current.finish(
+                    id,
+                    Err("The shell exited during this invocation.".into()),
+                    observation.clone(),
+                );
+            }
+            on_exit(id, result, observation);
+        });
         let on_exit = self.browser_environment(terminal_id, &mut command, on_exit);
         let mut browser_launch = BrowserLaunch::new(self.browser_control.as_deref(), terminal_id);
         let output_position = self.output.replay_position(terminal_id)?;
@@ -326,6 +580,14 @@ impl TerminalManager {
             reader_descriptor,
         } = starting;
         let reader_cancelled = Arc::new(AtomicBool::new(false));
+        let input = match super::input::TerminalInput::new(reader_descriptor) {
+            Ok(input) => input,
+            Err(error) => {
+                let _ = self.output.cancel(terminal_id);
+                terminate_unobserved_child(&child);
+                return Err(error);
+            }
+        };
         let reader_thread = match spawn_terminal_reader(
             Arc::clone(&self.output),
             terminal_id,
@@ -343,6 +605,17 @@ impl TerminalManager {
 
         let exit_reporting = Arc::new(AtomicU8::new(EXIT_REPORT_PENDING));
         let input_closed = Arc::new(AtomicBool::new(false));
+        let startup_programs = Arc::clone(&self.programs);
+        let shell_pid = super::process::process_id(&child).and_then(|pid| i32::try_from(pid).ok());
+        let poll = move || {
+            let invocation = startup_programs
+                .lock()
+                .ok()
+                .and_then(|programs| programs.get(&terminal_id).cloned());
+            if let (Some(invocation), Some(shell)) = (invocation, shell_pid) {
+                invocation.service_startup(shell);
+            }
+        };
         let supervisor_thread = match spawn_terminal_supervisor(
             terminal_id,
             &child,
@@ -350,6 +623,7 @@ impl TerminalManager {
             Arc::clone(&input_closed),
             Arc::clone(&output_position),
             on_exit,
+            poll,
         ) {
             Ok(thread) => thread,
             Err(error) => {
@@ -361,6 +635,7 @@ impl TerminalManager {
                         master,
                         size,
                         writer,
+                        input,
                         input_closed,
                         child,
                         output_position,
@@ -377,6 +652,7 @@ impl TerminalManager {
             master,
             size,
             writer,
+            input,
             input_closed,
             child,
             output_position,
@@ -412,36 +688,58 @@ impl TerminalManager {
         if bytes.is_empty() {
             return Ok(());
         }
-        let (writer, input_closed) = {
-            let sessions = self.lock_sessions()?;
-            let session = sessions
-                .get(&terminal_id)
-                .ok_or(TerminalError::NotOpen { terminal_id })?;
-            (
-                Arc::clone(&session.writer),
-                Arc::clone(&session.input_closed),
-            )
-        };
-        let mut writer = writer.lock().map_err(|_| TerminalError::Poisoned)?;
-        if input_closed.load(Ordering::Acquire) {
-            return Err(TerminalError::NotRunning { terminal_id });
+        self.enqueue_input(terminal_id, bytes, None, false)
+    }
+
+    pub(crate) fn enqueue_input(
+        &self,
+        terminal: TerminalId,
+        bytes: &[u8],
+        revision: Option<u64>,
+        priority: bool,
+    ) -> Result<(), TerminalError> {
+        self.enqueue_input_parts(terminal, &[(bytes, revision)], priority)
+    }
+    pub(crate) fn enqueue_input_parts(
+        &self,
+        terminal: TerminalId,
+        parts: &[(&[u8], Option<u64>)],
+        priority: bool,
+    ) -> Result<(), TerminalError> {
+        let sessions = self.lock_sessions()?;
+        let session = sessions.get(&terminal).ok_or(TerminalError::NotOpen {
+            terminal_id: terminal,
+        })?;
+        if session.input_closed.load(Ordering::Acquire) {
+            return Err(TerminalError::NotRunning {
+                terminal_id: terminal,
+            });
         }
-        writer
-            .write_all(bytes)
-            .and_then(|()| writer.flush())
-            .map_err(|error| {
-                // The PTY can hang up before the supervisor publishes the process exit.
-                if terminal_input_closed(&error) {
-                    input_closed.store(true, Ordering::Release);
-                    TerminalError::NotRunning { terminal_id }
-                } else {
-                    TerminalError::Pty {
-                        operation: "write terminal input",
-                        message: error.to_string(),
-                    }
-                }
-            })?;
-        Ok(())
+        let invocation = self
+            .programs
+            .lock()
+            .map_err(|_| TerminalError::Poisoned)?
+            .get(&terminal)
+            .filter(|program| {
+                program.running() || parts.iter().any(|(_, revision)| revision.is_some())
+            })
+            .map(|program| program.input_guard());
+        session
+            .input
+            .enqueue_parts(parts, priority, invocation.as_ref())
+            .map_err(|error| match error {
+                TerminalError::InputClosed => TerminalError::NotRunning {
+                    terminal_id: terminal,
+                },
+                other => other,
+            })
+    }
+    pub(crate) fn set_routing_revision(&self, terminal: TerminalId, revision: u64) {
+        if let Ok(sessions) = self.lock_sessions()
+            && let Some(session) = sessions.get(&terminal)
+        {
+            session.input.set_revision(revision);
+        }
     }
 
     pub(crate) fn resize(
@@ -624,13 +922,14 @@ fn spawn_terminal_supervisor(
     input_closed: Arc<AtomicBool>,
     output_position: Arc<super::ReplayPosition>,
     on_exit: ExitCallback,
+    poll: impl FnMut() + Send + 'static,
 ) -> Result<JoinHandle<()>, TerminalError> {
     let child = Arc::clone(child);
     let exit_reporting = Arc::clone(exit_reporting);
     crate::blocking_worker::spawn(
         format!("terminal-{}-supervisor", terminal_id.value()),
         move || {
-            let result = wait_for_child(&child);
+            let result = wait_for_child(&child, poll);
             input_closed.store(true, Ordering::Release);
             let observation = output_position
                 .observe()
@@ -690,6 +989,7 @@ fn stop_session(terminal_id: TerminalId, session: TerminalSession) {
         master,
         size: _,
         writer,
+        input,
         input_closed,
         child,
         output_position: _,
@@ -710,6 +1010,7 @@ fn stop_session(terminal_id: TerminalId, session: TerminalSession) {
     // Close the PTY master before waiting for the child. A shell that exits as session leader waits
     // for its unread terminal output to drain, and only the hangup from closing the master ends that
     // wait now that nothing reads the output.
+    drop(input);
     drop(writer);
     drop(master);
     terminate_child(&child);
@@ -723,15 +1024,14 @@ fn stop_session(terminal_id: TerminalId, session: TerminalSession) {
     }
 }
 
+#[cfg(test)]
 fn terminal_input_closed(error: &std::io::Error) -> bool {
-    if error.kind() == std::io::ErrorKind::BrokenPipe {
-        return true;
-    }
-    #[cfg(unix)]
-    if error.raw_os_error() == Some(libc::EIO) {
-        return true;
-    }
-    false
+    matches!(
+        error.kind(),
+        std::io::ErrorKind::BrokenPipe
+            | std::io::ErrorKind::NotConnected
+            | std::io::ErrorKind::UnexpectedEof
+    ) || error.raw_os_error() == Some(libc::EIO)
 }
 
 #[cfg(test)]
@@ -742,6 +1042,106 @@ mod tests {
     use super::super::launcher::shell_launcher_command;
     use super::super::pty::READ_CHUNK_BYTES;
     use super::*;
+
+    #[test]
+    fn managed_startup_queries_and_pending_stops_preserve_shell_input() {
+        for stop_pending in [false, true] {
+            let folder = tempfile::tempdir().unwrap();
+            std::fs::write(folder.path().join(".zshrc"),
+                "stty -icanon -echo; printf '\\033[6n'; read -k 6 reply; printf '%s' \"$reply\" > startup-reply; stty sane; touch startup-passed\n").unwrap();
+            let stream = Arc::new(TerminalStream::for_test(64 * 1024, 256).unwrap());
+            let mut manager = TerminalManager::new(Arc::clone(&stream));
+            manager.set_test_shell(PathBuf::from("/bin/zsh"));
+            manager.set_test_shell_home(folder.path().to_owned());
+            let terminal = manager.reserve_terminal().unwrap();
+            let before = Instant::now();
+            manager
+                .start_managed_program(
+                    terminal,
+                    folder.path(),
+                    Path::new("/bin/sh"),
+                    &[
+                        OsString::from("-c"),
+                        OsString::from("touch harness-started; read -r line; printf '%s' \"$line\" > native-input; sleep 30"),
+                    ],
+                    OsStr::new("/bin:/usr/bin"),
+                    &[],
+                    test_terminal_size(),
+                    Arc::new(|_, _, _| {}),
+                    Arc::new(|_, _, _| {}),
+                )
+                .unwrap();
+            assert!(
+                before.elapsed() < Duration::from_secs(1),
+                "startup blocked terminal I/O"
+            );
+            let shell = super::super::process::process_id(
+                &manager.lock_sessions().unwrap()[&terminal].child,
+            );
+            manager
+                .enqueue_input(terminal, b"routed handoff\r", Some(0), false)
+                .unwrap();
+            if stop_pending {
+                manager.force_stop_harness(terminal).unwrap();
+            }
+            let deadline = Instant::now() + Duration::from_secs(20);
+            let (mut bytes, mut offset) = (Vec::new(), 0);
+            while !bytes.windows(4).any(|bytes| bytes == b"\x1b[6n") {
+                assert!(Instant::now() < deadline, "startup query never arrived");
+                drain_output(&stream, terminal, &mut offset, &mut bytes);
+                thread::sleep(Duration::from_millis(5));
+            }
+            // A slow profile can wait longer than the old synchronous binding deadline.
+            thread::sleep(Duration::from_millis(2100));
+            manager.write_input(terminal, b"\x1b[1;1R").unwrap();
+            while !folder.path().join("startup-passed").exists() {
+                assert!(
+                    Instant::now() < deadline,
+                    "shell startup could not read its reply"
+                );
+                thread::sleep(Duration::from_millis(5));
+            }
+            assert_eq!(
+                std::fs::read(folder.path().join("startup-reply")).unwrap(),
+                b"\x1b[1;1R"
+            );
+            if !stop_pending {
+                while !std::fs::read(folder.path().join("native-input"))
+                    .is_ok_and(|bytes| bytes == b"routed handoff")
+                {
+                    assert!(Instant::now() < deadline);
+                    thread::sleep(Duration::from_millis(5));
+                }
+                assert_eq!(
+                    std::fs::read(folder.path().join("native-input")).unwrap(),
+                    b"routed handoff"
+                );
+                manager.force_stop_harness(terminal).unwrap();
+            }
+            while manager.is_harness_running(terminal) {
+                assert!(Instant::now() < deadline, "pending agent did not stop");
+                manager.poll_program_exits();
+                thread::sleep(Duration::from_millis(5));
+            }
+            manager.poll_program_exits();
+            manager
+                .write_input(terminal, b"touch shell-usable\r")
+                .unwrap();
+            while !folder.path().join("shell-usable").exists() {
+                assert!(Instant::now() < deadline, "same shell did not accept input");
+                thread::sleep(Duration::from_millis(5));
+            }
+            if stop_pending {
+                assert!(!folder.path().join("harness-started").exists());
+            }
+            assert_eq!(
+                shell,
+                super::super::process::process_id(
+                    &manager.lock_sessions().unwrap()[&terminal].child
+                )
+            );
+        }
+    }
 
     #[test]
     fn failed_start_revokes_browser_credentials() {

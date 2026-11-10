@@ -262,6 +262,10 @@ pub(crate) unsafe fn write_terminal_chunk(
 fn status_for_error(error: &BridgeError) -> HandshakeStatus {
     match error {
         BridgeError::Application(handshake_core::ApplicationError::Terminal(
+            handshake_core::TerminalError::InputBackpressure,
+        ))
+        | BridgeError::Empty => HandshakeStatus::Empty,
+        BridgeError::Application(handshake_core::ApplicationError::Terminal(
             handshake_core::TerminalError::NotRunning { .. },
         )) => HandshakeStatus::TerminalNotRunning,
         BridgeError::Application(handshake_core::ApplicationError::Event(
@@ -285,7 +289,6 @@ fn status_for_error(error: &BridgeError) -> HandshakeStatus {
         | BridgeError::InputTooLarge
         | BridgeError::InvalidArgument
         | BridgeError::Memory(_) => HandshakeStatus::InvalidArgument,
-        BridgeError::Empty => HandshakeStatus::Empty,
         BridgeError::InvalidUtf8 => HandshakeStatus::InvalidUtf8,
         BridgeError::MalformedCommand => HandshakeStatus::MalformedCommand,
         BridgeError::NullPointer => HandshakeStatus::NullPointer,

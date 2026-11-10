@@ -135,7 +135,7 @@ struct ManagedWorkflowTabs: View {
             Button("Move Right") { move(item.id, 1) }
             Divider()
             if let workflow = item.workflow, workflow.isRunningAgent {
-                Button("Cancel Agent", systemImage: "stop.circle") { cancel(workflow.id) }
+                Button("Force Stop Agent", systemImage: "stop.circle") { cancel(workflow.id) }
             }
             Button("Close Tab", systemImage: "xmark") { close(item) }
             Button("Reopen Closed Tab", action: reopen).disabled(!canReopen)

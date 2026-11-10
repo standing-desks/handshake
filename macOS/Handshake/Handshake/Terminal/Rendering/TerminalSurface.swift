@@ -85,15 +85,18 @@ struct TerminalSurface: View {
                 }
 
                 if let statusMessage {
-                    Text(statusMessage)
-                        .accessibilityLabel(statusMessage)
-                        .accessibilityIdentifier("terminalStatus-\(terminalID)")
-                        .font(.caption.monospaced())
-                        .foregroundStyle(Color(nsColor: palette.text).opacity(0.65))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
-                        .background(Color(nsColor: palette.background).opacity(0.92), in: .rect(cornerRadius: 6))
-                        .padding(8)
+                    HStack {
+                        Text(statusMessage)
+                        shellRecovery
+                    }
+                    .accessibilityLabel(statusMessage)
+                    .accessibilityIdentifier("terminalStatus-\(terminalID)")
+                    .font(.caption.monospaced())
+                    .foregroundStyle(Color(nsColor: palette.text).opacity(0.65))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(Color(nsColor: palette.background).opacity(0.92), in: .rect(cornerRadius: 6))
+                    .padding(8)
                 }
             }
             .overlay(alignment: .trailing) {
@@ -115,6 +118,28 @@ struct TerminalSurface: View {
                 isVisible: isVisible, minimap: minimap)
         )
         .accessibilityHidden(!isVisible)
+    }
+
+    private var recoveryOwner: CoreWorkflow? {
+        guard coreClient.terminalStatus(for: terminalID) != .running else { return nil }
+        return coreClient.snapshot?.workflows.workflows.first { !$0.isArchived && $0.terminalIDs.contains(terminalID) }
+    }
+
+    @ViewBuilder private var shellRecovery: some View {
+        if let owner = recoveryOwner {
+            Button("Restart shell", systemImage: "terminal") {
+                Task {
+                    do {
+                        let agentID = owner.agents.first(where: { $0.terminalID == terminalID })?.id
+                        let receipt = try await coreClient.send(
+                            .recoverAgent(workflowID: owner.id, agentID: agentID, session: nil, shellOnly: true))
+                        if let error = receipt.error { failureMessage = error.message }
+                    } catch { failureMessage = error.localizedDescription }
+                }
+            }
+            .controlSize(.small)
+            .accessibilityIdentifier("restartTerminalShell-\(terminalID)")
+        }
     }
 
     private var statusMessage: String? {

@@ -338,10 +338,7 @@ impl Application {
                     return Vec::new();
                 }
                 let shells = match workflow.kind {
-                    WorkflowKind::Draft | WorkflowKind::Terminal => 1,
-                    // Harnesses restore their archive first, then attempt exact-session resume below.
-                    WorkflowKind::SingleAgent => 0,
-                    WorkflowKind::Agents if workflow.run.is_some() => 0,
+                    WorkflowKind::Draft | WorkflowKind::Terminal | WorkflowKind::SingleAgent => 1,
                     WorkflowKind::Agents => workflow.agents.len(),
                 };
                 (0..shells)
@@ -384,7 +381,7 @@ impl Application {
                             pixel_width: 800,
                             pixel_height: 480,
                         },
-                        matches!(stored.kind, WorkflowKind::Draft | WorkflowKind::Terminal),
+                        true,
                     )
                 }) {
                 Ok(id) => {
@@ -398,14 +395,9 @@ impl Application {
             };
             // An agents workflow has no shell of its own; each of its agents gets a fresh one.
             let (terminal_id, agents) = match stored.kind {
-                WorkflowKind::Draft | WorkflowKind::Terminal => (restart(), Vec::new()),
-                // Keep the recorded terminal available until an exact session can resume.
-                WorkflowKind::SingleAgent => (
-                    terminal_history
-                        .last()
-                        .map_or(TerminalId::from_value(0), |entry| entry.terminal_id),
-                    Vec::new(),
-                ),
+                WorkflowKind::Draft | WorkflowKind::Terminal | WorkflowKind::SingleAgent => {
+                    (restart(), Vec::new())
+                }
                 WorkflowKind::Agents => {
                     let agents: Vec<_> = stored
                         .agents
@@ -413,15 +405,7 @@ impl Application {
                         .map(|agent| Agent {
                             agent_id: agent.agent_id,
                             role: agent.role,
-                            terminal_id: if stored.run.is_some() {
-                                terminal_history
-                                    .iter()
-                                    .rev()
-                                    .find(|entry| entry.agent_id == Some(agent.agent_id))
-                                    .map_or(TerminalId::from_value(0), |entry| entry.terminal_id)
-                            } else {
-                                restart()
-                            },
+                            terminal_id: restart(),
                         })
                         .collect();
                     (TerminalId::from_value(0), agents)
@@ -452,7 +436,7 @@ impl Application {
                     Some(status) if status != WorkflowStatus::Running => status,
                     _ => WorkflowStatus::Interrupted,
                 };
-                workflow.ended_at = Some(workflow.started_at);
+                workflow.ended_at = None;
             } else if workflow.terminal_ids().is_empty() {
                 workflow.status = WorkflowStatus::Failed;
                 workflow.ended_at = Some(workflow.started_at);

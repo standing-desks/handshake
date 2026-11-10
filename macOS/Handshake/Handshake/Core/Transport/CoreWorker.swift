@@ -189,48 +189,6 @@ actor CoreWorker: CoreTransport {
         }
     }
 
-    func writeTerminalInput(terminalID: UInt64, bytes: Data) throws {
-        try writeTerminalBytes(terminalID: terminalID, bytes: bytes, userInput: true)
-    }
-
-    func writeTerminalResponse(terminalID: UInt64, bytes: Data) throws {
-        try writeTerminalBytes(terminalID: terminalID, bytes: bytes, userInput: false)
-    }
-
-    private func writeTerminalBytes(terminalID: UInt64, bytes: Data, userInput: Bool) throws {
-        let status = try withClient { client in
-            bytes.withUnsafeBytes { input in
-                let write = userInput ? handshake_client_write_terminal_input : handshake_client_write_terminal_response
-                return write(
-                    client,
-                    terminalID,
-                    input.bindMemory(to: UInt8.self).baseAddress,
-                    input.count
-                )
-            }
-        }
-        try checkTerminalStatus(status)
-    }
-
-    func resizeTerminal(terminalID: UInt64, size: CoreTerminalSize) throws {
-        let status = try withClient { client in
-            handshake_client_resize_terminal(
-                client,
-                terminalID,
-                size.rows,
-                size.columns,
-                size.pixelWidth,
-                size.pixelHeight
-            )
-        }
-        try checkTerminalStatus(status)
-    }
-
-    private func checkTerminalStatus(_ status: HandshakeStatus) throws {
-        if status == HANDSHAKE_STATUS_TERMINAL_NOT_RUNNING { throw CoreFailure.terminalNotRunning }
-        try check(status)
-    }
-
     private func readSnapshot() throws -> CoreSnapshot {
         var response = HandshakeBuffer()
         let status = try withClient { client in

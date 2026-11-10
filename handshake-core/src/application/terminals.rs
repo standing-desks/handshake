@@ -158,6 +158,11 @@ impl Application {
         terminal_id: TerminalId,
         bytes: &[u8],
     ) -> Result<(), ApplicationError> {
+        if !self.terminals.is_harness_ready(terminal_id) {
+            self.terminals.note_shell_input(terminal_id, bytes);
+            self.terminals.write_input(terminal_id, bytes)?;
+            return Ok(());
+        }
         if let Some(input) = self.workflow_agent_input(terminal_id)? {
             let mut input = input.lock().map_err(|_| ApplicationError::Poisoned)?;
             let submission = if input.will_submit(bytes) {
@@ -165,13 +170,77 @@ impl Application {
             } else {
                 None
             };
-            if let Err(error) = input.write(&self.terminals, terminal_id, bytes) {
+            let routing = self
+                .lock_inner()?
+                .workflows
+                .workflows
+                .iter()
+                .find_map(|workflow| {
+                    let agent = workflow
+                        .agents
+                        .iter()
+                        .find(|agent| agent.terminal_id == terminal_id)?;
+                    let run = workflow.run.as_ref()?;
+                    Some(super::run_inputs::RoutingStamp {
+                        revision: run.mode_revision,
+                        generation: run.assignment_generation(agent.agent_id.0),
+                    })
+                });
+            if let Err(error) = input.write(&self.terminals, terminal_id, bytes, routing) {
                 self.cancel_workflow_submission(submission)?;
                 return Err(error.into());
             }
             return Ok(());
         }
-        Ok(self.terminals.write_input(terminal_id, bytes)?)
+        self.terminals.write_input(terminal_id, bytes)?;
+        Ok(())
+    }
+
+    /// Carries intent with raw input; coordination errors must never consume the user's bytes.
+    ///
+    /// # Errors
+    /// Returns terminal backpressure or an input error, without changing the user's draft.
+    pub fn write_workflow_input(
+        &self,
+        terminal: TerminalId,
+        bytes: &[u8],
+        context: super::WorkflowInputContext,
+    ) -> Result<(), ApplicationError> {
+        let valid = self
+            .lock_inner()?
+            .workflows
+            .workflows
+            .iter()
+            .any(|workflow| {
+                workflow.workflow_id == context.workflow_id
+                    && workflow.agents.iter().any(|agent| {
+                        agent.agent_id == context.agent_id && agent.terminal_id == terminal
+                    })
+            });
+        if valid && self.terminals.is_harness_ready(terminal) {
+            let submit = if let Some(input) = self.workflow_agent_input(terminal)? {
+                let mut input = input.lock().map_err(|_| ApplicationError::Poisoned)?;
+                input.prepared_revision = Some(context.mode_revision);
+                input.will_submit(bytes)
+                    && input
+                        .routing_revision
+                        .is_none_or(|revision| revision == context.mode_revision)
+            } else {
+                false
+            };
+            if submit {
+                let disposition = self.continue_workflow_run(
+                    context.workflow_id,
+                    context.agent_id,
+                    context.generation,
+                    context.mode_revision,
+                );
+                if let Err(error) = disposition {
+                    warn!(%error, "couldn't start routing; user input remains available");
+                }
+            }
+        }
+        self.write_terminal_input(terminal, bytes)
     }
 
     /// Writes a terminal-generated protocol reply without treating it as a user draft.
@@ -221,7 +290,25 @@ impl Application {
         lease: Option<std::fs::File>,
     ) -> impl Fn(TerminalId, Result<TerminalExit, String>, TerminalObservation) + Send + Sync + 'static
     {
-        let callback = self.exit_callback();
+        let inner = Arc::downgrade(&self.inner);
+        let registry = Arc::clone(&self.run_processes);
+        let callback = move |id, result, observation| {
+            let input = registry.lock().ok().and_then(|processes| {
+                processes
+                    .values()
+                    .find_map(|processes| processes.inputs.get(&id).cloned())
+            });
+            if let Some(input) = input
+                && let Ok(mut input) = input.lock()
+            {
+                input.clear_feedback();
+            }
+            if let Some(inner) = inner.upgrade()
+                && let Ok(mut inner) = inner.lock()
+            {
+                inner.record_harness_exit(id, &result, observation);
+            }
+        };
         let lease = std::sync::Mutex::new(lease);
         move |id, result, observation| {
             lease
@@ -259,6 +346,73 @@ impl Application {
 }
 
 impl Inner {
+    /// A harness returning never closes the shell's input or terminal byte stream.
+    fn record_harness_exit(
+        &mut self,
+        terminal: TerminalId,
+        result: &Result<TerminalExit, String>,
+        observation: TerminalObservation,
+    ) {
+        if self.terminals.get(&terminal) != Some(&TerminalStatus::Running) {
+            return;
+        }
+        let message = match result {
+            Ok(exit) => format!(
+                "Agent exited with code {}. Shell is available; resume this conversation to continue.",
+                exit.exit_code
+            ),
+            Err(message) => format!("Agent stopped: {message} Shell is available."),
+        };
+        // One invocation may contain several work spans. End all of its live native spans.
+        if let Some(workflow_id) = self
+            .workflows
+            .workflows
+            .iter()
+            .find(|workflow| {
+                workflow.terminal_id == terminal
+                    || workflow
+                        .agents
+                        .iter()
+                        .any(|agent| agent.terminal_id == terminal)
+            })
+            .map(|workflow| workflow.workflow_id)
+        {
+            self.step_terminals.insert(terminal, workflow_id);
+            self.trace_spans.remove(&terminal);
+        }
+        if let Err(error) = self.end_trace(
+            terminal,
+            observation,
+            crate::TraceSpanStatus::Exited,
+            crate::TraceEventKind::ProcessExited,
+            &message,
+        ) {
+            warn!(%error, "couldn't record harness exit");
+        } else {
+            self.step_terminals.remove(&terminal);
+        }
+        self.record_run_agent_exit(terminal, crate::RunAgentStatus::Exited);
+        if let Some(workflow) = self.workflows.workflows.iter_mut().find(|workflow| {
+            workflow.kind == WorkflowKind::SingleAgent && workflow.terminal_id == terminal
+        }) {
+            workflow.status = if workflow.status == WorkflowStatus::Cancelled {
+                WorkflowStatus::Cancelled
+            } else if result.is_ok() {
+                WorkflowStatus::Exited
+            } else {
+                WorkflowStatus::Interrupted
+            };
+            let workflow = workflow.clone();
+            let _ = self
+                .folders
+                .store()
+                .update_agent_status(workflow.workflow_id, workflow.status);
+            let _ = self
+                .events
+                .append(EventKind::State(StateEvent::WorkflowChanged(workflow)));
+        }
+    }
+
     /// Records how a shell ended, in the terminal's status and as an event, and ends the workflow
     /// that owns it once all of that workflow's shells have ended.
     #[cfg(test)]
@@ -397,10 +551,15 @@ impl Inner {
                 .agent_id
                 .0;
             let run = workflow.run.as_mut().expect("workflow has a run");
-            if let Some(agent) = run.agents.iter_mut().find(|a| a.agent_id == id)
-                && agent.status == crate::RunAgentStatus::Running
-            {
+            let unfinished = run.status == crate::RunStatus::Running
+                && !run.completions.contains_key(&id)
+                && run.active_agents().iter().any(|agent| agent.agent_id == id);
+            if let Some(agent) = run.agents.iter_mut().find(|a| a.agent_id == id) {
                 agent.status = agent_status;
+                agent.harness_running = false;
+                if unfinished {
+                    run.finish(crate::RunStatus::Interrupted, "An agent exited before reporting its result. Resume its conversation or send a fresh task.");
+                }
                 // Exiting never completes a role or advances the run.
                 if let Err(error) = self.publish_run_best_effort(index, workflow) {
                     warn!(%error, "failed to record workflow agent exit");

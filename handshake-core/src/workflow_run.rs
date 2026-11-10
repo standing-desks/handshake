@@ -68,11 +68,37 @@ pub struct CompletionSignal {
 #[serde(rename_all = "camelCase")]
 pub enum RunStatus {
     Running,
+    /// No assignments are routed until the user submits fresh connected work.
+    Idle,
+    /// Routing needs attention; terminals remain available.
+    Paused,
+    /// Legacy persisted outcome. New work records outcomes independently.
     Completed,
     LimitReached,
     Cancelled,
     Failed,
     Interrupted,
+}
+
+/// The outcome of a work cycle, independent of conversation and terminal lifetime.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkOutcome {
+    pub kind: WorkOutcomeKind,
+    pub generation: u64,
+    pub finished_at: u64,
+    pub summary: String,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum WorkOutcomeKind {
+    Completed,
+    #[serde(alias = "cancelled")]
+    Stopped,
+    Failed,
+    Interrupted,
+    LimitReached,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -95,6 +121,8 @@ pub struct RunAgent {
     /// Defaults for records saved before per-agent lifecycle tracking was introduced.
     #[serde(default)]
     pub status: RunAgentStatus,
+    #[serde(default)]
+    pub harness_running: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
@@ -140,17 +168,22 @@ pub struct WorkflowRun {
     pub prompt: String,
     pub agents: Vec<RunAgent>,
     pub stage_index: usize,
+    /// A user follow-up in an ordered stage starts only the addressed participant.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stage_entry_agent: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub graph: Option<GraphRun>,
     /// Changes on every stage entry, including loop backs. UI actions must match this value.
     pub generation: u64,
-    /// Private follow-ups never start another workflow cycle. Missing in older records.
-    #[serde(default)]
-    pub individual_mode: bool,
+    /// Disconnected conversations never send handoffs. Read the earlier saved setting too.
+    #[serde(default, alias = "individualMode")]
+    pub agents_disconnected: bool,
     /// Invalidates input queued before a mode change without changing stage generations.
     #[serde(default)]
     pub mode_revision: u64,
     pub status: RunStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_outcome: Option<WorkOutcome>,
     pub completions: BTreeMap<u64, CompletionSignal>,
     pub rounds: BTreeMap<String, u8>,
     pub incoming: BTreeMap<u64, String>,
@@ -161,6 +194,10 @@ pub struct WorkflowRun {
 }
 
 impl WorkflowRun {
+    #[expect(
+        clippy::too_many_lines,
+        reason = "validate the pinned workflow before initializing its cycle state"
+    )]
     pub(crate) fn new(
         workflow_type: WorkflowType,
         prompt: String,
@@ -241,6 +278,7 @@ impl WorkflowRun {
                     effort: options.effort().map(str::to_owned),
                     yolo: options.yolo(),
                     status: RunAgentStatus::Waiting,
+                    harness_running: false,
                 });
             }
         }
@@ -254,10 +292,12 @@ impl WorkflowRun {
             prompt,
             agents,
             stage_index: 0,
+            stage_entry_agent: None,
             generation: 1,
-            individual_mode: false,
+            agents_disconnected: false,
             mode_revision: 0,
             status: RunStatus::Running,
+            last_outcome: None,
             completions: BTreeMap::new(),
             rounds: BTreeMap::new(),
             incoming: BTreeMap::new(),
@@ -283,11 +323,16 @@ impl WorkflowRun {
                         graph.ready.contains(&agent.agent_id)
                             || graph.assigned.contains(&agent.agent_id)
                     } else {
-                        self.workflow_type
-                            .definition
-                            .graph
-                            .as_ref()
-                            .is_some_and(|definition| definition.is_start(&agent.role))
+                        graph.entry_agent.map_or_else(
+                            || {
+                                self.workflow_type
+                                    .definition
+                                    .graph
+                                    .as_ref()
+                                    .is_some_and(|definition| definition.is_start(&agent.role))
+                            },
+                            |id| id == agent.agent_id,
+                        )
                     }
                 })
                 .collect();
@@ -295,7 +340,10 @@ impl WorkflowRun {
         let stage = &self.workflow_type.definition.stages[self.stage_index];
         self.agents
             .iter()
-            .filter(|agent| stage.roles.iter().any(|role| role.0 == agent.role))
+            .filter(|agent| {
+                stage.roles.iter().any(|role| role.0 == agent.role)
+                    && self.stage_entry_agent.is_none_or(|id| id == agent.agent_id)
+            })
             .collect()
     }
 
@@ -342,26 +390,34 @@ impl WorkflowRun {
         generation: u64,
         mode_revision: u64,
     ) -> Result<bool, RunError> {
-        let roots = if self.graph.is_some() {
-            self.graph_roots()
+        let agent = self
+            .agents
+            .iter()
+            .find(|agent| agent.agent_id == agent_id)
+            .ok_or(RunError::StaleSignal)?;
+        let stage_index = if self.graph.is_some() {
+            0
         } else {
-            self.workflow_type.definition.stages[0]
+            self.workflow_type
+                .definition
+                .stages
+                .iter()
+                .position(|stage| stage.roles.iter().any(|role| role.0 == agent.role))
+                .ok_or(RunError::StaleSignal)?
+        };
+        let starting_roles: Vec<_> = if self.graph.is_some() {
+            vec![agent.role.clone()]
+        } else {
+            self.workflow_type.definition.stages[stage_index]
                 .roles
                 .iter()
                 .map(|role| role.0.clone())
                 .collect()
         };
-        if !self
-            .agents
-            .iter()
-            .any(|agent| agent.agent_id == agent_id && roots.contains(&agent.role))
-        {
-            return Err(RunError::StaleSignal);
-        }
         if generation > self.generation {
             return Err(RunError::StaleSignal);
         }
-        if self.individual_mode || mode_revision != self.mode_revision {
+        if self.agents_disconnected || mode_revision != self.mode_revision {
             return Ok(false);
         }
         // Input can arrive before Swift consumes the latest state, or queue behind an earlier
@@ -375,9 +431,6 @@ impl WorkflowRun {
         {
             return Ok(false);
         }
-        if !matches!(self.status, RunStatus::Completed | RunStatus::LimitReached) {
-            return Err(RunError::StaleSignal);
-        }
         let next_generation = self
             .generation
             .checked_add(1)
@@ -390,7 +443,7 @@ impl WorkflowRun {
                 .assignment_generations
                 .clone();
             for agent in &self.agents {
-                if roots.contains(&agent.role) {
+                if starting_roles.contains(&agent.role) {
                     counters.insert(
                         agent.agent_id,
                         self.assignment_generation(agent.agent_id)
@@ -401,12 +454,15 @@ impl WorkflowRun {
             }
             self.graph = Some(graph::GraphRun {
                 assignment_generations: counters,
+                entry_agent: Some(agent_id),
                 ..graph::GraphRun::default()
             });
         }
-        self.stage_index = 0;
+        self.stage_index = stage_index;
+        self.stage_entry_agent = self.graph.is_none().then_some(agent_id);
         self.generation = next_generation;
         self.status = RunStatus::Running;
+        self.last_outcome = None;
         self.prompt.clear();
         self.completions.clear();
         self.rounds.clear();
@@ -414,10 +470,8 @@ impl WorkflowRun {
         self.assignments.clear();
         self.message = None;
         for agent in &mut self.agents {
-            if roots.contains(&agent.role) {
+            if agent.agent_id == agent_id {
                 agent.status = RunAgentStatus::Waiting;
-            } else if self.graph.is_some() {
-                agent.status = RunAgentStatus::Completed;
             }
         }
         self.trace(
@@ -429,37 +483,89 @@ impl WorkflowRun {
         Ok(true)
     }
 
-    /// Changing follow-up mode preserves the completed result and starts no work.
-    pub(crate) fn set_individual_mode(
+    /// A connection boundary preserves conversations and results and starts no work.
+    pub(crate) fn set_agents_disconnected(
         &mut self,
-        individual_mode: bool,
+        agents_disconnected: bool,
         generation: u64,
         mode_revision: u64,
     ) -> Result<bool, RunError> {
-        if generation != self.generation || mode_revision != self.mode_revision {
+        if generation > self.generation || mode_revision != self.mode_revision {
             return Err(RunError::StaleSignal);
         }
-        if !matches!(self.status, RunStatus::Completed | RunStatus::LimitReached) {
-            return Err(RunError::ModeWhileActive);
-        }
-        if self.individual_mode == individual_mode {
+        if self.agents_disconnected == agents_disconnected {
             return Ok(false);
         }
         self.mode_revision = self
             .mode_revision
             .checked_add(1)
             .ok_or(RunError::StaleSignal)?;
-        self.individual_mode = individual_mode;
+        self.agents_disconnected = agents_disconnected;
+        if agents_disconnected {
+            if self.status == RunStatus::Running {
+                self.status = RunStatus::Idle;
+            }
+            if let Some(graph) = &mut self.graph {
+                graph.ready.clear();
+                graph.assigned.clear();
+                graph.queues.clear();
+            }
+            if self.status == RunStatus::Idle {
+                self.message =
+                    Some("Agents disconnected. Conversations remain available.".to_owned());
+            }
+        } else if self.status == RunStatus::Idle {
+            self.message =
+                Some("Agents reconnected. Send a new message to coordinate work.".to_owned());
+        }
         self.trace(
-            "workflowIndividualModeChanged",
-            None,
-            None,
-            if individual_mode {
-                "Individual mode On"
+            if agents_disconnected {
+                "workflowAgentsDisconnected"
             } else {
-                "Individual mode Off"
+                "workflowAgentsReconnected"
+            },
+            None,
+            None,
+            if agents_disconnected {
+                "Agents disconnected"
+            } else {
+                "Agents reconnected"
             },
         );
+        Ok(true)
+    }
+
+    pub(crate) fn trace_stopped_roles(&mut self, stopped: Vec<(u64, crate::TraceAnchor)>) {
+        for (agent, anchor) in stopped {
+            self.trace(
+                "roleStopped",
+                Some(agent),
+                None,
+                "Assignment stopped. Conversation remains available.",
+            );
+            self.traces.last_mut().expect("stop traced").anchor = Some(anchor);
+        }
+    }
+
+    pub(crate) fn stop_work(&mut self, generation: u64, revision: u64) -> Result<bool, RunError> {
+        if generation > self.generation || revision != self.mode_revision {
+            return Err(RunError::StaleSignal);
+        }
+        self.mode_revision = self
+            .mode_revision
+            .checked_add(1)
+            .ok_or(RunError::StaleSignal)?;
+        if let Some(graph) = &mut self.graph {
+            graph.ready.clear();
+            graph.assigned.clear();
+            graph.queues.clear();
+        }
+        if matches!(self.status, RunStatus::Running | RunStatus::Paused) {
+            self.finish(
+                RunStatus::Cancelled,
+                "Agents force-stopped. Conversations can be resumed.",
+            );
+        }
         Ok(true)
     }
 
@@ -470,6 +576,9 @@ impl WorkflowRun {
         generation: u64,
         signal: CompletionSignal,
     ) -> Result<bool, RunError> {
+        if self.agents_disconnected {
+            return Err(RunError::StaleSignal);
+        }
         if self.graph.is_some() {
             return self.complete_graph(agent_id, generation, &signal);
         }
@@ -538,6 +647,7 @@ impl WorkflowRun {
             self.finish(RunStatus::Completed, "Workflow completed");
         } else {
             self.deliver_handoffs(next, true);
+            self.stage_entry_agent = None;
             self.stage_index = next;
             self.generation += 1;
             self.completions.clear();
@@ -629,7 +739,7 @@ impl WorkflowRun {
             &format!(
                 "{}: {}",
                 match signal.decision {
-                    Decision::Done => "Marked done",
+                    Decision::Done => "Result reported",
                     Decision::PieceReady => "Piece ready",
                     Decision::Approve => "Approved",
                     Decision::RequestChanges => "Requested changes",
@@ -808,6 +918,25 @@ impl WorkflowRun {
         }
     }
 
+    pub(crate) fn independent_instructions(&self, agent_id: u64) -> String {
+        let agent = self
+            .agents
+            .iter()
+            .find(|agent| agent.agent_id == agent_id)
+            .expect("run owns its agent");
+        let role = self
+            .workflow_type
+            .definition
+            .roles
+            .iter()
+            .find(|role| role.id.0 == agent.role)
+            .expect("role exists");
+        format!(
+            "You are {} in an independent conversation.\n{}\n\nWork independently in this conversation. Wait for the user's message. Do not start work at launch or send workflow signals for independent work. A later connected task supplies its own routing instructions.",
+            agent.label, role.instructions
+        )
+    }
+
     pub(crate) fn instructions(&self, agent_id: u64, command: &str) -> String {
         if self.graph.is_some() {
             return self.graph_instructions(agent_id, command);
@@ -832,7 +961,7 @@ impl WorkflowRun {
             "Wait for a task or a handoff. The next user message supplies the work."
         };
         format!(
-            "You are {} in a Handshake workflow.\n{}\n\n{}\n\nFirst assignment only:\nThe first task uses the {} stage and JSON example below. Later Handshake task messages supply the current stage and JSON example. Use those current rules for each later assignment.\n\nAll agents work directly in this folder. Do not create a worktree or isolated checkout. Give parallel workers non-overlapping file sets; file ownership is advisory.\n\nWhen finished, explicitly submit JSON on stdin to this command:\n{} <<'HANDSHAKE_COMPLETION'\n{}\nHANDSHAKE_COMPLETION\n\n{}\nFor the first assignment only, supply an assignment for each receiver in this example. Use its exact role and instance, with actual sub-tasks and file sets. For each later assignment, use the receiver list in the current Handshake task message. Omit assignments if that list is empty. For each new user task, include task with the user's full task text. A process exit or terminal message does not complete the stage. A rejected submission returns feedback; correct it and submit again. Keep using this completion command for subsequent assignments and user follow-ups in this conversation. The user can also mark done in Handshake.\n",
+            "You are {} in a Handshake workflow.\n{}\n\n{}\n\nFirst assignment only:\nThe first task uses the {} stage and JSON example below. Later Handshake task messages supply the current stage and JSON example. Use those current rules for each later assignment.\n\nAll agents work directly in this folder. Do not create a worktree or isolated checkout. Give parallel workers non-overlapping file sets; file ownership is advisory.\n\nWhen finished, explicitly submit JSON on stdin to this command:\n{} <<'HANDSHAKE_COMPLETION'\n{}\nHANDSHAKE_COMPLETION\n\n{}\nFor the first assignment only, supply an assignment for each receiver in this example. Use its exact role and instance, with actual sub-tasks and file sets. For each later assignment, use the receiver list in the current Handshake task message. Omit assignments if that list is empty. For each new user task, include task with the user's full task text. A process exit or terminal message does not complete the stage. A rejected submission returns feedback; correct it and submit again. Keep using this completion command for subsequent assignments and user follow-ups in this conversation. Conversations remain interactive after the work is complete.\n",
             agent.label,
             role.instructions,
             task,
@@ -886,9 +1015,33 @@ impl WorkflowRun {
                 };
             }
         }
-        self.status = status;
+        let kind = match status {
+            RunStatus::Completed => WorkOutcomeKind::Completed,
+            RunStatus::Cancelled => WorkOutcomeKind::Stopped,
+            RunStatus::Interrupted => WorkOutcomeKind::Interrupted,
+            RunStatus::LimitReached => WorkOutcomeKind::LimitReached,
+            _ => WorkOutcomeKind::Failed,
+        };
+        self.last_outcome = Some(WorkOutcome {
+            kind,
+            generation: self.generation,
+            finished_at: timestamp(),
+            summary: message.to_owned(),
+        });
+        self.status = match kind {
+            WorkOutcomeKind::Completed | WorkOutcomeKind::Stopped => RunStatus::Idle,
+            _ => RunStatus::Paused,
+        };
         self.message = Some(message.to_owned());
         self.trace("workflowEnded", None, None, message);
+    }
+
+    /// A successful result belongs to this cycle, never a later task.
+    #[must_use]
+    pub fn work_completed(&self) -> bool {
+        self.last_outcome.as_ref().is_some_and(|outcome| {
+            outcome.kind == WorkOutcomeKind::Completed && outcome.generation == self.generation
+        })
     }
 }
 
@@ -912,8 +1065,6 @@ pub enum RunError {
     Model,
     #[error("This stage has already advanced or this agent has already finished.")]
     StaleSignal,
-    #[error("Individual mode can change after the workflow completes or reaches its review limit.")]
-    ModeWhileActive,
     #[error("This role needs an explicit review decision, or done for a non-review role.")]
     Decision,
     #[error("Requested changes need actionable feedback.")]
@@ -968,6 +1119,21 @@ mod tests {
     }
 
     #[test]
+    fn completion_is_a_result_that_idle_cancel_preserves_and_fresh_work_clears() {
+        let mut run = run(BuiltinType::Adversarial.legacy_definition());
+        run.complete(1, 1, signal(Decision::Done)).unwrap();
+        run.complete(2, 2, signal(Decision::Approve)).unwrap();
+        assert_eq!(run.status, RunStatus::Idle);
+        assert!(run.work_completed());
+        let result = run.last_outcome.clone();
+        run.stop_work(2, 0).unwrap();
+        assert_eq!(run.last_outcome, result);
+        assert!(run.continue_with(1, 2, 1).unwrap());
+        assert_eq!(run.status, RunStatus::Running);
+        assert!(!run.work_completed());
+    }
+
+    #[test]
     fn review_signals_are_explicit_and_stale_signals_cannot_advance_a_later_round() {
         let mut run = run(BuiltinType::Adversarial.legacy_definition());
         assert!(run.complete(1, 1, signal(Decision::Approve)).is_err());
@@ -981,28 +1147,29 @@ mod tests {
         assert!(run.incoming[&1].contains("feedback"));
         run.complete(1, 3, signal(Decision::Done)).unwrap();
         run.complete(2, 4, signal(Decision::Approve)).unwrap();
-        assert_eq!(run.status, RunStatus::Completed);
+        assert_eq!(run.status, RunStatus::Idle);
     }
 
     #[test]
-    fn individual_mode_preserves_results_and_invalidates_queued_continuations() {
+    fn agents_disconnected_preserves_results_and_invalidates_queued_continuations() {
         let mut run = run(BuiltinType::Adversarial.legacy_definition());
-        assert!(!run.individual_mode);
+        assert!(!run.agents_disconnected);
         run.complete(1, 1, signal(Decision::Done)).unwrap();
         run.complete(2, 2, signal(Decision::Approve)).unwrap();
         let completed = run.clone();
-        assert!(run.set_individual_mode(true, 2, 0).unwrap());
+        assert!(run.set_agents_disconnected(true, 2, 0).unwrap());
         assert_eq!(run.generation, completed.generation);
         assert_eq!(run.completions, completed.completions);
         assert_eq!(run.agents, completed.agents);
         assert_eq!(run.prompt, completed.prompt);
-        assert_eq!(run.message, completed.message);
+        assert_eq!(run.last_outcome, completed.last_outcome);
+        assert!(run.work_completed());
         assert!(run.traces.starts_with(&completed.traces));
         assert!(!run.continue_with(1, 2, 1).unwrap());
         assert!(run.complete(1, 2, signal(Decision::Done)).is_err());
-        assert!(run.set_individual_mode(false, 2, 0).is_err());
-        assert!(run.set_individual_mode(false, 2, 1).unwrap());
-        assert_eq!(run.status, RunStatus::Completed);
+        assert!(run.set_agents_disconnected(false, 2, 0).is_err());
+        assert!(run.set_agents_disconnected(false, 2, 1).unwrap());
+        assert_eq!(run.status, RunStatus::Idle);
         assert!(!run.continue_with(1, 2, 0).unwrap());
         assert!(!run.continue_with(1, 2, 1).unwrap());
         assert!(run.continue_with(1, 2, 2).unwrap());
@@ -1011,9 +1178,12 @@ mod tests {
     }
 
     #[test]
-    fn individual_mode_only_changes_after_completion_or_review_limit() {
+    fn connections_change_in_every_state_without_starting_work() {
         for status in [
             RunStatus::Running,
+            RunStatus::Idle,
+            RunStatus::Completed,
+            RunStatus::LimitReached,
             RunStatus::Failed,
             RunStatus::Cancelled,
             RunStatus::Interrupted,
@@ -1021,22 +1191,64 @@ mod tests {
             let mut run = run(BuiltinType::Adversarial.legacy_definition());
             run.status = status;
             let before = run.clone();
-            assert!(matches!(
-                run.set_individual_mode(true, 1, 0),
-                Err(RunError::ModeWhileActive)
-            ));
-            assert_eq!(run, before);
+            assert!(run.set_agents_disconnected(true, 1, 0).unwrap());
+            let expected = if status == RunStatus::Running {
+                RunStatus::Idle
+            } else {
+                status
+            };
+            assert_eq!(run.status, expected);
+            assert_eq!(run.agents, before.agents);
+            assert_eq!(run.generation, before.generation);
+            assert!(run.complete(1, 1, signal(Decision::Done)).is_err());
+            assert!(run.set_agents_disconnected(false, 1, 1).unwrap());
+            assert_eq!(run.status, expected);
         }
         let mut run = run(BuiltinType::Adversarial.legacy_definition());
         run.status = RunStatus::LimitReached;
-        assert!(run.set_individual_mode(true, 1, 0).unwrap());
+        assert!(run.set_agents_disconnected(true, 1, 0).unwrap());
         let before = run.clone();
-        assert!(!run.set_individual_mode(true, 1, 1).unwrap());
+        assert!(!run.set_agents_disconnected(true, 1, 1).unwrap());
         assert_eq!(run, before);
         run.mode_revision = u64::MAX;
         let before = run.clone();
-        assert!(run.set_individual_mode(false, 1, u64::MAX).is_err());
+        assert!(run.set_agents_disconnected(false, 1, u64::MAX).is_err());
         assert_eq!(run, before);
+    }
+
+    #[test]
+    fn connection_boundary_accepts_an_advanced_stage_and_worker_entry_is_individual() {
+        let mut adversarial = run(BuiltinType::Adversarial.legacy_definition());
+        adversarial.complete(1, 1, signal(Decision::Done)).unwrap();
+        assert_eq!(adversarial.generation, 2);
+        assert!(adversarial.set_agents_disconnected(true, 1, 0).unwrap());
+        assert_eq!(adversarial.status, RunStatus::Idle);
+
+        let mut coordinator = run(BuiltinType::Coordinator.legacy_definition());
+        coordinator.set_agents_disconnected(true, 1, 0).unwrap();
+        coordinator.set_agents_disconnected(false, 1, 1).unwrap();
+        let worker = coordinator
+            .agents
+            .iter()
+            .find(|a| a.role == "worker")
+            .unwrap()
+            .agent_id;
+        coordinator.continue_with(worker, 1, 2).unwrap();
+        assert_eq!(
+            coordinator
+                .active_agents()
+                .iter()
+                .map(|a| a.agent_id)
+                .collect::<Vec<_>>(),
+            [worker]
+        );
+        let mut result = signal(Decision::Done);
+        result.task = "Continue this worker's task".into();
+        coordinator
+            .complete(worker, coordinator.generation, result)
+            .unwrap();
+        assert_eq!(coordinator.stage_index, 2);
+        assert_eq!(coordinator.stage_entry_agent, None);
     }
 
     #[test]
@@ -1048,7 +1260,9 @@ mod tests {
         run.complete(1, 3, signal(Decision::Done)).unwrap();
         run.complete(2, 4, signal(Decision::Approve)).unwrap();
         let history = run.traces.clone();
-        assert!(run.continue_with(2, 4, 0).is_err());
+        let mut reviewer_follow_up = run.clone();
+        assert!(reviewer_follow_up.continue_with(2, 4, 0).unwrap());
+        assert_eq!(reviewer_follow_up.stage_index, 1);
         assert!(run.continue_with(1, u64::MAX, 0).is_err());
         assert!(run.continue_with(1, 4, 0).unwrap());
         assert_eq!(run.status, RunStatus::Running);
@@ -1111,7 +1325,7 @@ mod tests {
         assert!(!again.contains("ask them what they want done"));
         run.complete(1, 3, signal(Decision::Done)).unwrap();
         run.complete(2, 4, signal(Decision::Approve)).unwrap();
-        assert_eq!(run.status, RunStatus::Completed);
+        assert_eq!(run.status, RunStatus::Idle);
     }
 
     #[test]
@@ -1216,7 +1430,7 @@ mod tests {
         assert_eq!(run.completion_example(1).assignments, []);
         assert!(setup.contains("Omit assignments if that list is empty"));
         run.complete(1, 3, signal(Decision::Done)).unwrap();
-        assert_eq!(run.status, RunStatus::Completed);
+        assert_eq!(run.status, RunStatus::Idle);
         assert_eq!(run.traces.iter().filter(|t| t.kind == "handoff").count(), 4);
     }
 
@@ -1231,7 +1445,7 @@ mod tests {
             assert_eq!(
                 run.status,
                 if round == 3 {
-                    RunStatus::LimitReached
+                    RunStatus::Paused
                 } else {
                     RunStatus::Running
                 }

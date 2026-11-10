@@ -24,8 +24,7 @@ pub enum WorkflowKind {
     Draft,
     Terminal,
     SingleAgent,
-    /// One agent per role, each with its own terminal. Until harnesses can launch, every agent runs
-    /// the default shell.
+    /// Persistent role conversations, each with a shell hosting successive harness invocations.
     Agents,
 }
 
@@ -71,7 +70,7 @@ pub struct Workflow {
     pub kind: WorkflowKind,
     /// The single-agent harness, or a transient foreground harness hint in a Terminal workflow.
     pub harness: Option<HarnessId>,
-    /// The workflow's own shell, or a single agent's harness. Zero when it couldn't restart, and for
+    /// The workflow's own shell, hosting the harness for a single agent. Zero when it couldn't restart, and for
     /// agents workflows, whose agents have the terminals instead.
     pub terminal_id: TerminalId,
     /// In role order. Empty unless the workflow's kind is [`WorkflowKind::Agents`].
@@ -93,7 +92,7 @@ pub struct WorkflowTerminal {
     pub agent_id: Option<AgentId>,
 }
 
-/// One process filling one role in a workflow.
+/// A persistent role conversation with its own terminal.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Agent {
     pub agent_id: AgentId,
@@ -114,7 +113,7 @@ impl Workflow {
         }
     }
 
-    /// The workflow's live shells.
+    /// The open workflow's owned terminals; terminal state reports whether each shell is running.
     pub(crate) fn terminal_ids(&self) -> Vec<TerminalId> {
         if self.archived {
             return Vec::new();
@@ -122,14 +121,6 @@ impl Workflow {
         self.shells()
             .into_iter()
             .filter(|terminal_id| terminal_id.value() != 0)
-            .filter(|id| {
-                !self.restored
-                    || !(self.kind == WorkflowKind::SingleAgent || self.run.is_some())
-                    || !self
-                        .terminal_history
-                        .iter()
-                        .any(|entry| entry.terminal_id == *id)
-            })
             .collect()
     }
 }

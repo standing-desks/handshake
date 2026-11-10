@@ -2,7 +2,11 @@ use std::path::PathBuf;
 
 use thiserror::Error;
 
+mod input;
+mod input_draft;
+pub(crate) use input_draft::UserInputDraft;
 mod launcher;
+mod managed;
 mod manager;
 mod process;
 mod pty;
@@ -90,6 +94,10 @@ pub struct TerminalChunk {
 
 #[derive(Debug, Error)]
 pub enum TerminalError {
+    #[error("terminal input queue is full; retry after draining")]
+    InputBackpressure,
+    #[error("terminal input is closed")]
+    InputClosed,
     #[error("terminal output chunk has {chunk_bytes} bytes, exceeding capacity {capacity_bytes}")]
     ChunkTooLarge {
         chunk_bytes: usize,

@@ -41,12 +41,12 @@ nonisolated private struct CommandPayload: Encodable {
     var roleLaunches: [CoreRoleLaunch]?
     var agentID: UInt64?
     var generation: UInt64?
-    var individualMode: Bool?
+    var agentsDisconnected: Bool?
     var modeRevision: UInt64?
-    var signal: CoreCompletionSignal?
     var workingDirectory: String?
     var size: CoreTerminalSize?
     var terminalID: UInt64?
+    var shellOnly: Bool?
     var session: String?
 
     private enum CodingKeys: String, CodingKey {
@@ -57,7 +57,7 @@ nonisolated private struct CommandPayload: Encodable {
         case terminalID = "terminalId"
         case workflowID = "workflowId"
         case sessionID = "sessionId"
-        case workflowType, generation, signal, individualMode, modeRevision
+        case workflowType, generation, agentsDisconnected, modeRevision, shellOnly
         case roleLaunches = "roleLaunches"
         case agentID = "agentId"
     }
@@ -80,13 +80,20 @@ nonisolated private struct CommandPayload: Encodable {
             configureSession(command)
         case .createWorkflow, .activateWorkflow, .nameDraftWorkflow, .renameWorkflow, .reopenWorkflow, .closeWorkflow,
             .startAgent, .resumeAgent,
-            .cancelAgent:
+            .forceStopAgent:
             type = ""
             configureWorkflow(command)
-        case .startWorkflowRun, .completeWorkflowRole, .continueWorkflowRun, .setWorkflowIndividualMode,
-            .retryDecision, .cancelWorkflowRun, .submitWorkflowTask, .chooseWorkflowResult:
+        case .startWorkflowRun, .continueWorkflowRun, .setWorkflowAgentsDisconnected,
+            .retryDecision, .forceStopWorkflowAgents, .submitWorkflowTask, .chooseWorkflowResult:
             type = ""
             configureRun(command)
+        case .recoverAgent(let workflowID, let agentID, let session, let shellOnly):
+            type = "recoverAgent"
+            self.workflowID = workflowID
+            self.agentID = agentID
+            self.session = session
+            self.shellOnly = shellOnly
+
         case .startTerminal(let workingDirectory, let size):
             type = "startTerminal"
             self.workingDirectory = workingDirectory
@@ -157,24 +164,18 @@ nonisolated private struct CommandPayload: Encodable {
             self.roleLaunches = roles
             if !prompt.isEmpty { self.prompt = prompt }
             self.size = size
-        case .completeWorkflowRole(let workflowID, let agentID, let generation, let signal):
-            type = "completeWorkflowRole"
-            self.workflowID = workflowID
-            self.agentID = agentID
-            self.generation = generation
-            self.signal = signal
         case .continueWorkflowRun(let workflowID, let agentID, let generation, let modeRevision):
             type = "continueWorkflowRun"
             self.workflowID = workflowID
             self.agentID = agentID
             self.generation = generation
             self.modeRevision = modeRevision
-        case .setWorkflowIndividualMode(let workflowID, let generation, let modeRevision, let individualMode):
-            type = "setWorkflowIndividualMode"
+        case .setWorkflowAgentsDisconnected(let workflowID, let generation, let modeRevision, let agentsDisconnected):
+            type = "setWorkflowAgentsDisconnected"
             self.workflowID = workflowID
             self.generation = generation
             self.modeRevision = modeRevision
-            self.individualMode = individualMode
+            self.agentsDisconnected = agentsDisconnected
         case .submitWorkflowTask(let workflowID, let generation, let prompt):
             type = "submitWorkflowTask"
             self.workflowID = workflowID
@@ -189,8 +190,8 @@ nonisolated private struct CommandPayload: Encodable {
             type = "retryDecision"
             self.workflowID = workflowID
             self.generation = generation
-        case .cancelWorkflowRun(let workflowID):
-            type = "cancelWorkflowRun"
+        case .forceStopWorkflowAgents(let workflowID):
+            type = "forceStopWorkflowAgents"
             self.workflowID = workflowID
         default: break
         }
@@ -259,8 +260,8 @@ nonisolated private struct CommandPayload: Encodable {
             type = "resumeAgent"
             self.workflowID = workflowID
             self.session = session
-        case .cancelAgent(let workflowID):
-            type = "cancelAgent"
+        case .forceStopAgent(let workflowID):
+            type = "forceStopAgent"
             self.workflowID = workflowID
         default:
             break

@@ -73,10 +73,10 @@ struct SessionOutlineCommands {
         }
     }
 
-    func cancelAgent(_ id: UInt64) {
+    func forceStopAgent(_ id: UInt64) {
         Task {
-            do { try await client.cancelAgent(workflowID: id) } catch {
-                // The agent can end on its own just as Cancel is chosen.
+            do { try await client.forceStopAgent(workflowID: id) } catch {
+                // The agent can end on its own just as Force stop is chosen.
                 if (error as? CoreFailure)?.isAgentNotRunning == true { return }
                 presentation.failure = error.localizedDescription
             }

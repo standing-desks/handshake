@@ -31,7 +31,7 @@ struct WorkspaceTabItem: Identifiable {
     var canRename: Bool { workflow != nil || browser != nil }
     var renameValue: String { customName ?? workflow?.name ?? browser?.defaultTitle ?? title }
     var customName: String? { workflow?.customName ?? browser?.customName }
-    var status: String? { workflow?.status == .completed ? "Done" : nil }
+    var status: String? { workflow?.run?.workCompleted == true || workflow?.status == .completed ? "Done" : nil }
 
     /// What a sidebar row shows about its workflow, most urgent first.
     enum Activity: Int, Comparable {
@@ -50,8 +50,13 @@ struct WorkspaceTabItem: Identifiable {
 
     var activity: Activity? {
         guard let workflow else { return nil }
+        if let run = workflow.run {
+            if run.status == .paused { return .needsAttention }
+            if run.workCompleted { return .done }
+            return run.status == .running && !run.agentsDisconnected ? .running : nil
+        }
         switch (workflow.status, workflow.run?.status) {
-        case (.failed, _), (.interrupted, _), (_, .limitReached), (_, .failed): return .needsAttention
+        case (.failed, _), (.interrupted, _), (_, .paused), (_, .limitReached), (_, .failed): return .needsAttention
         case (.running, _) where workflow.isRunningAgent: return .running
         case (.completed, _): return .done
         default: return nil

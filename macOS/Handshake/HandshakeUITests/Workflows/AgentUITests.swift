@@ -258,9 +258,9 @@ extension HandshakeUITests {
         waitForFile(folder.appending(path: "resumed-input"), containing: "RESUMED-INPUT", in: app)
     }
 
-    /// Starts a stub `pi` from the new-tab card without a prompt, types to it, and cancels it.
+    /// Starts a stub `pi` from the new-tab card without a prompt, types to it, and force stops it.
     @MainActor
-    func testSingleAgentStartsInteractivelyTakesInputAndCancels() throws {
+    func testSingleAgentStartsInteractivelyTakesInputAndForceStops() throws {
         let folder = try makeFolder()
         // The UI test runner is sandboxed, and macOS won't let Handshake execute a script that it wrote.
         // So the runner only writes the script's text, and Handshake's own shell installs the executable.
@@ -309,11 +309,13 @@ extension HandshakeUITests {
             "The agent starts without a prompt")
 
         app.typeKey(".", modifierFlags: .command)
-        XCTAssertTrue(app.staticTexts["Cancelled"].waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(app.staticTexts["Stopped"].waitForExistence(timeout: 10), app.debugDescription)
         let stopped = expectation(for: NSPredicate { _, _ in kill(pid, 0) != 0 }, evaluatedWith: nil)
         wait(for: [stopped], timeout: 10)
-        XCTAssertTrue(app.buttons["workflowTab-2"].exists, "Cancelling keeps the workflow open")
-        attachAgentWindow(in: app, name: "Cancelled single agent")
+        XCTAssertTrue(app.buttons["workflowTab-2"].exists, "Force stop keeps the workflow open")
+        app.typeText("touch shell-after-stop\r")
+        waitForFile(folder.appending(path: "shell-after-stop"), containing: "")
+        attachAgentWindow(in: app, name: "Force-stopped agent and usable shell")
         app.terminate()
     }
 

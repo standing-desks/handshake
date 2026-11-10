@@ -74,6 +74,9 @@ pub struct GraphRun {
     #[serde(default)]
     pub decision_errors: BTreeMap<u64, String>,
     pub started: bool,
+    /// A fresh user follow-up can enter through any conversation in the graph.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entry_agent: Option<u64>,
     pub ready: BTreeSet<u64>,
     #[serde(default)]
     pub assigned: BTreeSet<u64>,
@@ -113,6 +116,65 @@ fn sender_message(agents: &[super::RunAgent], key: &str, value: &str) -> String 
         .find(|agent| Some(agent.agent_id) == sender)
         .map_or("Agent", |agent| agent.label.as_str());
     format!("From {label}:\n{value}")
+}
+
+/// A first join after entering through one conversation waits only for upstream work
+/// reachable from that entry. Later activations use the graph's ordinary join rules.
+fn entry_upstream<'a>(
+    definition: &'a AgentGraph,
+    entry: &'a str,
+    receiver: &str,
+) -> BTreeSet<&'a str> {
+    let mut reachable = BTreeSet::from([entry]);
+    loop {
+        let previous = reachable.len();
+        for edge in &definition.edges {
+            if edge.to != receiver && reachable.contains(edge.from.as_str()) {
+                reachable.insert(edge.to.as_str());
+            }
+        }
+        if reachable.len() == previous {
+            return reachable;
+        }
+    }
+}
+
+fn required_inputs(
+    definition: &AgentGraph,
+    graph: &GraphRun,
+    senders: &[super::RunAgent],
+    agent: &super::RunAgent,
+) -> Vec<String> {
+    let entry = graph
+        .entry_agent
+        .filter(|_| !graph.activations.contains_key(&agent.agent_id))
+        .and_then(|id| senders.iter().find(|sender| sender.agent_id == id));
+    let upstream = entry.map(|sender| entry_upstream(definition, &sender.role, &agent.role));
+    definition
+        .edges
+        .iter()
+        .filter(|edge| {
+            edge.to == agent.role
+                && edge.from != "task"
+                && edge.event != GraphEvent::Feedback
+                && upstream
+                    .as_ref()
+                    .is_none_or(|roles| roles.contains(edge.from.as_str()))
+        })
+        .flat_map(|edge| {
+            senders
+                .iter()
+                .filter(|sender| {
+                    sender.role == edge.from
+                        && entry.is_none_or(|entry| {
+                            sender.role != entry.role
+                                || sender.agent_id == entry.agent_id
+                                || graph.activations.contains_key(&sender.agent_id)
+                        })
+                })
+                .map(move |sender| format!("{}:{}", edge.id, sender.agent_id))
+        })
+        .collect()
 }
 
 impl WorkflowRun {
@@ -174,6 +236,7 @@ impl WorkflowRun {
             .unwrap_or(self.generation)
     }
 
+    #[cfg(test)]
     pub(crate) fn prepare_graph_resume(&mut self) -> Result<(), RunError> {
         if self.graph.is_none() {
             return Ok(());
@@ -222,7 +285,8 @@ impl WorkflowRun {
     }
 
     pub(crate) fn start_graph_task(&mut self, task: String) -> Result<(), RunError> {
-        if self.graph.as_ref().is_none_or(|graph| graph.started)
+        if self.agents_disconnected
+            || self.graph.as_ref().is_none_or(|graph| graph.started)
             || self.status != RunStatus::Running
         {
             return Err(RunError::StaleSignal);
@@ -236,7 +300,10 @@ impl WorkflowRun {
         graph.started = true;
         let started = timestamp();
         for agent in &mut self.agents {
-            if roots.contains(&agent.role) {
+            if graph
+                .entry_agent
+                .map_or_else(|| roots.contains(&agent.role), |id| id == agent.agent_id)
+            {
                 graph.ready.insert(agent.agent_id);
                 graph.started_at.insert(agent.agent_id, started);
                 graph.activations.insert(agent.agent_id, 1);
@@ -263,7 +330,7 @@ impl WorkflowRun {
         agent_id: u64,
         task: String,
     ) -> Result<bool, RunError> {
-        if self.graph.as_ref().is_none_or(|graph| graph.started) {
+        if self.agents_disconnected || self.graph.as_ref().is_none_or(|graph| graph.started) {
             return Ok(false);
         }
         if !self.agents.iter().any(|agent| {
@@ -273,7 +340,12 @@ impl WorkflowRun {
                     .definition
                     .graph
                     .as_ref()
-                    .is_some_and(|graph| graph.is_start(&agent.role))
+                    .is_some_and(|graph| {
+                        self.graph
+                            .as_ref()
+                            .and_then(|state| state.entry_agent)
+                            .map_or_else(|| graph.is_start(&agent.role), |id| id == agent_id)
+                    })
         }) {
             return Err(RunError::StaleSignal);
         }
@@ -317,7 +389,8 @@ impl WorkflowRun {
         signal: &CompletionSignal,
         passthrough: bool,
     ) -> Result<bool, RunError> {
-        if self.status != RunStatus::Running
+        if self.agents_disconnected
+            || self.status != RunStatus::Running
             || generation != self.assignment_generation(agent_id)
             || !self
                 .active_agents()
@@ -432,7 +505,7 @@ impl WorkflowRun {
                 .iter()
                 .filter(|agent| {
                     definition.is_result(&agent.role)
-                        && (definition.decisions.is_empty()
+                        && ((graph.entry_agent.is_none() && definition.decisions.is_empty())
                             || graph.activations.contains_key(&agent.agent_id))
                 })
                 .all(|agent| graph.outputs.contains_key(&agent.agent_id))
@@ -583,24 +656,10 @@ impl WorkflowRun {
             if graph.ready.contains(&agent.agent_id) {
                 continue;
             }
+            let required = required_inputs(&definition, graph, &senders, agent);
             let Some(queues) = graph.queues.get_mut(&agent.agent_id) else {
                 continue;
             };
-            let required: Vec<_> = definition
-                .edges
-                .iter()
-                .filter(|edge| {
-                    edge.to == agent.role
-                        && edge.from != "task"
-                        && edge.event != GraphEvent::Feedback
-                })
-                .flat_map(|edge| {
-                    senders
-                        .iter()
-                        .filter(|sender| sender.role == edge.from)
-                        .map(move |sender| format!("{}:{}", edge.id, sender.agent_id))
-                })
-                .collect();
             let all = definition.receive.get(&agent.role) == Some(&GraphReceive::All);
             let feedback = queues.iter().any(|(key, queue)| {
                 !queue.is_empty() && feedback_key(&definition, &agent.role, key)
@@ -667,7 +726,11 @@ impl WorkflowRun {
     ) -> Result<(), RunError> {
         let graph = self.graph.as_ref().ok_or(RunError::InvalidType)?;
         if self.generation != generation
-            || self.status != RunStatus::Running
+            || !matches!(
+                self.status,
+                RunStatus::Running | RunStatus::Idle | RunStatus::Paused
+            )
+            || self.work_completed()
             || !self.graph_choice_ready()
             || !graph.outputs.contains_key(&agent_id)
         {
@@ -891,12 +954,14 @@ mod tests {
             assert_eq!(
                 run.status,
                 if limit {
-                    RunStatus::LimitReached
+                    RunStatus::Paused
                 } else {
-                    RunStatus::Completed
+                    RunStatus::Idle
                 }
             );
-            assert!(run.continue_with(2, run.generation, 0).is_err());
+            let mut reviewer = run.clone();
+            assert!(reviewer.continue_with(2, reviewer.generation, 0).unwrap());
+            assert_eq!(reviewer.graph.as_ref().unwrap().entry_agent, Some(2));
             assert!(run.continue_with(1, run.generation, 0).unwrap());
             assert!(run.needs_task());
             let graph = run.graph.as_ref().unwrap();
@@ -923,10 +988,138 @@ mod tests {
                 signal(Decision::Approve, "Second review"),
             )
             .unwrap();
-            assert_eq!(run.status, RunStatus::Completed);
+            assert_eq!(run.status, RunStatus::Idle);
             assert_eq!(run.prompt, "Second user task");
             assert!(!run.continue_with(1, 1, 0).unwrap());
         }
+    }
+
+    #[test]
+    fn disconnect_drops_queued_work_and_reconnect_starts_only_the_addressed_agent() {
+        let mut run = run(
+            &[
+                ("task", "producer", GraphEvent::Task),
+                ("producer", "reviewer", GraphEvent::PieceReady),
+                ("producer", "finish", GraphEvent::Done),
+                ("reviewer", "finish", GraphEvent::Done),
+            ],
+            GraphFinish::All,
+        );
+        let producer = run
+            .agents
+            .iter()
+            .find(|a| a.role == "producer")
+            .unwrap()
+            .agent_id;
+        let reviewer = run
+            .agents
+            .iter()
+            .find(|a| a.role == "reviewer")
+            .unwrap()
+            .agent_id;
+        let generation = run.generation;
+        let old_producer = run.assignment_generation(producer);
+        run.complete(
+            producer,
+            old_producer,
+            signal(Decision::PieceReady, "First piece"),
+        )
+        .unwrap();
+        launch_ready(&mut run);
+        let old_reviewer = run.assignment_generation(reviewer);
+        run.complete(
+            producer,
+            old_producer,
+            signal(Decision::PieceReady, "Obsolete queued piece"),
+        )
+        .unwrap();
+        assert!(!run.graph.as_ref().unwrap().queues.is_empty());
+        let agents = run.agents.clone();
+        run.set_agents_disconnected(true, generation, 0).unwrap();
+        assert_eq!(run.status, RunStatus::Idle);
+        assert_eq!(run.agents, agents);
+        assert!(run.graph.as_ref().unwrap().queues.is_empty());
+        assert!(run.graph.as_ref().unwrap().ready.is_empty());
+        assert!(run.graph.as_ref().unwrap().assigned.is_empty());
+        assert!(
+            run.complete(
+                reviewer,
+                old_reviewer,
+                signal(Decision::Done, "Late private reply")
+            )
+            .is_err()
+        );
+        run.set_agents_disconnected(false, generation, 1).unwrap();
+        assert_eq!(run.status, RunStatus::Idle);
+        assert!(
+            run.complete(
+                producer,
+                old_producer,
+                signal(Decision::PieceReady, "Late piece")
+            )
+            .is_err()
+        );
+        assert!(!run.continue_with(reviewer, generation, 0).unwrap());
+        assert!(run.continue_with(reviewer, generation, 2).unwrap());
+        assert_eq!(
+            run.active_agents()
+                .iter()
+                .map(|a| a.agent_id)
+                .collect::<Vec<_>>(),
+            [reviewer]
+        );
+        let mut result = signal(Decision::Done, "Fresh result");
+        result.task = "Use the existing conversation to finish this result".into();
+        assert!(
+            run.complete(reviewer, old_reviewer, result.clone())
+                .is_err()
+        );
+        run.complete(reviewer, run.assignment_generation(reviewer), result)
+            .unwrap();
+        assert_eq!(run.status, RunStatus::Idle);
+        assert!(run.graph.as_ref().unwrap().queues.is_empty());
+        assert_eq!(
+            run.graph.as_ref().unwrap().outputs[&reviewer].summary,
+            "Fresh result"
+        );
+    }
+
+    #[test]
+    fn reconnecting_through_one_coordinator_worker_joins_only_its_fresh_branch() {
+        let mut run = example_run(2, include_str!("../../workflows/coordinator.toml"));
+        let worker = run
+            .agents
+            .iter()
+            .find(|agent| agent.role == "worker-1")
+            .unwrap()
+            .agent_id;
+        let coordinator = run
+            .agents
+            .iter()
+            .find(|agent| agent.role == "coordinator")
+            .unwrap()
+            .agent_id;
+        run.set_agents_disconnected(true, run.generation, 0)
+            .unwrap();
+        run.set_agents_disconnected(false, run.generation, 1)
+            .unwrap();
+        run.continue_with(worker, run.generation, 2).unwrap();
+        let mut result = signal(Decision::Done, "Fresh worker result");
+        result.task = "Continue one worker".into();
+        run.complete(worker, run.assignment_generation(worker), result)
+            .unwrap();
+        assert_eq!(run.status, RunStatus::Running);
+        assert!(run.graph.as_ref().unwrap().ready.contains(&coordinator));
+        assert_eq!(run.graph.as_ref().unwrap().activations.len(), 2);
+        assert!(run.incoming[&coordinator].contains("Fresh worker result"));
+        launch_ready(&mut run);
+        run.complete(
+            coordinator,
+            run.assignment_generation(coordinator),
+            signal(Decision::Done, "Checked fresh result"),
+        )
+        .unwrap();
+        assert_eq!(run.status, RunStatus::Idle);
     }
 
     #[test]
@@ -956,7 +1149,7 @@ mod tests {
                 .unwrap();
                 launch_ready(&mut run);
             }
-            assert_eq!(run.status, RunStatus::Completed);
+            assert_eq!(run.status, RunStatus::Idle);
             assert_eq!(run.generation, cycle);
             assert!(run.continue_with(1, cycle, 0).unwrap());
             assert_eq!(run.traces.last().unwrap().generation, cycle + 1);
@@ -996,7 +1189,7 @@ mod tests {
                         .unwrap();
                 }
             }
-            assert_eq!(run.status, RunStatus::Completed);
+            assert_eq!(run.status, RunStatus::Idle);
             assert_eq!(
                 run.final_review_messages(2),
                 BTreeMap::from([(1, "From Reviewer:\nFinal approval".into())])
@@ -1024,7 +1217,7 @@ mod tests {
             .unwrap();
             launch_ready(&mut run);
         }
-        assert_eq!(run.status, RunStatus::LimitReached);
+        assert_eq!(run.status, RunStatus::Paused);
         assert_eq!(run.active_agents().len(), 0);
         assert_eq!(run.graph.as_ref().unwrap().activations[&1], 4);
         assert_eq!(
@@ -1068,7 +1261,7 @@ mod tests {
         launch_ready(&mut run);
         run.complete(1, 2, signal(Decision::Done, "Combined result"))
             .unwrap();
-        assert_eq!(run.status, RunStatus::Completed);
+        assert_eq!(run.status, RunStatus::Idle);
         let graph = run.graph.as_ref().unwrap();
         assert_eq!(graph.activations, BTreeMap::from([(1, 2), (2, 1), (3, 1)]));
         assert_eq!(graph.outputs[&1].summary, "Combined result");
@@ -1207,7 +1400,7 @@ mod tests {
         run.generation += 1;
         assert_eq!(run.active_agents().len(), 0);
         run.choose_graph_result(2, 2).unwrap();
-        assert_eq!(run.status, RunStatus::Completed);
+        assert_eq!(run.status, RunStatus::Idle);
         assert_eq!(run.graph.as_ref().unwrap().selected, Some(2));
     }
 
@@ -1247,7 +1440,7 @@ mod tests {
         ));
         run.complete(2, 2, signal(Decision::Done, "Port two"))
             .unwrap();
-        assert_eq!(run.status, RunStatus::Completed);
+        assert_eq!(run.status, RunStatus::Idle);
         assert_eq!(run.graph.as_ref().unwrap().outputs[&2].summary, "Port two");
         assert_eq!(
             run.traces
@@ -1310,7 +1503,7 @@ mod tests {
         launch_ready(&mut run);
         run.complete(3, 1, signal(Decision::Done, "Joined"))
             .unwrap();
-        assert_eq!(run.status, RunStatus::Completed);
+        assert_eq!(run.status, RunStatus::Idle);
 
         let mut blocked = tests::run(
             &[
@@ -1332,7 +1525,7 @@ mod tests {
         blocked
             .complete(1, 1, signal(Decision::Done, "No piece"))
             .unwrap();
-        assert_eq!(blocked.status, RunStatus::Failed);
+        assert_eq!(blocked.status, RunStatus::Paused);
     }
 
     #[test]
@@ -1404,7 +1597,7 @@ mod tests {
         launch_ready(&mut run);
         run.complete(2, run.assignment_generation(2), signal(Decision::Done, "B"))
             .unwrap();
-        assert_eq!(run.status, RunStatus::Completed);
+        assert_eq!(run.status, RunStatus::Idle);
         assert!(run.graph.as_ref().unwrap().outputs[&1].elapsed_ms >= 100);
         assert!(run.graph.as_ref().unwrap().outputs[&2].elapsed_ms >= 20);
     }
@@ -1422,7 +1615,7 @@ mod tests {
         approved
             .complete(1, 1, signal(Decision::Approve, "Approved"))
             .unwrap();
-        assert_eq!(approved.status, RunStatus::Completed);
+        assert_eq!(approved.status, RunStatus::Idle);
         let mut run = run(
             &[
                 ("task", "a", GraphEvent::Task),
@@ -1443,6 +1636,6 @@ mod tests {
         launch_ready(&mut run);
         run.complete(2, 1, signal(Decision::RequestChanges, "Change this"))
             .unwrap();
-        assert_eq!(run.status, RunStatus::LimitReached);
+        assert_eq!(run.status, RunStatus::Paused);
     }
 }

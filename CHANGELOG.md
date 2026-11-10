@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-10
+
+### Added
+
+- Disconnect agents immediately to stop handoffs while preserving their current
+  responses and conversations. Reconnect them for fresh messages without replaying
+  earlier work or queued handoffs.
+- Resume stopped role conversations in their existing terminal. Restart a shell
+  that has exited without replacing the agent's pane or losing saved output.
+
+### Changed
+
+- Replace Cancel with Force stop. Stop the harness and its owned child processes
+  while keeping the existing shell and terminal connection available.
+- Remove the manual Mark done control. Use the existing green tab checkmark when
+  the last required agent reports a successful result, and leave coordination idle
+  with the conversations connected and interactive.
+
+### Fixed
+
+- Keep agent panes usable after completion, review limits, harness exits, and stops.
+- Prevent stale handoffs and private drafts from crossing connection changes or
+  reaching a shell after its harness has exited.
+- Recover from temporary output and snapshot failures, drain output for background
+  panes, and restore missing scrollback without blocking input or other agents.
+- Preserve exact conversation handles, launch settings, and trace history across
+  repeated resumes and relaunches.
+- Keep shell startup queries and input responsive while loading harnesses, and hold
+  routed messages until the harness is ready.
+
 ## [0.8.0] - 2026-11-10
 
 ### Added
@@ -449,7 +479,8 @@ Initial release of Twine, a native macOS workspace for coordinating coding agent
 - The app is ad hoc signed and not notarized. Follow the included install instructions
   to approve the first launch in macOS Privacy & Security settings.
 
-[unreleased]: https://github.com/standing-desks/handshake/compare/v0.8.0...HEAD
+[unreleased]: https://github.com/standing-desks/handshake/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/standing-desks/handshake/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/standing-desks/handshake/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/standing-desks/handshake/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/standing-desks/handshake/compare/v0.6.0...v0.6.1

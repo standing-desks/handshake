@@ -29,8 +29,11 @@ _Avoid_: Pattern, DAG
 **Workflow graph**:
 A set of roles and event links that coordinate agents. A piece can start work in another role while its producer continues; a busy receiver keeps incoming work in a queue.
 
-**Individual mode**:
-A workflow-wide setting for follow-ups after completion or the review limit. Off by default, it allows a follow-up to a first-stage agent to start another workflow cycle with the same conversations. On keeps follow-ups individual without advancing the workflow. Switching mode starts no work, preserves the last result and history, and persists across relaunch. The setting appears in the terminal toolbar in both Tabs and Bento.
+**Disconnect agents / Reconnect agents**:
+Workflow-wide actions available during work. Disconnecting stops handoffs and discards queued coordination while preserving each conversation, current response, results, and history. Reconnecting restores the workflow's links for fresh messages in the addressed conversation; it starts no work and never replays old handoffs. Work started before reconnecting stays independent. The connection setting persists across relaunch and appears in the terminal toolbar in both Tabs and Bento.
+
+**Work completion**:
+A successful result reported by the workflow’s last required agent. It shows a green checkmark on the workflow tab and leaves coordination idle, with conversations connected and interactive. Fresh connected work clears the current checkmark; results and trace history remain. Force stop terminates active agents and their owned processes, while keeping their existing shells and terminal connections alive. Exact conversations remain available to resume, and the connection setting is preserved.
 
 **Role**:
 A responsibility within a workflow type, such as implementer, reviewer, coordinator, or worker. A role is independent of the harness that fills it.
@@ -39,7 +42,7 @@ A responsibility within a workflow type, such as implementer, reviewer, coordina
 An external agent tool that Handshake can launch, such as Codex, Claude Code, or pi. A harness can fill different roles in different workflows.
 
 **Agent**:
-One harness process filling one role in a workflow. Each agent is a subtab of its workflow. A Terminal workflow owns a shell rather than coordinated agents. A recognized foreground harness command can temporarily give its tab and command trace an agent label, while retaining the shell and command-level trace semantics.
+A conversation filling one role in a workflow. Its harness can exit and resume while the pane remains available as a shell. Each agent is a subtab of its workflow. A Terminal workflow owns a shell rather than coordinated agents. A recognized foreground harness command can temporarily give its tab and command trace an agent label, while retaining the shell and command-level trace semantics.
 _Avoid_: Agent session
 
 **Trace span**:

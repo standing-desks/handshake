@@ -828,6 +828,47 @@ pub unsafe extern "C" fn handshake_client_write_terminal_response(
     unsafe { write_terminal_bytes(client, terminal_id, input_bytes, input_length, false) }
 }
 
+#[unsafe(no_mangle)]
+/// Queues binary input with its captured workflow routing intent. Empty means retry backpressure.
+///
+/// # Safety
+/// `client` must be live and exclusively owned. `input_bytes` must cover `input_length` bytes.
+pub unsafe extern "C" fn handshake_client_write_workflow_input(
+    client: *mut HandshakeClient,
+    terminal_id: u64,
+    workflow_id: u64,
+    agent_id: u64,
+    generation: u64,
+    mode_revision: u64,
+    input_bytes: *const u8,
+    input_length: usize,
+) -> HandshakeStatus {
+    catch_status(|| {
+        // SAFETY: the caller provides valid input and client storage for this call.
+        unsafe {
+            ffi::with_input_bytes(
+                input_bytes,
+                input_length,
+                MAX_TERMINAL_INPUT_BYTES,
+                |bytes| {
+                    ffi::with_client(client, |client| {
+                        client.write_workflow_input(
+                            terminal_id,
+                            bytes,
+                            handshake_core::WorkflowInputContext {
+                                workflow_id: handshake_core::WorkflowId(workflow_id),
+                                agent_id: handshake_core::AgentId(agent_id),
+                                generation,
+                                mode_revision,
+                            },
+                        )
+                    })
+                },
+            )
+        }
+    })
+}
+
 unsafe fn write_terminal_bytes(
     client: *mut HandshakeClient,
     terminal_id: u64,

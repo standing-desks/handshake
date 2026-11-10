@@ -36,19 +36,20 @@ nonisolated enum CoreCommand: Sendable {
     case closeWorkflow(workflowID: UInt64)
     /// The agent starts without a prompt and waits for the user in its terminal.
     case startAgent(workflowID: UInt64, choice: HarnessChoice, size: CoreTerminalSize)
+    case recoverAgent(workflowID: UInt64, agentID: UInt64?, session: String?, shellOnly: Bool)
     case resumeAgent(workflowID: UInt64, session: String)
-    case cancelAgent(workflowID: UInt64)
+    case forceStopAgent(workflowID: UInt64)
     /// The first stage's agents ask the user for the task and report it when they finish.
     case startWorkflowRun(
         workflowID: UInt64, workflowType: CoreWorkflowType.Reference, roles: [CoreRoleLaunch],
         prompt: String = "", size: CoreTerminalSize)
-    case completeWorkflowRole(workflowID: UInt64, agentID: UInt64, generation: UInt64, signal: CoreCompletionSignal)
     case continueWorkflowRun(workflowID: UInt64, agentID: UInt64, generation: UInt64, modeRevision: UInt64 = 0)
-    case setWorkflowIndividualMode(workflowID: UInt64, generation: UInt64, modeRevision: UInt64, individualMode: Bool)
+    case setWorkflowAgentsDisconnected(
+        workflowID: UInt64, generation: UInt64, modeRevision: UInt64, agentsDisconnected: Bool)
     case submitWorkflowTask(workflowID: UInt64, generation: UInt64, prompt: String)
     case chooseWorkflowResult(workflowID: UInt64, generation: UInt64, agentID: UInt64)
     case retryDecision(workflowID: UInt64, generation: UInt64)
-    case cancelWorkflowRun(workflowID: UInt64)
+    case forceStopWorkflowAgents(workflowID: UInt64)
     case startTerminal(workingDirectory: String, size: CoreTerminalSize)
     case closeTerminal(terminalID: UInt64)
 }
@@ -186,7 +187,7 @@ nonisolated enum CoreCommandResult: Equatable, Sendable {
     case workflowReopened(workflowID: UInt64)
     case workflowClosed(workflowID: UInt64)
     case agentStarted(workflowID: UInt64)
-    case agentCancelled(workflowID: UInt64)
+    case agentStopped(workflowID: UInt64)
     case pong
     case terminalStarted(terminalID: UInt64)
     case terminalClosed(terminalID: UInt64)
@@ -300,7 +301,7 @@ nonisolated private struct CommandResultPayload: Decodable {
         case pong, workflowDrafted, workflowTypeValidated, workflowTypeSaved, workflowTypeDeleted
         case workflowCreated, workflowActivated, workflowReopened, workflowClosed
         case agentStarted
-        case agentCancelled
+        case agentStopped
         case terminalStarted
         case terminalClosed
     }
@@ -312,7 +313,7 @@ nonisolated private struct CommandResultPayload: Decodable {
         case .workflowReopened: .workflowReopened(workflowID: workflowID)
         case .workflowClosed: .workflowClosed(workflowID: workflowID)
         case .agentStarted: .agentStarted(workflowID: workflowID)
-        case .agentCancelled: .agentCancelled(workflowID: workflowID)
+        case .agentStopped: .agentStopped(workflowID: workflowID)
         default:
             throw DecodingError.dataCorrupted(
                 .init(codingPath: [], debugDescription: "\(type) is not a workflow result"))
@@ -349,7 +350,7 @@ nonisolated private struct CommandResultPayload: Decodable {
             result = .sessionSelected(sessionID: try container.decode(UInt64.self, forKey: .sessionID))
         case .sessionDeleted:
             result = .sessionDeleted(sessionID: try container.decode(UInt64.self, forKey: .sessionID))
-        case .workflowCreated, .workflowActivated, .workflowReopened, .workflowClosed, .agentStarted, .agentCancelled:
+        case .workflowCreated, .workflowActivated, .workflowReopened, .workflowClosed, .agentStarted, .agentStopped:
             result = try Self.workflowResult(type, workflowID: try container.decode(UInt64.self, forKey: .workflowID))
         case .workflowDrafted:
             result = .workflowDrafted(

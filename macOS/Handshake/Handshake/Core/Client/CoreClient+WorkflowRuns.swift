@@ -10,14 +10,6 @@ extension CoreClient {
                 size: .init(rows: 24, columns: 80, pixelWidth: 800, pixelHeight: 480)))
     }
 
-    func completeWorkflowRole(
-        workflowID: UInt64, agentID: UInt64, generation: UInt64, signal: CoreCompletionSignal
-    ) async throws {
-        try await sendRunCommand(
-            .completeWorkflowRole(
-                workflowID: workflowID, agentID: agentID, generation: generation, signal: signal))
-    }
-
     func submitWorkflowTask(workflowID: UInt64, generation: UInt64, prompt: String) async throws {
         try await sendRunCommand(.submitWorkflowTask(workflowID: workflowID, generation: generation, prompt: prompt))
     }
@@ -31,11 +23,11 @@ extension CoreClient {
         try await sendRunCommand(.retryDecision(workflowID: workflowID, generation: generation))
     }
 
-    func cancelWorkflowRun(workflowID: UInt64) async throws {
-        try await sendRunCommand(.cancelWorkflowRun(workflowID: workflowID))
+    func forceStopWorkflowAgents(workflowID: UInt64) async throws {
+        try await sendRunCommand(.forceStopWorkflowAgents(workflowID: workflowID))
     }
 
-    /// Typing to a first-stage agent after completion starts another automatic cycle.
+    /// Fresh connected input can start coordination in the addressed conversation.
     func continueWorkflowIfNeeded(workflowID: UInt64, agentID: UInt64) async throws {
         try await prepareWorkflowInput(workflowID: workflowID, agentID: agentID)()
     }
@@ -44,42 +36,42 @@ extension CoreClient {
     func prepareWorkflowInput(workflowID: UInt64, agentID: UInt64) -> TerminalInputPreparation {
         let observedRun = snapshot?.workflows.workflows.first(where: { $0.id == workflowID })?.run
         let change = workflowModeChanges[workflowID]
-        let individualMode = change?.individualMode ?? observedRun?.individualMode ?? true
         let generation = change?.generation ?? observedRun?.generation
         let modeRevision = change?.modeRevision ?? observedRun?.modeRevision
+        let terminalID = snapshot?.workflows.workflows.first(where: { $0.id == workflowID })?.agents.first(where: {
+            $0.id == agentID
+        })?.terminalID
         return { [weak self] in
-            guard let self else { return }
-            // Await any switch already in flight, even for private input, so stale feedback has
-            // been cleared before the bytes reach the harness. Later switches invalidate this revision.
-            try await change?.completion.value
-            guard !individualMode, let run = observedRun, let generation, let modeRevision,
-                let role = run.agents.first(where: { $0.id == agentID })?.role,
-                let definition = run.workflowType?.definition,
-                definition.graph.map({ $0.startsAgent(role) })
-                    ?? (definition.stages.first?.roles.contains(role) == true)
-            else { return }
-            try await sendRunCommand(
-                .continueWorkflowRun(
-                    workflowID: workflowID, agentID: agentID, generation: generation,
-                    modeRevision: modeRevision))
+            guard let self, let terminalID, let generation, let modeRevision else { return }
+            workflowInputContexts[terminalID] = CoreWorkflowInputContext(
+                workflowID: workflowID, agentID: agentID, generation: generation, modeRevision: modeRevision)
         }
     }
 
-    func setWorkflowIndividualMode(workflowID: UInt64, individualMode: Bool) async throws {
+    func setWorkflowAgentsDisconnected(workflowID: UInt64, agentsDisconnected: Bool) async throws {
         guard workflowModeChanges[workflowID] == nil,
             let run = snapshot?.workflows.workflows.first(where: { $0.id == workflowID })?.run
         else { return }
         let expectedRevision =
-            run.modeRevision + (run.individualMode == individualMode || run.modeRevision == .max ? 0 : 1)
+            run.modeRevision + (run.agentsDisconnected == agentsDisconnected || run.modeRevision == .max ? 0 : 1)
         let completion = Task {
             try await sendRunCommand(
-                .setWorkflowIndividualMode(
+                .setWorkflowAgentsDisconnected(
                     workflowID: workflowID, generation: run.generation, modeRevision: run.modeRevision,
-                    individualMode: individualMode))
+                    agentsDisconnected: agentsDisconnected))
             // A receipt precedes event delivery. Let the regular pump acknowledge this revision
             // so concurrent command completions are processed before the cursor advances.
+            let deadline = ContinuousClock.now + .seconds(5)
             while true {
                 try Task.checkCancellation()
+                if ContinuousClock.now >= deadline {
+                    throw CoreFailure.commandRejected(
+                        code: "stateUpdateDelayed",
+                        message:
+                            "The connection change was accepted, but its status update is delayed. "
+                            + "Terminal input remains available."
+                    )
+                }
                 guard runState == .running, !isStopping, !isTerminating,
                     let updated = snapshot?.workflows.workflows.first(where: { $0.id == workflowID })?.run
                 else { throw CoreFailure.notRunning }
@@ -88,7 +80,7 @@ extension CoreClient {
             }
         }
         workflowModeChanges[workflowID] = .init(
-            individualMode: individualMode, generation: run.generation, modeRevision: expectedRevision,
+            agentsDisconnected: agentsDisconnected, generation: run.generation, modeRevision: expectedRevision,
             completion: completion)
         defer { workflowModeChanges.removeValue(forKey: workflowID) }
         _ = try await completion.value

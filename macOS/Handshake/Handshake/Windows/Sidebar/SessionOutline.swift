@@ -269,7 +269,7 @@ extension SessionOutline {
         }
         Divider()
         if let workflow = item.workflow, workflow.isRunningAgent {
-            Button("Cancel Agent", systemImage: "stop.circle") { commands.cancelAgent(workflow.id) }
+            Button("Force Stop Agent", systemImage: "stop.circle") { commands.forceStopAgent(workflow.id) }
         }
         Button("Close Tab", systemImage: "xmark") { commands.close(item, in: session) }
         Divider()

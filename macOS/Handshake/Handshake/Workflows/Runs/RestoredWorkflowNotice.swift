@@ -4,6 +4,7 @@ import SwiftUI
 struct RestoredWorkflowNotice: View {
     @TerminalTheme private var palette
     @Environment(TraceTerminalNavigation.self) private var navigation
+    @Environment(CoreClient.self) private var client
     let workflow: CoreWorkflow
 
     var body: some View {
@@ -15,6 +16,22 @@ struct RestoredWorkflowNotice: View {
             Spacer(minLength: 0)
             if workflow.kind == .singleAgent && workflow.status != .running {
                 ResumeAgentButton(workflow: workflow)
+                if client.terminalStatus(for: workflow.terminalID) != .running {
+                    Button("Restart shell", systemImage: "terminal") {
+                        Task {
+                            await client.perform(
+                                .recoverAgent(workflowID: workflow.id, agentID: nil, session: nil, shellOnly: true))
+                        }
+                    }
+                }
+            }
+            if canRestartShell {
+                Button("Restart shell", systemImage: "terminal") {
+                    Task {
+                        await client.perform(
+                            .recoverAgent(workflowID: workflow.id, agentID: nil, session: nil, shellOnly: true))
+                    }
+                }
             }
             if let history = workflow.terminalHistory, !history.isEmpty {
                 Menu("Saved output", systemImage: "clock.arrow.circlepath") {
@@ -39,21 +56,27 @@ struct RestoredWorkflowNotice: View {
         .background(Color(nsColor: palette.background))
     }
 
+    private var canRestartShell: Bool {
+        workflow.kind != .singleAgent && workflow.kind != .agents
+            && client.terminalStatus(for: workflow.terminalID) != .running
+    }
+
     private var message: String {
         if workflow.kind == .singleAgent {
             if workflow.status == .running { return "Agent session resumed. Saved output is available." }
             return switch workflow.status {
-            case .cancelled: "Saved output · Agent cancelled"
+            case .cancelled: "Agent stopped. Shell is available; resume the recorded conversation to continue."
             case .exited, .completed: "Saved output · Agent exited"
             case .failed: "Saved output · Agent failed"
             default: "Saved output · Agent interrupted"
             }
         }
         if workflow.run != nil {
-            return workflow.status == .running
-                ? "Agent sessions resumed. Saved output is available."
-                : "Saved output restored. Agents are stopped."
+            return workflow.run?.agents.contains(where: { $0.harnessRunning == true }) == true
+                ? "Agent conversations are available. Saved output is retained."
+                : "Shells are available. Resume agents to continue their recorded conversations."
         }
+        if !workflow.restored { return "Shell exited. Restart it to continue in this pane." }
         let hasAgents = workflow.kind == .agents
         if workflow.terminalIDs.isEmpty {
             return hasAgents
@@ -71,6 +94,6 @@ struct RestoredWorkflowNotice: View {
 
 extension CoreWorkflow {
     var showsRestoredNotice: Bool {
-        restored || (kind == .singleAgent && status != .running)
+        restored || (kind != .agents && status != .running)
     }
 }

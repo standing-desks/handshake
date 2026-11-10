@@ -144,6 +144,16 @@ impl Application {
             Err(error) => return Ok(rejection("harnessNotFound", &error)),
         };
 
+        self.lock_inner()?.folders.store().remember_agent_options(
+            workflow_id,
+            &crate::RoleLaunch {
+                role: String::new(),
+                harness,
+                model: options.model().map(str::to_owned),
+                effort: options.effort().map(str::to_owned),
+                yolo: options.yolo(),
+            },
+        )?;
         // Transcript allocation may wait on disk; lifetime commands keep this draft valid while
         // application state remains available. Hold state again for startup and exit-event order.
         let reserved = match self.terminals.reserve_terminal() {
@@ -202,7 +212,7 @@ impl Application {
             .find(|workflow| workflow.workflow_id == workflow_id)
             .and_then(|workflow| self.terminals.size(workflow.terminal_id))
             .unwrap_or(size);
-        let terminal_id = match self.terminals.start_program(
+        let terminal_id = match self.terminals.start_managed_program(
             reserved,
             &folder,
             &located.program,
@@ -219,6 +229,7 @@ impl Application {
                 .collect::<Vec<_>>(),
             placeholder_size,
             Arc::new(self.memory_exit_callback(memory_lease)),
+            Arc::new(self.exit_callback()),
         ) {
             Ok(terminal_id) => terminal_id,
             Err(error) => return Ok(rejection("agentStartFailed", &error)),
@@ -289,67 +300,77 @@ impl Application {
         Ok(CommandDisposition::Accepted)
     }
 
-    /// Stops a running agent's process. The workflow stays open as cancelled, with its output.
-    pub(super) fn cancel_agent(
+    pub(super) fn force_stop_harness(
+        &self,
+        terminal: crate::TerminalId,
+    ) -> Result<(), ApplicationError> {
+        if let Ok(observation) = self.terminals.observe(terminal)
+            && let Err(error) = self.lock_inner()?.stop_trace(
+                terminal,
+                observation,
+                "Agent force-stopped. Shell remains available.",
+            )
+        {
+            warn!(%error, "couldn't record agent force stop");
+        }
+        self.terminals.force_stop_harness(terminal)?;
+        Ok(())
+    }
+
+    pub(super) fn force_stop_agent(
         &self,
         request_id: RequestId,
         workflow_id: WorkflowId,
     ) -> Result<CommandDisposition, ApplicationError> {
-        let terminal_id = {
-            let mut inner = self.lock_inner()?;
-            let Some(index) = inner
+        if let Err(error) = self.poll_harness_steps() {
+            warn!(%error, "couldn't flush activity before force stop");
+        }
+        let terminal = {
+            let inner = self.lock_inner()?;
+            let Some(workflow) = inner.workflows.workflows.iter().find(|workflow| {
+                workflow.workflow_id == workflow_id && workflow.kind == WorkflowKind::SingleAgent
+            }) else {
+                return Ok(reject("agentNotRunning", "The agent is no longer open."));
+            };
+            workflow.terminal_id
+        };
+        if self.terminals.is_harness_running(terminal) {
+            self.force_stop_harness(terminal)?;
+            let saved = self
+                .lock_inner()?
                 .workflows
                 .workflows
                 .iter()
-                .position(|workflow| workflow.workflow_id == workflow_id)
-            else {
-                return Ok(reject(
-                    "workflowNotFound",
-                    "The workflow is no longer open.",
-                ));
-            };
-            let mut workflow = inner.workflows.workflows[index].clone();
-            if workflow.kind != WorkflowKind::SingleAgent
-                || workflow.status != WorkflowStatus::Running
+                .find(|workflow| workflow.workflow_id == workflow_id)
+                .cloned()
+                .ok_or(ApplicationError::Poisoned)?;
+            self.retire_completed_harness_hooks(&saved)?;
+            let mut inner = self.lock_inner()?;
+            if let Some(workflow) = inner
+                .workflows
+                .workflows
+                .iter_mut()
+                .find(|workflow| workflow.workflow_id == workflow_id)
             {
-                return Ok(reject("agentNotRunning", "The agent isn't running."));
+                workflow.status = WorkflowStatus::Cancelled;
+                let workflow = workflow.clone();
+                if let Err(error) = inner
+                    .folders
+                    .store()
+                    .update_agent_status(workflow_id, WorkflowStatus::Cancelled)
+                {
+                    warn!(%error, "couldn't save the force stop outcome");
+                }
+                inner
+                    .events
+                    .append(EventKind::State(StateEvent::WorkflowChanged(workflow)))?;
             }
-            if let Ok(observation) = self.terminals.observe(workflow.terminal_id)
-                && let Err(error) = inner.stop_trace(
-                    workflow.terminal_id,
-                    observation,
-                    "Process stopped when its agent was cancelled.",
-                )
-            {
-                warn!(%error, "failed to record the cancelled agent's trace");
-            }
-            workflow.status = WorkflowStatus::Cancelled;
-            workflow.ended_at = Some(timestamp().max(workflow.started_at));
-            if let Err(error) = inner
-                .folders
-                .store()
-                .update_agent_status(workflow_id, WorkflowStatus::Cancelled)
-            {
-                warn!(%error, "failed to record the cancelled agent");
-            }
-            let terminal_id = workflow.terminal_id;
-            inner.workflows.workflows[index] = workflow.clone();
-            inner
-                .events
-                .append(EventKind::State(StateEvent::WorkflowChanged(workflow)))?;
-            terminal_id
-        };
-        // The exit callback keeps the cancelled status, so the process ending isn't reported as
-        // a crash or as finished work.
-        if let Err(error) = self.terminals.terminate(terminal_id) {
-            warn!(workflow_id = workflow_id.0, %error, "failed to stop cancelled agent");
         }
-        info!(workflow_id = workflow_id.0, "agent cancelled");
         self.lock_inner()?
             .events
             .append(EventKind::CommandCompleted {
                 request_id,
-                result: CommandResult::AgentCancelled { workflow_id },
+                result: CommandResult::AgentStopped { workflow_id },
             })?;
         Ok(CommandDisposition::Accepted)
     }
@@ -1034,78 +1055,49 @@ mod tests {
     }
 
     #[test]
-    fn cancelling_stops_the_process_and_stays_cancelled() {
+    fn force_stop_terminates_the_agent_and_children_and_keeps_a_usable_pane() {
+        use crate::process::tests::FixtureProcess;
         let (folder, bin) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
-        let application = application(
+        let app = application(
             folder.path(),
             bin.path(),
-            Some("trap '' HUP; echo ready; while :; do sleep 1; done"),
+            Some("trap '' HUP INT TERM; echo $$ > agent.pid; sleep 60 & echo $! > child.pid; wait"),
         );
-        let draft = draft(&application, folder.path());
-        start(&application, draft.workflow_id, "go");
-        let mut output = Vec::new();
-        wait_until(|| output_contains(&application, &mut output, "ready"));
-
-        let receipt = application
-            .handle_command(
-                RequestId(4),
-                Command::CancelAgent {
-                    workflow_id: draft.workflow_id,
-                },
-            )
-            .unwrap();
-
-        assert_eq!(receipt.disposition, CommandDisposition::Accepted);
-        let agent = workflow(&application);
-        assert_eq!(agent.status, WorkflowStatus::Cancelled);
-        let terminal_id = agent.terminal_id;
-        wait_until(|| {
-            application
-                .snapshot()
-                .unwrap()
-                .terminals
-                .iter()
-                .any(|terminal| {
-                    terminal.terminal_id == terminal_id
-                        && matches!(terminal.status, TerminalStatus::Exited(_))
-                })
-        });
-        assert_eq!(workflow(&application).status, WorkflowStatus::Cancelled);
-        let trace = application
-            .workflow_trace(draft.workflow_id, None, 10)
-            .unwrap();
-        let span = trace
-            .spans
-            .iter()
-            .find(|span| span.terminal_id == Some(terminal_id))
-            .unwrap();
-        assert_eq!(span.status, crate::TraceSpanStatus::Stopped);
-        let events = application
-            .trace_events(span.span_id, None, 10)
-            .unwrap()
-            .events;
-        assert_eq!(
-            events.len(),
-            2,
-            "the exit callback must not add a second ending"
-        );
-        assert_eq!(events[1].kind, crate::TraceEventKind::ProcessStopped);
-        assert!(events[1].message.contains("cancelled"));
-        assert!(matches!(
-            application
-                .handle_command(
-                    RequestId(5),
-                    Command::CancelAgent {
-                        workflow_id: draft.workflow_id
+        let draft = draft(&app, folder.path());
+        start(&app, draft.workflow_id, "go");
+        let agent = FixtureProcess::read(&folder.path().join("agent.pid"));
+        let child = FixtureProcess::read(&folder.path().join("child.pid"));
+        let previous = workflow(&app).terminal_id;
+        for _ in 0..2 {
+            assert_eq!(
+                app.handle_command(
+                    RequestId(4),
+                    Command::ForceStopAgent {
+                        workflow_id: draft.workflow_id,
                     }
                 )
                 .unwrap()
                 .disposition,
-            CommandDisposition::Rejected { code, .. } if code == "agentNotRunning"
-        ));
+                CommandDisposition::Accepted
+            );
+        }
+        agent.assert_stopped();
+        child.assert_stopped();
+        assert!(app.terminals.is_running(previous));
+        let stopped = workflow(&app);
+        assert_eq!(stopped.terminal_id, previous);
+        assert_eq!(stopped.status, WorkflowStatus::Cancelled);
+        assert!(!app.terminals.is_harness_running(stopped.terminal_id));
+        app.write_terminal_input(stopped.terminal_id, b"touch shell-usable\r")
+            .unwrap();
+        wait_until(|| folder.path().join("shell-usable").exists());
     }
 
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "exercise one restoration matrix against the same saved database"
+    )]
     fn restored_agents_keep_how_they_ended_and_only_running_ones_are_interrupted() {
         let (folder, bin) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
         let data = tempfile::tempdir().unwrap();
@@ -1143,7 +1135,7 @@ mod tests {
             first
                 .handle_command(
                     RequestId(9),
-                    Command::CancelAgent {
+                    Command::ForceStopAgent {
                         workflow_id: ids[1],
                     },
                 )
@@ -1190,23 +1182,33 @@ mod tests {
                 }
             );
             assert!(!span.is_live);
+            let events = second.trace_events(span.span_id, None, 10).unwrap().events;
             assert_eq!(
-                second
-                    .trace_events(span.span_id, None, 10)
-                    .unwrap()
-                    .events
-                    .len(),
-                2
+                events
+                    .iter()
+                    .filter(|event| event.kind == crate::TraceEventKind::ProcessStarted)
+                    .count(),
+                1
             );
-            assert_eq!(Some(restored.terminal_id), span.terminal_id);
+            let ending = if expected == WorkflowStatus::Exited {
+                crate::TraceEventKind::ProcessExited
+            } else {
+                crate::TraceEventKind::ProcessStopped
+            };
+            // A pending launch can stop without ever producing a native exit callback.
+            assert_eq!(
+                events.iter().filter(|event| event.kind == ending).count(),
+                1
+            );
             assert!(
-                restored.terminal_ids().is_empty(),
-                "agents are never relaunched"
+                restored
+                    .terminal_history
+                    .iter()
+                    .any(|entry| Some(entry.terminal_id) == span.terminal_id)
             );
-            assert_eq!(
-                restored.terminal_history.last().unwrap().terminal_id,
-                restored.terminal_id
-            );
+            assert!(second.terminals.is_running(restored.terminal_id));
+            assert!(!second.terminals.is_harness_running(restored.terminal_id));
+            assert_ne!(span.terminal_id, Some(restored.terminal_id));
         }
     }
 
@@ -1271,74 +1273,44 @@ mod tests {
     }
 
     #[test]
-    fn a_failed_cancel_trace_still_stops_the_agent_and_retries_the_cancellation() {
+    fn trace_storage_failure_does_not_block_force_stop_or_shell_input() {
         let (folder, bin) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
-        let application = application(
+        let app = application(
             folder.path(),
             bin.path(),
-            Some("trap '' HUP; echo ready; while :; do sleep 1; done"),
+            Some(
+                "stty raw -echo; printf ready; while :; do dd bs=1 count=1 2>/dev/null >> input; done",
+            ),
         );
-        let draft = draft(&application, folder.path());
-        start(&application, draft.workflow_id, "go");
-        let agent = workflow(&application);
+        let draft = draft(&app, folder.path());
+        start(&app, draft.workflow_id, "go");
+        let terminal = workflow(&app).terminal_id;
         let mut output = Vec::new();
-        wait_until(|| output_contains(&application, &mut output, "ready"));
-        application.lock_inner().unwrap().folders.store().execute_test_sql(
-            "CREATE TRIGGER reject_trace BEFORE INSERT ON trace_events BEGIN SELECT RAISE(FAIL, 'test recording failure'); END;"
-        );
-        application
-            .handle_command(
-                RequestId(4),
-                Command::CancelAgent {
-                    workflow_id: draft.workflow_id,
-                },
-            )
-            .unwrap();
-        wait_until(|| {
-            application
-                .snapshot()
-                .unwrap()
-                .terminals
-                .iter()
-                .any(|terminal| {
-                    terminal.terminal_id == agent.terminal_id
-                        && matches!(terminal.status, TerminalStatus::Exited(_))
-                })
-        });
-        assert_eq!(workflow(&application).status, WorkflowStatus::Cancelled);
+        wait_until(|| output_contains(&app, &mut output, "ready"));
+        app.lock_inner().unwrap().folders.store().execute_test_sql("CREATE TRIGGER reject_trace BEFORE INSERT ON trace_events BEGIN SELECT RAISE(FAIL, 'test recording failure'); END;");
         assert_eq!(
-            application
-                .lock_inner()
-                .unwrap()
-                .pending_trace_endings
-                .len(),
-            1
+            app.handle_command(
+                RequestId(4),
+                Command::ForceStopAgent {
+                    workflow_id: draft.workflow_id
+                }
+            )
+            .unwrap()
+            .disposition,
+            CommandDisposition::Accepted
         );
-        application
-            .lock_inner()
+        assert!(app.terminals.is_running(terminal));
+        let shell = workflow(&app).terminal_id;
+        assert_eq!(shell, terminal);
+        assert!(app.terminals.is_running(shell));
+        app.write_terminal_input(shell, b"touch shell-usable\r")
+            .unwrap();
+        wait_until(|| folder.path().join("shell-usable").exists());
+        app.lock_inner()
             .unwrap()
             .folders
             .store()
             .execute_test_sql("DROP TRIGGER reject_trace");
-        application
-            .handle_command(RequestId(5), Command::Ping)
-            .unwrap();
-        let trace = application
-            .workflow_trace(draft.workflow_id, None, 10)
-            .unwrap();
-        let span = trace
-            .spans
-            .iter()
-            .find(|span| span.terminal_id == Some(agent.terminal_id))
-            .unwrap();
-        assert_eq!(span.status, crate::TraceSpanStatus::Stopped);
-        let events = application
-            .trace_events(span.span_id, None, 10)
-            .unwrap()
-            .events;
-        assert_eq!(events.len(), 2);
-        assert_eq!(events[1].kind, crate::TraceEventKind::ProcessStopped);
-        assert!(events[1].message.contains("cancelled"));
     }
 
     #[test]
@@ -1397,7 +1369,7 @@ mod tests {
         let cancel = application
             .handle_command(
                 RequestId(5),
-                Command::CancelAgent {
+                Command::ForceStopAgent {
                     workflow_id: draft.workflow_id,
                 },
             )
@@ -1406,7 +1378,7 @@ mod tests {
     }
 
     #[test]
-    fn cancelling_an_agent_that_already_exited_is_rejected_and_stays_exited() {
+    fn cancelling_an_exited_harness_is_a_noop_and_keeps_its_shell() {
         let (folder, bin) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
         let application = application(folder.path(), bin.path(), Some("exit 0"));
         let draft = draft(&application, folder.path());
@@ -1416,16 +1388,18 @@ mod tests {
         let receipt = application
             .handle_command(
                 RequestId(4),
-                Command::CancelAgent {
+                Command::ForceStopAgent {
                     workflow_id: draft.workflow_id,
                 },
             )
             .unwrap();
 
-        assert!(matches!(
-            receipt.disposition,
-            CommandDisposition::Rejected { code, .. } if code == "agentNotRunning"
-        ));
+        assert_eq!(receipt.disposition, CommandDisposition::Accepted);
+        assert!(
+            application
+                .terminals
+                .is_running(workflow(&application).terminal_id)
+        );
         assert_eq!(workflow(&application).status, WorkflowStatus::Exited);
     }
 

@@ -1,23 +1,47 @@
 import SwiftUI
 
-/// Workflow-wide follow-up mode and run actions, shared by the Tabs and Bento terminal strips.
+/// Agent connections and run actions, shared by the Tabs and Bento terminal strips.
 struct WorkflowRunControls: View {
     @Environment(CoreClient.self) private var client
     let workflowID: UInt64
     let run: CoreWorkflowRun
     let selectedAgentID: UInt64?
-    /// The selected agent's role, named in Mark done's tooltip.
-    var selectedRole: String?
     let reportFailure: (String) -> Void
-    @State private var showsCompletion = false
+    var didChangeConnection: () -> Void = {}
     @State private var showsGraph = false
     @State private var showsResults = false
 
-    private var agent: CoreWorkflowRun.Agent? { run.agents.first { $0.id == selectedAgentID } }
     private var hasLiveAgents: Bool {
-        client.snapshot?.workflows.workflows.first(where: { $0.id == workflowID })?.terminalIDs.contains {
-            client.terminalStatus(for: $0) == .running
-        } == true
+        run.agents.contains { $0.harnessRunning == true }
+    }
+
+    private var recoveryTarget: (workflow: CoreWorkflow, agent: CoreAgent)? {
+        guard let selectedAgentID,
+            let workflow = client.snapshot?.workflows.workflows.first(where: { $0.id == workflowID }),
+            let agent = workflow.agents.first(where: { $0.id == selectedAgentID }),
+            run.agents.first(where: { $0.id == selectedAgentID })?.harness != .nouli,
+            run.agents.first(where: { $0.id == selectedAgentID })?.harnessRunning == false
+        else { return nil }
+        return (workflow, agent)
+    }
+
+    @ViewBuilder private var recoveryControls: some View {
+        if let target = recoveryTarget {
+            ResumeAgentButton(workflow: target.workflow, agentID: target.agent.id)
+            if client.terminalStatus(for: target.agent.terminalID) != .running {
+                Button("Restart shell", systemImage: "terminal") {
+                    Task {
+                        do {
+                            let receipt = try await client.send(
+                                .recoverAgent(
+                                    workflowID: workflowID,
+                                    agentID: target.agent.id, session: nil, shellOnly: true))
+                            if let error = receipt.error { reportFailure(error.message) }
+                        } catch { reportFailure(error.localizedDescription) }
+                    }
+                }
+            }
+        }
     }
 
     var body: some View {
@@ -26,32 +50,27 @@ struct WorkflowRunControls: View {
                 Button {
                     Task {
                         do {
-                            try await client.setWorkflowIndividualMode(
-                                workflowID: workflowID, individualMode: !run.individualMode)
+                            try await client.setWorkflowAgentsDisconnected(
+                                workflowID: workflowID, agentsDisconnected: !run.agentsDisconnected)
+                            didChangeConnection()
                         } catch { reportFailure(error.localizedDescription) }
                     }
                 } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "person")
-                        Text("Individual mode")
-                        Divider().frame(height: 12)
-                        Text(run.individualMode ? "On" : "Off").fontWeight(.semibold)
-                    }
-                    .font(.caption)
+                    Label(
+                        run.agentsDisconnected ? "Reconnect agents" : "Disconnect agents",
+                        systemImage: "link")
                 }
-                .disabled(!run.canChangeIndividualMode || client.workflowModeChanges[workflowID] != nil)
+                .disabled(client.workflowModeChanges[workflowID] != nil)
                 .help(
-                    !run.canChangeIndividualMode
-                        ? "Individual mode is available after the workflow finishes."
-                        : run.individualMode
-                            ? "On: follow up with each agent individually. Turn Off to allow another workflow cycle."
-                            : "Off: a follow-up to a starting agent can start another workflow cycle. "
-                                + "Turn On to work with agents individually."
+                    run.agentsDisconnected
+                        ? "Restore workflow connections for new messages. Earlier work stays independent."
+                        : "Stop handoffs between agents. Current work and conversations remain available."
                 )
-                .accessibilityLabel("Individual mode")
-                .accessibilityValue(run.individualMode ? "On" : "Off")
-                .accessibilityIdentifier("workflowIndividualMode")
+                .accessibilityLabel(run.agentsDisconnected ? "Reconnect agents" : "Disconnect agents")
+                .accessibilityValue(run.agentsDisconnected ? "Disconnected" : "Connected")
+                .accessibilityIdentifier("workflowAgentConnections")
             }
+            recoveryControls
             if let type = run.workflowType {
                 Button {
                     showsGraph.toggle()
@@ -73,46 +92,23 @@ struct WorkflowRunControls: View {
                         WorkflowResultsPopover(workflowID: workflowID, run: run, reportFailure: reportFailure).appZoom()
                     }
             }
-            if let agent, agent.harness != .nouli && agent.active && !agent.done {
-                Button {
-                    showsCompletion = true
-                } label: {
-                    Label("Mark done…", systemImage: "checkmark")
-                }
-                .help(selectedRole.map { "Mark \($0) done…" } ?? "Mark done…")
-                .accessibilityIdentifier("workflowMarkDone")
-            }
             if run.status == .running || hasLiveAgents {
                 Button {
                     Task {
-                        do { try await client.cancelWorkflowRun(workflowID: workflowID) } catch {
+                        do { try await client.forceStopWorkflowAgents(workflowID: workflowID) } catch {
                             reportFailure(error.localizedDescription)
                         }
                     }
                 } label: {
-                    Label("Cancel workflow", systemImage: "xmark")
+                    Label("Force stop agents", systemImage: "stop.fill")
                 }
-                .help("Cancel workflow")
-                .accessibilityIdentifier("workflowCancel")
+                .help("Force stop agents and their child processes. Their panes return to usable shells.")
+                .accessibilityIdentifier("workflowForceStop")
             }
         }
         .labelStyle(.iconOnly)
         .controlSize(.small)
-        .sheet(isPresented: $showsCompletion) {
-            if let agent {
-                WorkflowCompletionForm(
-                    workflowID: workflowID, generation: agent.assignmentGeneration ?? run.generation, agent: agent,
-                    needsTask: run.needsTask
-                )
-                .appZoom()
-            }
-        }
-        .onChange(of: run.generation) { showsCompletion = false }
-        .onChange(of: run.agents.first(where: { $0.id == selectedAgentID })?.assignmentGeneration) {
-            showsCompletion = false
-        }
-        .onChange(of: run.status) { if run.status != .running { showsCompletion = false } }
-        .onChange(of: selectedAgentID) { showsCompletion = false }
+
     }
 }
 

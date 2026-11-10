@@ -71,13 +71,13 @@ actor DelayedStartTransport {
             .closeFolderIfOpen,
             .removeRecentFolder, .createWorkflow,
             .activateWorkflow, .renameWorkflow, .moveWorkflow, .reopenWorkflow, .closeWorkflow, .startAgent,
-            .resumeAgent,
-            .cancelAgent, .nameDraftWorkflow,
+            .resumeAgent, .recoverAgent,
+            .forceStopAgent, .nameDraftWorkflow,
             .refreshGitBranch,
             .createSession, .renameSession, .selectSession, .deleteSession,
-            .startWorkflowRun, .submitWorkflowTask, .chooseWorkflowResult, .completeWorkflowRole,
-            .continueWorkflowRun, .retryDecision, .setWorkflowIndividualMode,
-            .cancelWorkflowRun:
+            .startWorkflowRun, .submitWorkflowTask, .chooseWorkflowResult,
+            .continueWorkflowRun, .retryDecision, .setWorkflowAgentsDisconnected,
+            .forceStopWorkflowAgents:
             break
         }
         return CoreCommandReceipt(requestID: requestID, status: .accepted, error: nil)

@@ -23,3 +23,11 @@ typeset -ga preexec_functions precmd_functions zshexit_functions
 preexec_functions=(_handshake_preexec ${preexec_functions:#_handshake_preexec})
 precmd_functions=(_handshake_precmd ${precmd_functions:#_handshake_precmd})
 zshexit_functions+=(_handshake_exit)
+
+# Run once, outside shell history, with harness configuration scoped to the child wrapper.
+if [[ -n ${HANDSHAKE_INITIAL_COMMAND:-} ]]; then
+    _handshake_initial=$HANDSHAKE_INITIAL_COMMAND
+    unset HANDSHAKE_INITIAL_COMMAND
+    "$_handshake_initial"
+    unset _handshake_initial
+fi

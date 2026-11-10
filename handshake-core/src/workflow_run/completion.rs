@@ -95,6 +95,11 @@ impl CompletionInbox {
                 // this mailbox until the helper acknowledges acceptance or consumes rejection.
                 "attempt=0\n",
                 "while [ \"$attempt\" -lt 200 ]; do\n",
+                "  if [ -f disconnected ]; then\n",
+                "    touch acknowledged\n",
+                "    echo 'Agents disconnected; continue in this conversation.'\n",
+                "    exit 0\n",
+                "  fi\n",
                 "  if [ -f response.txt ]; then\n",
                 "    cat response.txt >&2\n",
                 "    rmdir pending\n",
@@ -175,9 +180,17 @@ impl CompletionInbox {
         }
     }
 
+    /// A separate marker survives helper startup removing an older acceptance receipt.
+    pub(crate) fn disconnect(&self) {
+        if let Err(error) = fs::write(self.directory.path().join("disconnected"), []) {
+            tracing::warn!(%error, "couldn't release a disconnected workflow helper");
+        }
+    }
+
     /// A user completion has no waiting helper; a harness completion acknowledges its receipt.
     pub(crate) fn receipt_pending(&self) -> bool {
-        self.directory.path().join("pending").exists()
+        (self.directory.path().join("pending").exists()
+            || self.directory.path().join("disconnected").exists())
             && !self.directory.path().join("acknowledged").exists()
     }
 

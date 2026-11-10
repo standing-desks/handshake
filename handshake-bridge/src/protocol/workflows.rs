@@ -202,6 +202,16 @@ struct RawStartAgent {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct RawRecoverAgent {
+    workflow_id: u64,
+    agent_id: Option<u64>,
+    session: Option<String>,
+    #[serde(default)]
+    shell_only: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct RawResumeAgent {
     workflow_id: u64,
     session: String,
@@ -239,6 +249,17 @@ struct RawCreateSession {
 struct RawSessionCommand {
     session_id: u64,
     name: Option<String>,
+}
+
+fn decode_recover_agent(raw: &Value) -> Result<Command, BridgeError> {
+    let command: RawRecoverAgent =
+        serde_json::from_value(raw.clone()).map_err(|_| BridgeError::MalformedCommand)?;
+    Ok(Command::RecoverAgent {
+        workflow_id: WorkflowId(command.workflow_id),
+        agent_id: command.agent_id.map(handshake_core::AgentId),
+        session: command.session,
+        shell_only: command.shell_only,
+    })
 }
 
 pub(super) fn decode_command(command_type: &str, raw: &Value) -> Result<Command, BridgeError> {
@@ -309,6 +330,7 @@ pub(super) fn decode_command(command_type: &str, raw: &Value) -> Result<Command,
             })
         }
         "startAgent" => decode_start_agent(raw),
+        "recoverAgent" => decode_recover_agent(raw),
         "resumeAgent" => {
             let command: RawResumeAgent =
                 serde_json::from_value(raw.clone()).map_err(|_| BridgeError::MalformedCommand)?;
@@ -317,10 +339,10 @@ pub(super) fn decode_command(command_type: &str, raw: &Value) -> Result<Command,
                 session: command.session,
             })
         }
-        "cancelAgent" => {
+        "forceStopAgent" => {
             let command: RawWorkflowId =
                 serde_json::from_value(raw.clone()).map_err(|_| BridgeError::MalformedCommand)?;
-            Ok(Command::CancelAgent {
+            Ok(Command::ForceStopAgent {
                 workflow_id: WorkflowId(command.workflow_id),
             })
         }

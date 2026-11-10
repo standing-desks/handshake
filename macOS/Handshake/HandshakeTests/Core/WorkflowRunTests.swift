@@ -46,28 +46,6 @@ struct WorkflowRunTests {
         }
     }
 
-    @Test func completionCarriesTheStageGenerationReviewAndWorkerAssignments() throws {
-        let signal = CoreCompletionSignal(
-            decision: .done, summary: "Split the task",
-            assignments: [
-                .init(role: "worker", instance: 1, task: "Fix one file", files: ["one.swift"])
-            ], task: "Tidy the parser")
-        let envelope = CommandEnvelope(
-            requestID: 2,
-            command: .completeWorkflowRole(
-                workflowID: 3, agentID: 4, generation: 5, signal: signal))
-        let object = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(envelope)) as? [String: Any])
-        let command = try #require(object["command"] as? [String: Any])
-        #expect(command["type"] as? String == "completeWorkflowRole")
-        #expect(command["generation"] as? Int == 5)
-        #expect(command["agentId"] as? Int == 4)
-        let encoded = try #require(command["signal"] as? [String: Any])
-        #expect(encoded["task"] as? String == "Tidy the parser")
-        let decoded = try JSONDecoder().decode(
-            CoreCompletionSignal.self, from: JSONSerialization.data(withJSONObject: encoded))
-        #expect(decoded == signal)
-    }
-
     @Test func startCarriesCustomVersionAndEachHarnessChoice() throws {
         let reference = CoreWorkflowType.Reference(user: .init(typeID: 10, version: 2))
         let envelope = CommandEnvelope(
@@ -96,8 +74,8 @@ struct WorkflowRunTests {
         #expect(command["generation"] as? Int == 5)
     }
 
-    @Test(arguments: [CoreWorkflowRun.Status.running, .completed, .limitReached])
-    func firstStageInputChecksCoreWithAStaleSnapshot(status: CoreWorkflowRun.Status) async throws {
+    @Test(arguments: [CoreWorkflowRun.Status.running, .idle, .completed, .limitReached])
+    func anyAgentInputChecksCoreWithAStaleSnapshot(status: CoreWorkflowRun.Status) async throws {
         let type = CoreWorkflowType(
             reference: .init(builtin: "adversarial"),
             definition: .init(
@@ -121,17 +99,24 @@ struct WorkflowRunTests {
         snapshot.workflows.workflows = [
             .init(
                 workflowID: 3, sessionID: 1, name: "Adversarial", kind: .agents, terminalID: 0,
+                agents: [
+                    .init(agentID: 4, role: "implementer", terminalID: 40),
+                    .init(agentID: 5, role: "reviewer", terminalID: 50),
+                ],
                 status: .running, startedAt: 1, endedAt: nil, run: run)
         ]
+        snapshot.terminals = [.init(terminalID: 40, status: .running), .init(terminalID: 50, status: .running)]
         let transport = ScriptedAgentTransport(snapshot: snapshot)
         let client = CoreClient(transport: transport)
         client.start()
         do {
             try await waitUntil { client.runState == .running }
             try await client.continueWorkflowIfNeeded(workflowID: 3, agentID: 5)
-            #expect(await transport.continuationAgentIDs.isEmpty)
+            try await client.writeTerminalInput(terminalID: 50, bytes: Data("task\r".utf8))
+            #expect(await transport.continuationAgentIDs == [5])
             try await client.continueWorkflowIfNeeded(workflowID: 3, agentID: 4)
-            #expect(await transport.continuationAgentIDs == [4])
+            try await client.writeTerminalInput(terminalID: 40, bytes: Data("task\r".utf8))
+            #expect(await transport.continuationAgentIDs == [5, 4])
             await client.stop()
         } catch {
             await client.stop()

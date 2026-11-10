@@ -288,7 +288,7 @@ enum WireCommandResult {
     AgentStarted {
         workflow_id: u64,
     },
-    AgentCancelled {
+    AgentStopped {
         workflow_id: u64,
     },
     Pong,
@@ -343,7 +343,7 @@ impl From<&CommandResult> for WireCommandResult {
             CommandResult::AgentStarted { workflow_id } => Self::AgentStarted {
                 workflow_id: workflow_id.0,
             },
-            CommandResult::AgentCancelled { workflow_id } => Self::AgentCancelled {
+            CommandResult::AgentStopped { workflow_id } => Self::AgentStopped {
                 workflow_id: workflow_id.0,
             },
             CommandResult::Pong => Self::Pong,
@@ -383,9 +383,9 @@ pub(crate) fn decode_command(bytes: &[u8]) -> Result<CommandEnvelope, BridgeErro
         | "startWorkflowRun"
         | "completeWorkflowRole"
         | "continueWorkflowRun"
-        | "setWorkflowIndividualMode"
+        | "setWorkflowAgentsDisconnected"
         | "retryDecision"
-        | "cancelWorkflowRun" => known(runs::decode_command(command_type, &raw.command)?),
+        | "forceStopWorkflowAgents" => known(runs::decode_command(command_type, &raw.command)?),
         "ping" => known(Command::Ping),
         "reloadConfig" => known(Command::ReloadConfig),
         "openFolder" => known(Command::OpenFolder {
@@ -414,7 +414,9 @@ pub(crate) fn decode_command(bytes: &[u8]) -> Result<CommandEnvelope, BridgeErro
         "createSession" | "renameSession" | "selectSession" | "deleteSession"
         | "createWorkflow" | "activateWorkflow" | "nameDraftWorkflow" | "renameWorkflow"
         | "moveWorkflow" | "reopenWorkflow" | "closeWorkflow" | "startAgent" | "resumeAgent"
-        | "cancelAgent" => known(workflows::decode_command(command_type, &raw.command)?),
+        | "recoverAgent" | "forceStopAgent" => {
+            known(workflows::decode_command(command_type, &raw.command)?)
+        }
         "startTerminal" => {
             let command: RawStartTerminal =
                 serde_json::from_value(raw.command).map_err(|_| BridgeError::MalformedCommand)?;
@@ -665,8 +667,8 @@ mod tests {
             }
         ));
         let cancel =
-            decode(r#"{"requestId": 2, "command": {"type": "cancelAgent", "workflowId": 7}}"#);
-        assert!(matches!(cancel, Command::CancelAgent { workflow_id } if workflow_id.0 == 7));
+            decode(r#"{"requestId": 2, "command": {"type": "forceStopAgent", "workflowId": 7}}"#);
+        assert!(matches!(cancel, Command::ForceStopAgent { workflow_id } if workflow_id.0 == 7));
         let unknown = decode_command(
             format!(
                 r#"{{"requestId": 3, "command": {{"type": "startAgent", "workflowId": 7,
@@ -811,10 +813,11 @@ mod tests {
             Command::CompleteWorkflowRole { signal: handshake_core::CompletionSignal { ref task, .. }, .. }
                 if task == "Add a toggle"
         ));
-        let command =
-            decode(r#"{"requestId":3,"command":{"type":"cancelWorkflowRun","workflowId":3}}"#);
+        let command = decode(
+            r#"{"requestId":3,"command":{"type":"forceStopWorkflowAgents","workflowId":3}}"#,
+        );
         assert!(
-            matches!(command, Command::CancelWorkflowRun { workflow_id } if workflow_id.0 == 3)
+            matches!(command, Command::ForceStopWorkflowAgents { workflow_id } if workflow_id.0 == 3)
         );
         let command = decode(
             r#"{"requestId":6,"command":{"type":"continueWorkflowRun","workflowId":3,"agentId":4,"generation":5}}"#,

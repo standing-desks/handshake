@@ -17,14 +17,15 @@ impl Application {
             Command::ActivateWorkflow { workflow_id }
             | Command::NameDraftWorkflow { workflow_id, .. }
             | Command::StartAgent { workflow_id, .. }
-            | Command::CancelAgent { workflow_id }
+            | Command::RecoverAgent { workflow_id, .. }
+            | Command::ForceStopAgent { workflow_id }
             | Command::StartWorkflowRun { workflow_id, .. }
             | Command::CompleteWorkflowRole { workflow_id, .. }
             | Command::ContinueWorkflowRun { workflow_id, .. }
-            | Command::SetWorkflowIndividualMode { workflow_id, .. }
+            | Command::SetWorkflowAgentsDisconnected { workflow_id, .. }
             | Command::SubmitWorkflowTask { workflow_id, .. }
             | Command::ChooseWorkflowResult { workflow_id, .. }
-            | Command::CancelWorkflowRun { workflow_id } => *workflow_id,
+            | Command::ForceStopWorkflowAgents { workflow_id } => *workflow_id,
             _ => return Ok(None),
         };
         Ok(self

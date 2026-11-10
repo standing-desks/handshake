@@ -38,9 +38,9 @@ impl Store {
             return Ok(None);
         };
         let row:Option<(u64,String,String)> = self.connection.query_row(
-            "SELECT l.workflow_id,l.harness,wt.harness_session FROM trace_spans s
+            "SELECT l.workflow_id,l.harness,COALESCE(s.harness_session,wt.harness_session) FROM trace_spans s
              JOIN trace_lanes l ON l.id=s.lane_id JOIN workflow_terminals wt ON wt.terminal_id=s.terminal_id
-             WHERE s.id=?1 AND wt.harness_session IS NOT NULL AND l.harness IS NOT NULL",
+             WHERE s.id=?1 AND COALESCE(s.harness_session,wt.harness_session) IS NOT NULL AND l.harness IS NOT NULL",
             [sql_integer(span.0)?], |r|Ok((unsigned_column(r,0)?,r.get(1)?,r.get(2)?))
         ).optional()?;
         Ok(row.and_then(|(workflow, harness, session)| {
@@ -75,7 +75,7 @@ impl Store {
             "SELECT a.id,a.span_id,a.input_bytes,a.output_bytes,a.metadata,a.ended_at FROM trace_activities a
              JOIN trace_spans s ON s.id=a.span_id JOIN trace_lanes l ON l.id=s.lane_id
              JOIN workflow_terminals wt ON wt.terminal_id=s.terminal_id
-             WHERE l.workflow_id=?1 AND wt.harness_session=?2 AND
+             WHERE l.workflow_id=?1 AND COALESCE(s.harness_session,wt.harness_session)=?2 AND
              (a.source_id=?3 OR (?4 IS NOT NULL AND a.kind='model' AND json_extract(a.metadata,'$.responseId')=?4))
              ORDER BY a.id LIMIT 1",
             params![sql_integer(workflow.0)?,session,native.id,native.metadata["responseId"].as_str()],
@@ -92,7 +92,7 @@ impl Store {
                 "SELECT a.id,a.span_id,a.input_bytes,a.output_bytes,a.metadata,a.ended_at FROM trace_activities a
                  JOIN trace_spans s ON s.id=a.span_id JOIN trace_lanes l ON l.id=s.lane_id
                  JOIN workflow_terminals wt ON wt.terminal_id=s.terminal_id
-                 WHERE l.workflow_id=?1 AND wt.harness_session=?2 AND a.kind='model'
+                 WHERE l.workflow_id=?1 AND COALESCE(s.harness_session,wt.harness_session)=?2 AND a.kind='model'
                    AND a.parent_source_id IS ?3 AND json_extract(a.metadata,'$.model') IS ?4
                    AND json_extract(a.metadata,'$.nativeMessageTimestamp')=?5 AND json_extract(a.metadata,'$.responseId') IS NULL LIMIT 2")?;
             let mut candidates = statement
@@ -117,7 +117,7 @@ impl Store {
             self.connection.query_row(
                 "SELECT s.id FROM trace_spans s JOIN trace_lanes l ON l.id=s.lane_id
                  JOIN workflow_terminals wt ON wt.terminal_id=s.terminal_id
-                 WHERE l.workflow_id=?1 AND wt.harness_session=?2 AND
+                 WHERE l.workflow_id=?1 AND COALESCE(s.harness_session,wt.harness_session)=?2 AND
                    ((?3 IS NOT NULL AND s.harness_turn_id=?3) OR EXISTS(SELECT 1 FROM trace_activities a
                      WHERE a.span_id=s.id AND a.source_id=?4)) ORDER BY s.id LIMIT 1",
                 params![sql_integer(workflow.0)?,session,native.turn,native.parent],|r|unsigned_column(r,0)
@@ -134,7 +134,7 @@ impl Store {
         ) {
             let mut statement=self.connection.prepare(
                 "SELECT s.id FROM trace_spans s JOIN trace_lanes l ON l.id=s.lane_id
-                 JOIN workflow_terminals wt ON wt.terminal_id=s.terminal_id WHERE l.workflow_id=?1 AND wt.harness_session=?2
+                 JOIN workflow_terminals wt ON wt.terminal_id=s.terminal_id WHERE l.workflow_id=?1 AND COALESCE(s.harness_session,wt.harness_session)=?2
                  AND s.title=?3 AND s.started_at BETWEEN ?4 AND ?5")?;
             let ids = statement
                 .query_map(
@@ -300,6 +300,7 @@ mod tests {
         let span = store
             .record_harness_step(
                 HarnessStepContext {
+                    invocation_span: None,
                     workflow_id: workflow,
                     single_agent: true,
                     activate: false,
@@ -435,6 +436,7 @@ mod tests {
                 detail: "Full provider request".into(),
             };
             let context = HarnessStepContext {
+                invocation_span: None,
                 workflow_id: workflow,
                 single_agent: true,
                 activate: false,

@@ -49,7 +49,7 @@ needs = $(if $(PREBUILT),,$(1))
 UI_DEFAULT_TESTS := testKeepAwakeMenuWorksOnOpeningScreenAndSharesToolbarState \
 	testTabCreationButtonsMatchTabsAcrossScrollbarsAndZoom \
 	testTerminalSplitsResizeKeepTheirNeighborAndRestoreOutput \
-	testSingleAgentStartsInteractivelyTakesInputAndCancels \
+	testSingleAgentStartsInteractivelyTakesInputAndForceStops \
 	testBentoPanesKeepEachShellAndMoveTheKeyboardBetweenThem \
 	testTimelineInspectorShowsNestedCallsFiltersAndSurvivesRelaunch \
 	testManagedTabsRenameReorderPinNavigateAndReopenWithoutRestarting \

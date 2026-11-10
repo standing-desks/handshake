@@ -150,10 +150,18 @@ pub(super) fn record_activity(
             started.then_some(detail_bytes), (!started).then_some(detail_bytes),
             activity.metadata.to_string()],
     )?;
+    interrupt_activity_after_process_end(transaction, span)
+}
+
+fn interrupt_activity_after_process_end(
+    transaction: &Transaction<'_>,
+    span: TraceSpanId,
+) -> Result<(), StoreError> {
     transaction.execute(
         "UPDATE trace_activities SET status = 'interrupted' WHERE span_id = ?1 AND status = 'running'
          AND EXISTS(SELECT 1 FROM trace_events e JOIN trace_spans s ON s.terminal_id = e.terminal_id
-             WHERE s.id = ?1 AND e.kind IN ('processStopped', 'processExited', 'processFailed'))",
+             WHERE s.id = ?1 AND e.kind IN ('processStopped', 'processExited', 'processFailed')
+             AND e.span_id >= COALESCE(s.invocation_span,0))",
         [sql_integer(span.0)?],
     )?;
     Ok(())
@@ -424,6 +432,7 @@ mod tests {
         store
             .record_harness_step(
                 HarnessStepContext {
+                    invocation_span: None,
                     workflow_id,
                     single_agent: true,
                     activate: false,
