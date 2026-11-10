@@ -30,12 +30,14 @@ struct KeepAwakeTests {
         let model = KeepAwakeModel(client: CoreClient(transport: transport))
         let poll = Task { await model.update(nil) }
         try await waitUntil { await transport.hasPendingPoll }
+        #expect(!model.isUpdating, "A status poll must leave the menu and toolbar available")
         var requested = false
         let enable = Task {
             requested = true
             await model.update(true)
         }
         try await waitUntil { requested }
+        #expect(model.isUpdating, "An explicit change stays busy while it waits behind the poll")
         await transport.finishPoll()
         await poll.value
         try await waitUntil { await transport.hasPendingEnable }
@@ -43,6 +45,7 @@ struct KeepAwakeTests {
         await transport.finishEnable()
         await enable.value
         #expect(model.isEnabled)
+        #expect(!model.isUpdating)
         await model.stop()
     }
 

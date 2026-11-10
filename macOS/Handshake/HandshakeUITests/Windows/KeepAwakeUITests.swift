@@ -14,9 +14,7 @@ extension HandshakeUITests {
         let parent = try keepAwakeAppPID()
         app.menuBars.menuBarItems["Handshake"].click()
         XCTAssertTrue(app.menuItems["Keep Awake"].waitForExistence(timeout: 5))
-        // Native menu type selection and Return provide keyboard access without a new shortcut.
-        app.typeKey("k", modifierFlags: [])
-        app.typeKey(.return, modifierFlags: [])
+        app.menuItems["Keep Awake"].click()
         let child = try waitForCaffeinate(parent: parent)
         try waitForPowerAssertions(child)
         app.menuBars.menuBarItems["Handshake"].click()

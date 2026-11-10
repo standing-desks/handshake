@@ -36,7 +36,8 @@ final class KeepAwakeModel {
         let preceding = updateTask
         updateGeneration += 1
         let generation = updateGeneration
-        isUpdating = true
+        // Background status reads must not disable menu or toolbar interaction.
+        if enabled != nil { isUpdating = true }
         let task = Task { [self] in
             await preceding?.value
             guard !isStopping else { return }
