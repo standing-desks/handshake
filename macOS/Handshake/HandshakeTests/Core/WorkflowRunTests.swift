@@ -32,9 +32,9 @@ struct WorkflowRunTests {
         let worker = CoreWorker(dataDirectory: directory)
         do {
             let snapshot = try await worker.open()
-            let types = try #require(snapshot.workflowTypes)
-            #expect(types.map(\.definition.name) == ["Adversarial", "Coordinator"])
-            let coordinator = try #require(types.first { $0.reference.builtin == "coordinator" })
+            let builtins = try #require(snapshot.workflowTypes).filter { $0.reference.builtin != nil }
+            #expect(builtins.map(\.definition.name) == ["Adversarial", "Coordinator"])
+            let coordinator = try #require(builtins.first { $0.reference.builtin == "coordinator" })
             #expect(coordinator.definition.roles.map(\.id) == ["planner", "worker-1", "worker-2", "coordinator"])
             #expect(coordinator.definition.roles.allSatisfy { $0.instances.min == 1 && $0.instances.max == 1 })
             await worker.close()

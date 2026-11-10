@@ -93,7 +93,8 @@ struct FileSyntaxRenderingTests {
         highlighter.update(language: nil, loadID: loadID, isVisible: true)
         await stale.value
         #expect(highlighter.pendingTask == nil)
-        #expect(try fixture.renderedSpans().isEmpty)
+        let spans = try fixture.renderedSpans()
+        #expect(spans.isEmpty, "Rendering attributes after disabling syntax: \(spans)")
 
         highlighter.update(language: .swift, loadID: loadID, isVisible: true)
         await highlighter.pendingTask?.value
