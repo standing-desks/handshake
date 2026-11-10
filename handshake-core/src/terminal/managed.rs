@@ -4,8 +4,8 @@ use std::io;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use super::manager::{ExitCallback, TerminalObservation};
@@ -17,6 +17,8 @@ pub(super) struct ManagedProgram {
     delivered: AtomicBool,
     control: Mutex<()>,
     native: Mutex<Option<(libc::pid_t, (u64, u64))>>,
+    // A resumed launch must retain the old retirement receipt until the shell reads it.
+    previous: Mutex<Option<Arc<Self>>>,
 }
 impl ManagedProgram {
     pub(super) fn prepare(
@@ -25,6 +27,7 @@ impl ManagedProgram {
         path: &OsStr,
         environment: &[(&str, &str)],
         callback: ExitCallback,
+        previous: Option<Arc<Self>>,
     ) -> io::Result<Self> {
         let directory = tempfile::Builder::new()
             .prefix("handshake-invocation-")
@@ -85,6 +88,7 @@ impl ManagedProgram {
             delivered: AtomicBool::new(false),
             control: Mutex::new(()),
             native: Mutex::new(None),
+            previous: Mutex::new(previous),
         })
     }
     pub(super) fn command(&self) -> &Path {
@@ -192,6 +196,12 @@ impl ManagedProgram {
         self.service_startup_locked(shell);
     }
     fn service_startup_locked(&self, shell: libc::pid_t) {
+        // The next runner's marker proves the shell has finished the prior wrapper.
+        if self.directory.path().join("native").exists()
+            && let Ok(mut previous) = self.previous.lock()
+        {
+            previous.take();
+        }
         if self.delivered.load(Ordering::Acquire) {
             return;
         }
@@ -253,4 +263,36 @@ fn quote(output: &mut Vec<u8>, value: &OsStr) {
         }
     }
     output.push(b'\'');
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn invocation(previous: Option<Arc<ManagedProgram>>) -> ManagedProgram {
+        ManagedProgram::prepare(
+            Path::new("/usr/bin/true"),
+            &[],
+            OsStr::new("/bin:/usr/bin"),
+            &[],
+            Arc::new(|_, _, _| {}),
+            previous,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn a_resumed_invocation_retains_the_prior_receipts_until_its_runner_starts() {
+        let previous = Arc::new(invocation(None));
+        let receipts = previous.command().to_owned();
+        std::fs::write(receipts.join("retired"), []).unwrap();
+        let resumed = invocation(Some(Arc::clone(&previous)));
+        drop(previous);
+        resumed.service_startup(0);
+        assert!(receipts.join("retired").exists());
+        // An empty marker suffices to prove entry without binding or signaling a real PID.
+        std::fs::write(resumed.command().join("native"), []).unwrap();
+        resumed.service_startup(0);
+        assert!(!receipts.exists());
+    }
 }

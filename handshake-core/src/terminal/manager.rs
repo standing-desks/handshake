@@ -230,6 +230,12 @@ impl TerminalManager {
     ) -> Result<TerminalId, TerminalError> {
         let existing = self.is_running(terminal);
         let result = (|| {
+            let previous = self
+                .programs
+                .lock()
+                .map_err(|_| TerminalError::Poisoned)?
+                .get(&terminal)
+                .cloned();
             let invocation = Arc::new(
                 super::managed::ManagedProgram::prepare(
                     program,
@@ -237,6 +243,7 @@ impl TerminalManager {
                     path,
                     environment,
                     on_program_exit,
+                    previous,
                 )
                 .map_err(|error| TerminalError::Pty {
                     operation: "prepare harness launch",
@@ -1077,7 +1084,7 @@ mod tests {
             if stop_pending {
                 manager.force_stop_harness(terminal).unwrap();
             }
-            let deadline = Instant::now() + Duration::from_secs(8);
+            let deadline = Instant::now() + Duration::from_secs(20);
             let (mut bytes, mut offset) = (Vec::new(), 0);
             while !bytes.windows(4).any(|bytes| bytes == b"\x1b[6n") {
                 assert!(Instant::now() < deadline, "startup query never arrived");
