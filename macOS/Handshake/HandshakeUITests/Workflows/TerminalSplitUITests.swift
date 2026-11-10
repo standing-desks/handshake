@@ -27,6 +27,7 @@ extension HandshakeUITests {
         app.buttons["workflowChoice-Terminal"].click()
         app.buttons["workflowTab-1"].click()
         app.typeKey("d", modifierFlags: .command)
+        XCTAssertTrue(app.buttons["closeTerminalPane-3"].waitForExistence(timeout: 5), app.debugDescription)
         app.typeText("printf 'SPLIT_PANE_OUTPUT\\n'; stty size > split-size\r")
         waitForFile(folder.appending(path: "split-size"), containing: " ", in: app)
         XCTAssertFalse(app.buttons["workflowTab-3"].exists)
