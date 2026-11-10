@@ -30,75 +30,100 @@ struct ManagedWorkflowTabs: View {
     @State private var viewportWidth: CGFloat = 0
     @State private var tabsWidth: CGFloat?
     @State private var scrollEdge = 0
+    @State private var scrollPosition = ScrollPosition(idType: String.self)
+    @State private var measuredScroll = ScrollMeasurement(content: 0, viewport: 0, offset: 0)
+    @State private var scrollState = TabStripScrollState()
+    @State private var scrollPhase = ScrollPhase.idle
 
-    private struct ScrollWidths: Equatable {
+    private var contentSpace: String { "\(dragScope)-content" }
+
+    private var scrollMeasurement: TabStripScrollState.Measurement {
+        TabStripScrollState.Measurement(
+            selected: selected, items: items.map(\.id), contentWidth: measuredScroll.content,
+            viewportWidth: measuredScroll.viewport, offset: measuredScroll.offset, frames: frames,
+            isUserScrolling: dragging != nil || scrollPhase == .tracking || scrollPhase == .interacting
+                || scrollPhase == .decelerating)
+    }
+
+    private struct ScrollMeasurement: Equatable {
         let content: CGFloat
         let viewport: CGFloat
+        let offset: CGFloat
     }
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 6) {
             Text("TABS").sectionLabelStyle().fixedSize().frame(height: WorkflowTabLayout.height)
-            ScrollViewReader { proxy in
-                ScrollView(.horizontal) {
-                    HStack(alignment: .bottom, spacing: 6) {
-                        ForEach(items) { item in
-                            tab(item)
-                                .id(item.id)
-                                .transition(.opacity)
-                                .highPriorityGesture(
-                                    DragGesture(minimumDistance: 5, coordinateSpace: .named(dragScope))
-                                        .onChanged { updateDrag(item, location: $0.location) }
-                                        .onEnded { finishDrag(item, location: $0.location) }
-                                )
-                                .onGeometryChange(
-                                    for: CGRect.self, of: { $0.frame(in: .named(dragScope)) },
-                                    action: { frames[item.id] = $0 }
-                                )
-                                .overlay(alignment: insertionAfter ? .trailing : .leading) {
-                                    if insertion == item.id {
-                                        Rectangle().fill(.tint).frame(width: 2).padding(.vertical, 3)
-                                    }
+            ScrollView(.horizontal) {
+                HStack(alignment: .bottom, spacing: 6) {
+                    ForEach(items) { item in
+                        tab(item)
+                            .id(item.id)
+                            .transition(.opacity)
+                            .highPriorityGesture(
+                                DragGesture(minimumDistance: 5, coordinateSpace: .named(dragScope))
+                                    .onChanged { updateDrag(item, location: $0.location) }
+                                    .onEnded { finishDrag(item, location: $0.location) }
+                            )
+                            .onGeometryChange(
+                                for: CGRect.self, of: { $0.frame(in: .named(contentSpace)) },
+                                action: { frames[item.id] = $0 }
+                            )
+                            .overlay(alignment: insertionAfter ? .trailing : .leading) {
+                                if insertion == item.id {
+                                    Rectangle().fill(.tint).frame(width: 2).padding(.vertical, 3)
                                 }
-                        }
-                    }
-                    .padding(.horizontal, 1)
-                    .onGeometryChange(for: CGFloat.self, of: { $0.size.width }, action: { tabsWidth = $0 })
-                }
-                .coordinateSpace(name: dragScope)
-                .onGeometryChange(for: CGFloat.self, of: { $0.size.width }, action: { viewportWidth = $0 })
-                .scrollIndicators(.never)
-                .onChange(of: selected) {
-                    withAnimation(reduceMotion ? nil : Motion.scrollToSelectedTab) { revealSelection(using: proxy) }
-                }
-                .onScrollGeometryChange(
-                    for: ScrollWidths.self,
-                    of: { ScrollWidths(content: $0.contentSize.width, viewport: $0.containerSize.width) },
-                    action: { _, _ in
-                        // The native viewport can still be animating after the outer layout reports its final size.
-                        var transaction = Transaction(animation: nil)
-                        transaction.disablesAnimations = true
-                        withTransaction(transaction) { revealSelection(using: proxy) }
-                    }
-                )
-                .onChange(of: items.map(\.id)) {
-                    if let dragging, !items.contains(where: { $0.id == dragging }) { cancelDrag() }
-                    revealSelection(using: proxy)
-                }
-                .task(id: scrollEdge) {
-                    guard scrollEdge != 0 else { return }
-                    var index =
-                        items.firstIndex { $0.id == insertion || $0.id == dragging }
-                        ?? (scrollEdge < 0 ? items.count : 0)
-                    while !Task.isCancelled && scrollEdge != 0 && dragging != nil {
-                        index = min(max(index + scrollEdge, 0), max(0, items.count - 1))
-                        if items.indices.contains(index) {
-                            withAnimation(reduceMotion ? nil : Motion.scrollToSelectedTab) {
-                                proxy.scrollTo(items[index].id, anchor: scrollEdge < 0 ? .leading : .trailing)
                             }
-                        }
-                        try? await Task.sleep(for: .milliseconds(180))
                     }
+                }
+                .scrollTargetLayout()
+                .padding(.horizontal, 1)
+                .coordinateSpace(name: contentSpace)
+                .onGeometryChange(for: CGFloat.self, of: { $0.size.width }, action: { tabsWidth = $0 })
+            }
+            .coordinateSpace(name: dragScope)
+            .onGeometryChange(for: CGFloat.self, of: { $0.size.width }, action: { viewportWidth = $0 })
+            .scrollIndicators(.never)
+            .scrollPosition($scrollPosition)
+            .onScrollGeometryChange(
+                for: ScrollMeasurement.self,
+                of: {
+                    ScrollMeasurement(
+                        content: $0.contentSize.width, viewport: $0.containerSize.width, offset: $0.contentOffset.x)
+                },
+                action: { _, new in measuredScroll = new }
+            )
+            .onScrollPhaseChange { _, new in scrollPhase = new }
+            .onChange(of: scrollMeasurement, initial: true) { _, measurement in
+                scrollState.update(measurement)
+            }
+            .task(id: scrollState.request) {
+                guard let request = scrollState.request else { return }
+                // Geometry can change several times within one update. Apply only the latest request
+                // after SwiftUI has returned from that update, rather than scrolling from its callback.
+                await Task.yield()
+                guard !Task.isCancelled, scrollState.request == request else { return }
+                var transaction = Transaction(animation: nil)
+                transaction.disablesAnimations = true
+                withTransaction(transaction) { scrollPosition.scrollTo(x: request.offset) }
+            }
+            .onChange(of: items.map(\.id)) {
+                if let dragging, !items.contains(where: { $0.id == dragging }) { cancelDrag() }
+                frames = frames.filter { key, _ in items.contains { $0.id == key } }
+            }
+            .task(id: scrollEdge) {
+                guard scrollEdge != 0 else { return }
+                var index =
+                    items.firstIndex { $0.id == insertion || $0.id == dragging }
+                    ?? (scrollEdge < 0 ? items.count : 0)
+                while !Task.isCancelled && scrollEdge != 0 && dragging != nil {
+                    index = min(max(index + scrollEdge, 0), max(0, items.count - 1))
+                    if items.indices.contains(index) {
+                        withAnimation(reduceMotion ? nil : Motion.scrollToSelectedTab) {
+                            scrollPosition.scrollTo(id: items[index].id, anchor: scrollEdge < 0 ? .leading : .trailing)
+                        }
+                    }
+                    try? await Task.sleep(for: .milliseconds(180))
                 }
             }
             .frame(maxWidth: tabsWidth)
@@ -128,17 +153,11 @@ struct ManagedWorkflowTabs: View {
             }
         }
         .frame(height: WorkflowTabLayout.height, alignment: .bottom)
-        .animation(reduceMotion ? nil : Motion.tabChange, value: items.map(\.id))
         .contextMenu {
             Button("Reopen Closed Tab", action: reopen).disabled(!canReopen)
             Divider()
             Button(TabLayout.top.toggleTitle, systemImage: "sidebar.left", action: switchLayout)
         }
-    }
-
-    private func revealSelection(using proxy: ScrollViewProxy) {
-        guard let selected else { return }
-        proxy.scrollTo(selected, anchor: selected == items.last?.id ? .trailing : nil)
     }
 
     private func tab(_ item: WorkspaceTabItem) -> some View {
@@ -197,11 +216,12 @@ struct ManagedWorkflowTabs: View {
             return
         }
         let candidates = items.filter { $0.pinned == item.pinned && frames[$0.id] != nil }
+        let contentX = location.x + measuredScroll.offset
         let target = candidates.min {
-            abs((frames[$0.id]?.midX ?? 0) - location.x) < abs((frames[$1.id]?.midX ?? 0) - location.x)
+            abs((frames[$0.id]?.midX ?? 0) - contentX) < abs((frames[$1.id]?.midX ?? 0) - contentX)
         }
         insertion = target?.id
-        insertionAfter = target.flatMap { frames[$0.id] }.map { location.x > $0.midX } ?? false
+        insertionAfter = target.flatMap { frames[$0.id] }.map { contentX > $0.midX } ?? false
         scrollEdge = location.x < 24 ? -1 : (location.x > viewportWidth - 24 ? 1 : 0)
     }
 

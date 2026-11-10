@@ -80,6 +80,8 @@ struct FolderCommands: Commands {
                         Button(count == 1 ? "1 Agent" : "\(count) Agents") {
                             workflowActions?.createAgents(Array(Self.testRoles.prefix(count)))
                         }
+                        .keyboardShortcut(
+                            KeyEquivalent(Character(String(count))), modifiers: [.command, .control, .option])
                     }
                 }
                 .disabled(workflowActions == nil || !isRunning)

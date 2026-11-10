@@ -94,7 +94,6 @@ nonisolated enum Motion {
     /// The close button fading in over a tab's icon on hover.
     static let tabCloseButton = Animation.easeInOut(duration: 0.12)
     static let scrollToSelectedTab = Animation.easeInOut(duration: 0.18)
-    static let tabChange = Animation.easeInOut(duration: 0.18)
     static let paneLayout = Animation.smooth(duration: 0.22)
     static let disclosure = Animation.easeInOut(duration: 0.18)
     /// Sidebar sections and the Traces panel collapsing and expanding.

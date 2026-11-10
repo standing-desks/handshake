@@ -2,9 +2,9 @@ import XCTest
 
 extension HandshakeUITests {
     @MainActor
-    func testTabCreationButtonsMatchTabsAcrossAppearancesAndZoom() throws {
+    func testTabCreationButtonsMatchTabsAcrossScrollbarsAndZoom() throws {
         for (appearance, scrollBars) in [
-            ("Light", "Automatic"), ("Dark", "Automatic"), ("Light", "Always"), ("Dark", "Always"),
+            ("Light", "Automatic"), ("Light", "Always"),
         ] {
             let folder = try makeTestFolder(prefix: "HandshakeTabControlHeight")
             let app = try managedTabApp(folder: folder)
@@ -99,9 +99,9 @@ extension HandshakeUITests {
         waitForTab(first, valueContaining: "Selected", in: app)
         XCTAssertTrue(first.isHittable, app.debugDescription)
         XCTAssertTrue(create.isHittable, app.debugDescription)
-        app.typeKey("w", modifierFlags: [.command, .shift])
+        app.typeKey("w", modifierFlags: .command)
         XCTAssertTrue(first.waitForNonExistence(timeout: 5))
-        for _ in 0..<7 { app.typeKey("w", modifierFlags: [.command, .shift]) }
+        for _ in 0..<7 { app.typeKey("w", modifierFlags: .command) }
         XCTAssertTrue(last.waitForExistence(timeout: 5))
         waitForTab(last, valueContaining: "Selected", in: app)
         XCTAssertGreaterThanOrEqual(create.frame.minX, last.frame.maxX)

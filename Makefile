@@ -57,7 +57,7 @@ UI_DEFAULT_TESTS := testFirstLaunchShowsStartPage \
 	testBrowserNavigationValidationPopupAndContextualClose \
 	testPDFImageAndVideoPreviewsShareFileTabControls \
 	testManagedTabsKeepCreateButtonBesideTabsAndReachableDuringOverflow \
-	testTabCreationButtonsMatchTabsAcrossAppearancesAndZoom \
+	testTabCreationButtonsMatchTabsAcrossScrollbarsAndZoom \
 	testManagedTabsValidateCancelAndResetNamesAndHandleEmptySearch \
 	testManagedTabsHideTopLevelRunningAndExitIndicators \
 	testManagedFileTabsDisambiguateSearchPinAndReopen \

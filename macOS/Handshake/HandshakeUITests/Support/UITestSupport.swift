@@ -153,24 +153,10 @@ extension HandshakeUITests {
         XCTAssertTrue(found, "Harness \(harness) did not appear in the Single agent menu:\n\(app.debugDescription)")
     }
 
-    /// Opens a workflow whose agents run shells, from the debug-only File menu.
+    /// Opens a workflow whose agents run shells, using the debug-only command shortcut.
     @MainActor
     func openTestWorkflow(agents: Int, in app: XCUIApplication) {
-        app.menuBars.menuBarItems["File"].click()
-        let menu = app.menuBars.menuItems["New Test Workflow"]
-        XCTAssertTrue(menu.waitForExistence(timeout: 5), app.debugDescription)
-        menu.hover()
-        let item = menu.menuItems[agents == 1 ? "1 Agent" : "\(agents) Agents"]
-        XCTAssertTrue(item.waitForExistence(timeout: 5), app.debugDescription)
-        // Coordinate events avoid XCTest re-traversing the menu through a different parent item.
-        let window = app.windows.firstMatch
-        let origin = window.coordinate(withNormalizedOffset: .zero)
-        let bounds = window.frame
-        func center(_ frame: CGRect) -> XCUICoordinate {
-            origin.withOffset(CGVector(dx: frame.midX - bounds.minX, dy: frame.midY - bounds.minY))
-        }
-        center(menu.menuItems["1 Agent"].frame).hover()
-        center(item.frame).click()
+        app.typeKey(String(agents), modifierFlags: [.command, .control, .option])
     }
 
     /// Replaces each agent's login shell with `sh`, tags it with a variable, and returns its PID.
