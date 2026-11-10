@@ -26,6 +26,7 @@ struct TerminalTraceNavigationTests {
         let window = NSWindow(
             contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
         window.contentView = hosting
+        hosting.layoutSubtreeIfNeeded()
         defer { window.contentView = nil }
         let controller = TerminalController(coreClient: client, terminalID: 41, failureMessage: .constant(nil))
         controller.restoresOutput = true
@@ -40,7 +41,10 @@ struct TerminalTraceNavigationTests {
         await transport.setDelayed(false)
         await transport.release()
         try await waitUntil { minimap.receivedOffset == UInt64(bytes.count) }
-        try await waitUntil { !minimap.geometry.isLive }
+        try await waitUntil {
+            hosting.layoutSubtreeIfNeeded()
+            return !minimap.geometry.isLive
+        }
         #expect(navigation.target == nil)
         #expect(
             TerminalMinimapGeometry.logicalLine(at: view.getTerminal().getTopVisibleRow(), in: view.getTerminal())

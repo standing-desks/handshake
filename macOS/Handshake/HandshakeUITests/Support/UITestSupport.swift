@@ -162,7 +162,15 @@ extension HandshakeUITests {
         menu.hover()
         let item = menu.menuItems[agents == 1 ? "1 Agent" : "\(agents) Agents"]
         XCTAssertTrue(item.waitForExistence(timeout: 5), app.debugDescription)
-        item.click()
+        // Coordinate events avoid XCTest re-traversing the menu through a different parent item.
+        let window = app.windows.firstMatch
+        let origin = window.coordinate(withNormalizedOffset: .zero)
+        let bounds = window.frame
+        func center(_ frame: CGRect) -> XCUICoordinate {
+            origin.withOffset(CGVector(dx: frame.midX - bounds.minX, dy: frame.midY - bounds.minY))
+        }
+        center(menu.menuItems["1 Agent"].frame).hover()
+        center(item.frame).click()
     }
 
     /// Replaces each agent's login shell with `sh`, tags it with a variable, and returns its PID.
